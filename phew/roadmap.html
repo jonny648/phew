@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Phew! roadmap</title>
+<style>
+:root{--paper:#fff;--ink:#15171c;--muted:#5a606c;--rule:#d8dbe1;--tint:#f3f5f9;--done:#15171c;box-sizing:border-box;
+padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--paper:#0f1115;--ink:#e7e9ee;--muted:#9aa1ae;--rule:#2a2e37;--tint:#171a20;--done:#e7e9ee}}
+:root[data-theme="dark"]{color-scheme:dark;--paper:#0f1115;--ink:#e7e9ee;--muted:#9aa1ae;--rule:#2a2e37;--tint:#171a20;--done:#e7e9ee}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;font-size:14px;line-height:1.55}
+main{max-width:80ch;margin:0 auto;padding:2.5rem 1.25rem 4rem}
+h1{font-size:1.5rem;margin:0 0 .3rem}
+.meta{color:var(--muted);margin:0}
+.total{margin:1.5rem 0 0}
+.track{height:.7rem;background:var(--tint);margin:.4rem 0}
+.fill{height:100%;width:0;background:var(--done);transition:width .3s}
+.grid{display:flex;flex-wrap:wrap;gap:.3rem 1.2rem;color:var(--muted);margin-top:.6rem}
+.grid a{color:inherit;text-decoration:none} .grid a:hover{color:var(--ink)} .grid .full{color:var(--ink);font-weight:700}
+.phase{border-top:1px solid var(--rule);margin-top:2rem;padding-top:.6rem}
+h2{font-size:1.05rem;margin:.4rem 0 0}
+h3{font-size:.9rem;color:var(--muted);font-weight:400;margin:1rem 0 .2rem}
+.sub{color:var(--muted);margin:.1rem 0 .6rem}
+.tally{color:var(--muted);font-weight:400}
+ul.tasks{list-style:none;margin:0;padding:0}
+ul.tasks li{padding:.45rem 0;border-bottom:1px solid var(--rule)}
+ul.added:empty{display:none}
+label{display:block}
+input{margin:0 .5rem 0 0;accent-color:var(--done)}
+.when{display:block;color:var(--muted);padding-left:1.75rem}
+.tag{color:var(--muted);border:1px solid var(--rule);padding:0 .35rem;font-size:.85em;margin-left:1.75rem}
+.stamp{color:var(--muted);margin-left:.5rem}
+li.is-done label{text-decoration:line-through;text-decoration-thickness:1px;color:var(--muted)}
+li.is-done .when{display:none}
+.note{color:var(--muted);margin-top:2.5rem;border-top:1px solid var(--rule);padding-top:1rem}
+</style>
+</head>
+<body>
+<main>
+<h1>Phew! roadmap</h1>
+<p class="meta">MVP deadline: Tuesday 24 November 2026. Ticked by Claude Code after verification. Refresh to update.</p>
+<div class="total"><span id="totalText"></span><div class="track"><div class="fill" id="totalFill"></div></div><div class="grid" id="grid"></div></div>
+
+<!-- TASKS START. One task per line. Protocol in CLAUDE.md. -->
+<section class="phase mvp" id="P0">
+<h2>P0 Setup <span class="tally"></span></h2>
+<p class="sub">Target 11 Nov. Subagent: lead.</p>
+<ul class="tasks">
+<li data-id="P0.1" data-done=""><label><input type="checkbox" disabled> <b>P0.1</b> Project folder under git with the plan, rules and roles</label><span class="when">Done when: git log shows the first commit.</span></li>
+<li data-id="P0.2" data-done=""><label><input type="checkbox" disabled> <b>P0.2</b> Xcode project named Phew, SwiftUI, saved in the folder</label><span class="when">Done when: Phew.xcodeproj exists and opens.</span></li>
+<li data-id="P0.3" data-done=""><label><input type="checkbox" disabled> <b>P0.3</b> Signing set to the personal team</label><span class="when">Done when: Permissions survive a rebuild.</span></li>
+<li data-id="P0.4" data-done=""><label><input type="checkbox" disabled> <b>P0.4</b> App builds from the terminal</label><span class="when">Done when: xcodebuild ends with BUILD SUCCEEDED.</span></li>
+<li data-id="P0.5" data-done=""><label><input type="checkbox" disabled> <b>P0.5</b> Folders Shell, Senses, Brain, Map and an empty Brain interface</label><span class="when">Done when: Project compiles with the four groups.</span></li>
+</ul>
+<h3>Added during build</h3>
+<ul class="tasks added">
+</ul>
+</section>
+<section class="phase mvp" id="P1">
+<h2>P1 Shell <span class="tally"></span></h2>
+<p class="sub">Target 12 to 13 Nov. Subagent: shell.</p>
+<ul class="tasks">
+<li data-id="P1.1" data-done=""><label><input type="checkbox" disabled> <b>P1.1</b> Menu bar item with Pause and Quit</label><span class="when">Done when: Icon visible, both entries work.</span></li>
+<li data-id="P1.2" data-done=""><label><input type="checkbox" disabled> <b>P1.2</b> No Dock icon, no main window</label><span class="when">Done when: Launching shows only the menu bar item.</span></li>
+<li data-id="P1.3" data-done=""><label><input type="checkbox" disabled> <b>P1.3</b> Global shortcut opens a small input panel at the cursor</label><span class="when">Done when: Works from 3 different front apps.</span></li>
+<li data-id="P1.4" data-done=""><label><input type="checkbox" disabled> <b>P1.4</b> Panel accepts typing without activating Phew</label><span class="when">Done when: Front app stays frontmost while you type.</span></li>
+<li data-id="P1.5" data-done=""><label><input type="checkbox" disabled> <b>P1.5</b> Escape closes the panel</label><span class="when">Done when: Panel gone, focus unchanged.</span></li>
+<li data-id="P1.6" data-done=""><label><input type="checkbox" disabled> <b>P1.6</b> One plain screen asks for Accessibility and Screen Recording</label><span class="when">Done when: Both permissions granted from a clean start.</span></li>
+</ul>
+<h3>Added during build</h3>
+<ul class="tasks added">
+</ul>
+</section>
+<section class="phase mvp" id="P2">
+<h2>P2 Senses <span class="tally"></span></h2>
+<p class="sub">Target 14 to 15 Nov. Subagent: senses.</p>
+<ul class="tasks">
+<li data-id="P2.1" data-done=""><label><input type="checkbox" disabled> <b>P2.1</b> Read front app, window title and visible text</label><span class="when">Done when: Correct in 6 chosen apps, or reported as unreadable.</span></li>
+<li data-id="P2.2" data-done=""><label><input type="checkbox" disabled> <b>P2.2</b> Read the element under the cursor with its frame</label><span class="when">Done when: Frame matches the element on screen.</span></li>
+<li data-id="P2.3" data-done=""><label><input type="checkbox" disabled> <b>P2.3</b> Capture a screenshot of the front window</label><span class="when">Done when: Image saved in a test run.</span></li>
+<li data-id="P2.4" data-done=""><label><input type="checkbox" disabled> <b>P2.4</b> Secrets filter: secure fields skipped, keys and card numbers removed</label><span class="when">Done when: Unit tests pass.</span></li>
+<li data-id="P2.5" data-done=""><label><input type="checkbox" disabled> <b>P2.5</b> Context packet assembled, small, with screenshot fallback</label><span class="when">Done when: Packet printed for each of the 6 apps.</span></li>
+</ul>
+<h3>Added during build</h3>
+<ul class="tasks added">
+</ul>
+</section>
+<section class="phase mvp" id="P3">
+<h2>P3 Brain <span class="tally"></span></h2>
+<p class="sub">Target 16 to 17 Nov. Subagent: brain.</p>
+<ul class="tasks">
+<li data-id="P3.1" data-done=""><label><input type="checkbox" disabled> <b>P3.1</b> API key asked once and stored in the Keychain</label><span class="when">Done when: Key absent from files, logs and git.</span></li>
+<li data-id="P3.2" data-done=""><label><input type="checkbox" disabled> <b>P3.2</b> Provider interface and Claude client with streaming</label><span class="when">Done when: A test prompt streams text.</span></li>
+<li data-id="P3.3" data-done=""><label><input type="checkbox" disabled> <b>P3.3</b> Observer cleans the packet with the small model</label><span class="when">Done when: Output shorter than input, meaning kept.</span></li>
+<li data-id="P3.4" data-done=""><label><input type="checkbox" disabled> <b>P3.4</b> Guide returns explanation and ordered steps tied to elements</label><span class="when">Done when: Valid structure on 5 test packets.</span></li>
+<li data-id="P3.5" data-done=""><label><input type="checkbox" disabled> <b>P3.5</b> Conductor routes explain, guide, remember</label><span class="when">Done when: Correct on 10 sample requests.</span></li>
+<li data-id="P3.6" data-done=""><label><input type="checkbox" disabled> <b>P3.6</b> Text card streams beside the cursor</label><span class="when">Done when: A typed question shows a streamed answer on screen.</span></li>
+<li data-id="P3.7" data-done=""><label><input type="checkbox" disabled> <b>P3.7</b> Cost and latency logged per call</label><span class="when">Done when: Log file lists every call.</span></li>
+</ul>
+<h3>Added during build</h3>
+<ul class="tasks added">
+</ul>
+</section>
+<section class="phase mvp" id="P4">
+<h2>P4 Pointer <span class="tally"></span></h2>
+<p class="sub">Target 18 to 19 Nov. Subagent: shell.</p>
+<ul class="tasks">
+<li data-id="P4.1" data-done=""><label><input type="checkbox" disabled> <b>P4.1</b> Transparent overlay that ignores the mouse</label><span class="when">Done when: Clicks pass through to the app below.</span></li>
+<li data-id="P4.2" data-done=""><label><input type="checkbox" disabled> <b>P4.2</b> Pointer travels from the menu bar to the target and highlights it</label><span class="when">Done when: Lands on the right element in 3 apps.</span></li>
+<li data-id="P4.3" data-done=""><label><input type="checkbox" disabled> <b>P4.3</b> Multi-step guide, one step at a time</label><span class="when">Done when: A 3 step guide completes in one app.</span></li>
+<li data-id="P4.4" data-done=""><label><input type="checkbox" disabled> <b>P4.4</b> Pointing from screenshot coordinates when no frame exists</label><span class="when">Done when: Works in one app that exposes nothing.</span></li>
+<li data-id="P4.5" data-done=""><label><input type="checkbox" disabled> <b>P4.5</b> Pointer returns home. Escape cancels</label><span class="when">Done when: Overlay fully gone after both.</span></li>
+</ul>
+<h3>Added during build</h3>
+<ul class="tasks added">
+</ul>
+</section>
+<section class="phase mvp" id="P5">
+<h2>P5 Map <span class="tally"></span></h2>
+<p class="sub">Target 20 to 22 Nov. Subagent: map.</p>
+<ul class="tasks">
+<li data-id="P5.1" data-done=""><label><input type="checkbox" disabled> <b>P5.1</b> SQLite with nodes, edges, events, terms</label><span class="when">Done when: Unit tests create and read each.</span></li>
+<li data-id="P5.2" data-done=""><label><input type="checkbox" disabled> <b>P5.2</b> Librarian writes items and links after each answer, schema only</label><span class="when">Done when: Rows appear after a real question.</span></li>
+<li data-id="P5.3" data-done=""><label><input type="checkbox" disabled> <b>P5.3</b> Librarian adds what the Map knows before the Guide answers</label><span class="when">Done when: Second question on a topic uses the first.</span></li>
+<li data-id="P5.4" data-done=""><label><input type="checkbox" disabled> <b>P5.4</b> Course or project detected from app, title, path. Correctable by telling him</label><span class="when">Done when: Right course named in 3 situations.</span></li>
+<li data-id="P5.5" data-done=""><label><input type="checkbox" disabled> <b>P5.5</b> Weak concept computed from the definition in the plan</label><span class="when">Done when: Listed after repeated trouble with one topic.</span></li>
+<li data-id="P5.6" data-done=""><label><input type="checkbox" disabled> <b>P5.6</b> Map exported to one readable Markdown file</label><span class="when">Done when: File opens and matches the database.</span></li>
+</ul>
+<h3>Added during build</h3>
+<ul class="tasks added">
+</ul>
+</section>
+<section class="phase mvp" id="P6">
+<h2>P6 Voice and MVP test <span class="tally"></span></h2>
+<p class="sub">Target 23 to 24 Nov. Subagent: senses, checker.</p>
+<ul class="tasks">
+<li data-id="P6.1" data-done=""><label><input type="checkbox" disabled> <b>P6.1</b> Hold key, speak, release. Transcribed on the device</label><span class="when">Done when: Works 9 times in 10.</span></li>
+<li data-id="P6.2" data-done=""><label><input type="checkbox" disabled> <b>P6.2</b> With nothing said, he explains what is under the cursor</label><span class="when">Done when: Works in 3 apps.</span></li>
+<li data-id="P6.3" data-done="" class="you"><label><input type="checkbox" disabled> <b>P6.3</b> MVP test on real coursework over 2 days</label> <span class="tag">you decide</span><span class="when">Done when: You judge 8 of 10 answers useful.</span></li>
+<li data-id="P6.4" data-done="" class="you"><label><input type="checkbox" disabled> <b>P6.4</b> Memory test: nothing re-explained on a second question</label> <span class="tag">you decide</span><span class="when">Done when: You confirm.</span></li>
+<li data-id="P6.5" data-done="" class="you"><label><input type="checkbox" disabled> <b>P6.5</b> Retro written, later phases ordered</label> <span class="tag">you decide</span><span class="when">Done when: Entry in docs/07-decisions.md.</span></li>
+</ul>
+<h3>Added during build</h3>
+<ul class="tasks added">
+</ul>
+</section>
+<section class="phase later" id="later">
+<h2>Later, unscheduled <span class="tally"></span></h2>
+<p class="sub">Not built during the MVP. Each becomes its own task list when started.</p>
+<ul class="tasks">
+<li data-id="L1" data-done=""><label><input type="checkbox" disabled> <b>L1</b> Character</label><span class="when">Notch home, states, animations, brand sheet.</span></li>
+<li data-id="L2" data-done=""><label><input type="checkbox" disabled> <b>L2</b> Backend</label><span class="when">Supabase: accounts, Map in Postgres, gateway, sync.</span></li>
+<li data-id="L3" data-done=""><label><input type="checkbox" disabled> <b>L3</b> Background agents</label><span class="when">Trigger.dev, Runner, Keeper, eggs in the UI.</span></li>
+<li data-id="L4" data-done=""><label><input type="checkbox" disabled> <b>L4</b> Lectures</label><span class="when">Capture, transcript, Scribe, recording notice.</span></li>
+<li data-id="L5" data-done=""><label><input type="checkbox" disabled> <b>L5</b> Hand</label><span class="when">Actions in other apps.</span></li>
+<li data-id="L6" data-done=""><label><input type="checkbox" disabled> <b>L6</b> Dashboard</label><span class="when">Website and Map view.</span></li>
+<li data-id="L7" data-done=""><label><input type="checkbox" disabled> <b>L7</b> Wake word</label><span class="when">His name, matched loosely.</span></li>
+<li data-id="L8" data-done=""><label><input type="checkbox" disabled> <b>L8</b> Public</label><span class="when">Apple Developer Program, signing, legal, pricing, first business pilot.</span></li>
+<li data-id="R1" data-done=""><label><input type="checkbox" disabled> <b>R1</b> Research</label><span class="when">What similar tools use for agents, and how they stay cheap and fast.</span></li>
+</ul>
+</section>
+<!-- TASKS END -->
+
+<p class="note">To tick a task by hand, edit this file: add <code>checked</code> to its checkbox and a date in <code>data-done</code>.</p>
+</main>
+<script>
+(function(){
+  var grid=document.getElementById('grid'),done=0,all=0;
+  document.querySelectorAll('.phase').forEach(function(p){
+    var items=p.querySelectorAll('li[data-id]'),d=0;
+    items.forEach(function(li){
+      var box=li.querySelector('input');
+      if(box&&box.checked){d++;li.classList.add('is-done');
+        var s=document.createElement('span');s.className='stamp';s.textContent=li.getAttribute('data-done')||'';li.querySelector('label').after(s);}
+    });
+    p.querySelector('.tally').textContent=d+' / '+items.length;
+    if(p.classList.contains('mvp')){done+=d;all+=items.length;
+      var a=document.createElement('a');a.href='#'+p.id;a.textContent=p.id+' '+d+'/'+items.length;
+      if(items.length&&d===items.length)a.className='full';grid.appendChild(a);}
+  });
+  var pct=all?Math.round(done/all*100):0;
+  document.getElementById('totalText').textContent='MVP: '+done+' of '+all+' tasks, '+pct+'%';
+  document.getElementById('totalFill').style.width=pct+'%';
+})();
+</script>
+</body>
+</html>

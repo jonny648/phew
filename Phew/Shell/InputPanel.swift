@@ -21,7 +21,7 @@ final class InputPanel: NSPanel {
     func open() {
         // A fresh view each time: empty text, focus on the field.
         contentView = NSHostingView(rootView: InputField(onSubmit: { [weak self] text in
-            shellLog("submitted: \(text)")  // nothing is sent anywhere until the Brain exists (P3)
+            shellLog("submitted: \(text.count) characters")  // nothing is sent anywhere until the Brain exists (P3)
             self?.dismiss()
         }))
         setContentSize(contentView?.fittingSize ?? NSSize(width: 320, height: 44))

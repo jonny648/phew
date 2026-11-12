@@ -23,6 +23,8 @@ final class Shell: ObservableObject {
     static let shared = Shell()
     /// While paused the shortcut does nothing.
     @Published var paused = false
+    /// Latest context from Senses. The Brain takes it from here in P3.
+    var latestPacket: ContextPacket?
 }
 
 @MainActor
@@ -32,7 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var hotKey = HotKey { [unowned self] in
         guard !Shell.shared.paused else { return }
         shellLog("shortcut fired, front app \(frontAppID)")
+        let capture = Senses.capture()  // first: the panel opens under the cursor
         panel.open()
+        Task { Shell.shared.latestPacket = await capture.value }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -57,6 +61,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         }
                     }
                 }
+            }
+        }
+        // Self-check for Senses: captures the front app, with a screenshot, into the debug files.
+        // An optional bundle id after the flag reads that running app instead, without bringing it forward.
+        if let flag = CommandLine.arguments.firstIndex(of: "--debug-capture") {
+            let target = CommandLine.arguments.dropFirst(flag + 1).first
+                .flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0).first }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                let capture = Senses.capture(forceScreenshot: true, app: target)
+                Task { Shell.shared.latestPacket = await capture.value }
             }
         }
         #endif

@@ -4,7 +4,7 @@ import Foundation
 enum Tier: String, Sendable {
     /// Conductor, Observer, Librarian.
     case small
-    /// Guide.
+    /// Guide, Follower.
     case main
 
     /// The one table of model ids and prices, read from the Claude API docs (models overview, pricing), Nov 2026.

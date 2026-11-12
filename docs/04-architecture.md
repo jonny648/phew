@@ -73,6 +73,7 @@ Positions from the Accessibility API let Phew point at the exact button. When an
 | Conductor | Understands the request, chooses who works | Small | Yes |
 | Observer | Turns window text and screenshot into a clean context packet | Small, with vision | Yes |
 | Guide | Explains and produces pointing steps. The main agent | Main, with vision | Yes |
+| Follower | During a guide, looks at the screen after each action and says which step you are on, so the guide moves on by itself | Main, with vision. The small model missed steps done at once in testing | Yes |
 | Librarian | Reads from and writes to the Map | Small | Yes |
 | Runner | Handed-off tasks such as research | Main | Later |
 | Scribe | Lecture transcript to key points | Main | Later |
@@ -89,9 +90,10 @@ Flow of one request:
 4. Conductor sends it to Guide.
 5. Guide streams an explanation and steps, each tied to an element on screen.
 6. The pointer shows them.
-7. Librarian records what happened.
+7. After each thing you do, Follower looks at the fresh screen and moves the pointer to the step you are on. No Next button.
+8. Librarian records what happened.
 
-Keeping it cheap and quick in the MVP: small model for three of four agents, window text and one picture together on every call (the window under the mouse, or the whole screen when the mouse is not on the front window), one pixel per point, short context packets, streamed answers, cost and latency logged for every call. The wider question of how similar tools do this is a research item in the parking list.
+Keeping it cheap and quick in the MVP: small model for three of five agents, window text and one picture together on every call (the window under the mouse, or the whole screen when the mouse is not on the front window), one pixel per point, short context packets, streamed answers, cost and latency logged for every call. The wider question of how similar tools do this is a research item in the parking list.
 
 ## 4.5 Backend, later
 

@@ -35,6 +35,7 @@
 | 12 Nov 2026 | The guide follows what you do by itself. No Next button. Phew may look at the screen again during a guide, after you act. Built in P4 as P4.7 | You |
 | 12 Nov 2026 | Direction widens from a student helper to a general, professional tool, partly in the MVP. The new phase PR Research and review decides how. Product line and hard rules stay as written until PR.1 | You |
 | 12 Nov 2026 | Deadline stays 24 November. PR decides the scope, with that date as the aim | You |
+| 12 Nov 2026 | The Follower (the check that follows a guide) runs on the main model. The small model missed "two steps done at once" in the self-check. About 0.25 cents per look instead of 0.015 | Delegated to Claude |
 
 ## 7.2 Open
 

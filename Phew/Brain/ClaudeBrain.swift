@@ -23,6 +23,14 @@ struct ClaudeBrain: Brain {
         }
     }
 
+    func progress(steps: [GuideStep], current: Int, packet: ContextPacket?) async throws -> GuideProgress {
+        do {
+            return try await Follower.progress(steps: steps, current: current, packet: packet, provider: provider)
+        } catch {
+            throw BrainError(error)
+        }
+    }
+
     private func run(_ question: String, packet: ContextPacket?, emit: (BrainEvent) -> Void) async throws {
         let start = Date()
         // Side by side, so together they cost one small-model round trip.

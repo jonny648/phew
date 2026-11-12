@@ -136,5 +136,11 @@ struct FakeBrain: Brain {
             continuation.onTermination = { _ in task.cancel() }
         }
     }
+
+    /// One step further per call, pointing where that step pointed.
+    func progress(steps: [GuideStep], current: Int, packet: ContextPacket?) async throws -> GuideProgress {
+        let next = min(max(current + 1, 0), steps.count)
+        return GuideProgress(current: next, target: next < steps.count ? steps[next].target : nil)
+    }
 }
 #endif

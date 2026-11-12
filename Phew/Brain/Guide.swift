@@ -111,16 +111,18 @@ enum Guide {
     /// Keeps a target only when it is real: an id from the packet, or a point inside the screenshot. Anything
     /// else becomes "no target", never a guess.
     static func steps(_ raw: [Output.Step], packet: ContextPacket?, shot: ScreenshotSize?) -> [GuideStep] {
-        let ids = Set(packet?.pointables.map(\.id) ?? [])
-        return raw.compactMap { step in
+        raw.compactMap { step in
             let instruction = step.instruction.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !instruction.isEmpty else { return nil }
-            let id = step.element?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            if let id, ids.contains(id) { return GuideStep(instruction: instruction, target: .element(id)) }
-            if let point = step.point, let pixel = shot?.pixel(x: point.x, y: point.y) {
-                return GuideStep(instruction: instruction, target: .point(x: pixel.x, y: pixel.y))
-            }
-            return GuideStep(instruction: instruction, target: nil)
+            return GuideStep(instruction: instruction, target: target(element: step.element, point: step.point, packet: packet, shot: shot))
         }
+    }
+
+    /// One target as the model gave it, kept only when real. Shared with the Follower.
+    static func target(element: String?, point: Output.Step.Point?, packet: ContextPacket?, shot: ScreenshotSize?) -> StepTarget? {
+        let id = element?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if let id, packet?.pointables.contains(where: { $0.id == id }) == true { return .element(id) }
+        if let point, let pixel = shot?.pixel(x: point.x, y: point.y) { return .point(x: pixel.x, y: pixel.y) }
+        return nil
     }
 }

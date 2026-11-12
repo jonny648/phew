@@ -215,4 +215,89 @@ final class BrainAgentsTests: XCTestCase {
             XCTAssertEqual(error as? BrainError, .badOutput)
         }
     }
+
+    // MARK: Follower
+
+    /// Fails every call with `error`.
+    struct FailingProvider: ModelProvider {
+        let error: Error
+        func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+            AsyncThrowingStream { $0.finish(throwing: error) }
+        }
+    }
+
+    private let guideSteps = [GuideStep(instruction: "Click Insert", target: .element("e1")),
+                              GuideStep(instruction: "Click Table", target: .element("e2")),
+                              GuideStep(instruction: "Pick a style", target: nil)]
+
+    private func follow(_ reply: String, current: Int = 0, screenshot: Data? = nil) async throws -> GuideProgress {
+        try await ClaudeBrain(provider: FakeProvider(["follower": [reply]]))
+            .progress(steps: guideSteps, current: current, packet: packet(screenshot: screenshot))
+    }
+
+    func testFollowerRequestSendsStepsScreenAndPicture() throws {
+        let png = TestPNG.make(width: 400, height: 300)
+        var p = packet(screenshot: png)
+        p.screenshotFrame = window
+        let request = Follower.request(steps: guideSteps, current: 1, packet: p, shot: ScreenshotSize(png: png))
+        XCTAssertEqual(request.agent, "follower")
+        XCTAssertEqual(request.tier, .main)
+        XCTAssertEqual(request.image, png)
+        XCTAssertNoThrow(try JSONSerialization.jsonObject(with: Data(try XCTUnwrap(request.schema).utf8)))
+        XCTAssertTrue(request.text.contains("e2 AXButton \"Table\" 90,10 60×28"))  // the screen, as the Guide sees it
+        XCTAssertTrue(request.text.contains("Screenshot: attached, 400×300 pixels."))
+        XCTAssertTrue(request.text.contains("1. Click Insert\n2. Click Table\n3. Pick a style"))
+        XCTAssertTrue(request.text.contains("The student was on step 2."))
+        XCTAssertTrue(request.text.hasSuffix("a number from 1 to 3, or 4 when every step is done."))
+        // No picture: no image, positions in window pixels.
+        XCTAssertNil(Follower.request(steps: guideSteps, current: 0, packet: packet(), shot: nil).image)
+    }
+
+    func testFollowerTargetIsValidatedAgainstTheFreshPacket() async throws {
+        let png = TestPNG.make(width: 400, height: 300)
+        var result = try await follow(#"{"step":2,"element":" E2 ","point":null}"#)
+        XCTAssertEqual(result, GuideProgress(current: 1, target: .element("e2")))
+        // An invented id falls back to the point, when the point is inside the picture.
+        result = try await follow(#"{"step":3,"element":"e99","point":{"x":300,"y":100}}"#, screenshot: png)
+        XCTAssertEqual(result, GuideProgress(current: 2, target: .point(x: 300, y: 100)))
+        result = try await follow(#"{"step":3,"element":"e99","point":{"x":900,"y":100}}"#, screenshot: png)
+        XCTAssertEqual(result, GuideProgress(current: 2, target: nil))
+        result = try await follow(#"{"step":3,"element":null,"point":{"x":300,"y":100}}"#)  // no picture
+        XCTAssertEqual(result, GuideProgress(current: 2, target: nil))
+    }
+
+    func testFollowerClampsTheStepAndDropsTheTargetWhenDone() async throws {
+        var result = try await follow(#"{"step":9,"element":"e1","point":null}"#)
+        XCTAssertEqual(result, GuideProgress(current: 3, target: nil))
+        result = try await follow(#"{"step":4,"element":"e1","point":null}"#, current: 2)
+        XCTAssertEqual(result, GuideProgress(current: 3, target: nil))
+        result = try await follow(#"{"step":-2,"element":"e1","point":null}"#, current: 1)
+        XCTAssertEqual(result, GuideProgress(current: 0, target: .element("e1")))
+        // Already done, or nothing to look at: no call at all.
+        let fake = FakeProvider([:])
+        let done = try await ClaudeBrain(provider: fake).progress(steps: guideSteps, current: 7, packet: packet())
+        let blind = try await ClaudeBrain(provider: fake).progress(steps: guideSteps, current: 1, packet: nil)
+        XCTAssertEqual(done, GuideProgress(current: 3, target: nil))
+        XCTAssertEqual(blind, GuideProgress(current: 1, target: nil))
+        XCTAssertTrue(fake.requests.isEmpty)
+    }
+
+    func testFollowerStaysOnRefusalOrBadOutputButThrowsTheRest() async throws {
+        for reply in [#"{"step":"#, "not json", #"{"element":"e1","point":null}"#] {
+            let result = try await follow(reply, current: 1)
+            XCTAssertEqual(result, GuideProgress(current: 1, target: nil), reply)
+        }
+        let refused = try await ClaudeBrain(provider: FailingProvider(error: BrainError.refused))
+            .progress(steps: guideSteps, current: 1, packet: packet())
+        XCTAssertEqual(refused, GuideProgress(current: 1, target: nil))
+        for (error, expected) in [(BrainError.badKey, BrainError.badKey), (BrainError.noKey, .noKey),
+                                  (BrainError.rateLimited, .rateLimited), (URLError(.notConnectedToInternet), .network)] as [(Error, BrainError)] {
+            do {
+                _ = try await ClaudeBrain(provider: FailingProvider(error: error)).progress(steps: guideSteps, current: 1, packet: packet())
+                XCTFail("expected \(expected)")
+            } catch {
+                XCTAssertEqual(error as? BrainError, expected)
+            }
+        }
+    }
 }

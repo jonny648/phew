@@ -9,30 +9,27 @@ struct ContextPacket: Codable {
     /// Visible text of the front window in reading order, trimmed to `textCap` keeping text nearest the cursor.
     var visibleText: String
     var cursor: CursorElement?
-    /// The front window, screen points, top-left origin (Accessibility coordinates). The screenshot is 1 pixel
-    /// per point, so window origin + screenshot pixel = screen point.
+    /// The front window, screen points, top-left origin (Accessibility coordinates).
     var windowFrame: CGRect? = nil
     /// What Phew can point at, in reading order, at most `pointableCap`, the ones nearest the cursor kept.
     var pointables: [Pointable] = []
-    /// PNG of the front window, only when the app exposes too little text.
+    /// The mouse when Phew was called, screen points, same coordinates as `windowFrame`. Never logged.
+    var mouse: CGPoint? = nil
+    /// PNG taken with the text on every call: the front window when the mouse is inside it, else the whole
+    /// display under the mouse (`ScreenCapture.picksWindow`). Nil only without permission or on failure.
     /// Left out of the JSON to keep it small: the Brain attaches it as an image.
     var screenshot: Data? = nil
+    /// Where the screenshot sits on screen, same coordinates as `windowFrame`. The screenshot is 1 pixel per
+    /// point, so this origin + screenshot pixel = screen point.
+    var screenshotFrame: CGRect? = nil
 
     private enum CodingKeys: String, CodingKey {
-        case appName, bundleID, windowTitle, visibleText, cursor, windowFrame, pointables
+        case appName, bundleID, windowTitle, visibleText, cursor, windowFrame, pointables, mouse, screenshotFrame
     }
 
     static let textCap = 4000
     static let pointableCap = 80
     static let labelCap = 60
-    /// Below this many characters of visible text the app exposes too little: a screenshot is added.
-    static let screenshotBelow = 300
-
-    /// The one screenshot rule: the app exposes too little text, or nothing about the element under the cursor
-    /// (a canvas in Figma or Keynote, whose menus and panels alone pass the threshold).
-    var needsScreenshot: Bool {
-        visibleText.count < Self.screenshotBelow || ((cursor?.label ?? "").isEmpty && (cursor?.value ?? "").isEmpty)
-    }
 
     /// Runs the secrets filter over every string. The last step before a packet leaves Senses.
     func filtered() -> ContextPacket {
@@ -107,8 +104,9 @@ extension ContextPacket {
     static let debugDump = CommandLine.arguments.contains { $0 == "--debug-dump" || $0 == "--debug-capture" }
 
     /// Counts and timings only, never captured text: safe in the log.
-    func logStats(mouse: CGPoint, pointablesFound: Int, cursorMS: Int, walkMS: Int, totalMS: Int) {
-        shellLog("packet \(bundleID): title \(windowTitle.count) chars, text \(visibleText.count) chars, pointables \(pointables.count) of \(pointablesFound) found, cursor \(cursor?.role ?? "none") at \(Int(mouse.x)),\(Int(mouse.y)) inside its frame \(cursor?.frame?.contains(mouse) ?? false), cursor listed \(cursor?.id != nil), cursor text \((cursor?.label.count ?? 0) + (cursor?.value.count ?? 0)) chars, rule wants screenshot \(needsScreenshot), screenshot \(screenshot != nil), cursor read \(cursorMS) ms, window walk \(walkMS) ms, total \(totalMS) ms")
+    func logStats(pointablesFound: Int, cursorMS: Int, walkMS: Int, totalMS: Int) {
+        let shot = screenshotFrame.map { "\(Int($0.width))×\(Int($0.height)) points" }
+        shellLog("packet: title \(windowTitle.count) chars, text \(visibleText.count) chars, pointables \(pointables.count) of \(pointablesFound) found, cursor \(cursor?.role ?? "none") inside its frame \(mouse.map { cursor?.frame?.contains($0) ?? false } ?? false), cursor listed \(cursor?.id != nil), cursor text \((cursor?.label.count ?? 0) + (cursor?.value.count ?? 0)) chars, screenshot \(shot ?? "none"), cursor read \(cursorMS) ms, window walk \(walkMS) ms, total \(totalMS) ms")
     }
 
     /// Debug evidence only, with `debugDump`: the latest packet per app in ~/Library/Application Support/Phew/debug.

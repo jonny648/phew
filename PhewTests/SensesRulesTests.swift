@@ -2,28 +2,14 @@ import XCTest
 @testable import Phew
 
 final class SensesRulesTests: XCTestCase {
-    private let longText = String(repeating: "menu ", count: 100)  // 500 characters, over the threshold
-
-    private func packet(text: String, cursor: CursorElement?) -> ContextPacket {
-        ContextPacket(appName: "App", bundleID: "id", windowTitle: "t", visibleText: text, cursor: cursor)
-    }
-
-    private func cursor(label: String = "", value: String = "") -> CursorElement {
-        CursorElement(role: "AXGroup", label: label, value: value, frame: nil)
-    }
-
-    func testScreenshotWhenTextIsShort() {
-        XCTAssertTrue(packet(text: "Slide\nFormat", cursor: cursor(label: "Title")).needsScreenshot)
-    }
-
-    func testScreenshotWhenCursorElementHasNoText() {
-        XCTAssertTrue(packet(text: longText, cursor: cursor()).needsScreenshot)  // Figma canvas
-        XCTAssertTrue(packet(text: longText, cursor: nil).needsScreenshot)
-    }
-
-    func testNoScreenshotWhenTextAndCursorTextAreThere() {
-        XCTAssertFalse(packet(text: longText, cursor: cursor(label: "Share")).needsScreenshot)
-        XCTAssertFalse(packet(text: longText, cursor: cursor(value: "Thesis.pdf")).needsScreenshot)
+    func testPictureIsTheWindowOnlyWhenTheMouseIsInsideIt() {
+        let window = CGRect(x: 100, y: 50, width: 800, height: 600)
+        XCTAssertTrue(ScreenCapture.picksWindow(mouse: CGPoint(x: 400, y: 300), windowFrame: window))
+        XCTAssertTrue(ScreenCapture.picksWindow(mouse: CGPoint(x: 100, y: 50), windowFrame: window))  // top-left corner
+        XCTAssertFalse(ScreenCapture.picksWindow(mouse: CGPoint(x: 1200, y: 300), windowFrame: window))  // desktop
+        XCTAssertFalse(ScreenCapture.picksWindow(mouse: CGPoint(x: 400, y: 10), windowFrame: window))  // menu bar
+        XCTAssertFalse(ScreenCapture.picksWindow(mouse: CGPoint(x: 400, y: 880), windowFrame: window))  // Dock
+        XCTAssertFalse(ScreenCapture.picksWindow(mouse: CGPoint(x: 400, y: 300), windowFrame: nil))  // no window found
     }
 
     func testImageDataIsDropped() {

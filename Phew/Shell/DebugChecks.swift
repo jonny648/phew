@@ -11,7 +11,7 @@ extension AppDelegate {
         if let flag = arguments.firstIndex(of: "--debug-capture") {
             let target = arguments.dropFirst(flag + 1).first
                 .flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0).first }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { _ = Senses.capture(forceScreenshot: true, app: target) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { _ = Senses.capture(app: target) }
         }
         if arguments.contains("--debug-brain-check") { BrainSelfCheck.run() }  // real API calls, made-up data
         if arguments.contains("--debug-card") { Task { await checkCard() } }

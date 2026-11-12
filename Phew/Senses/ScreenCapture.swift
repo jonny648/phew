@@ -1,28 +1,49 @@
 import AppKit
 import ScreenCaptureKit
 
-/// Screenshot of one window of the front app, for when Accessibility exposes too little.
+/// The picture that goes with the text on every call: the front app's window, or the whole screen under the mouse.
 enum ScreenCapture {
-    /// PNG of the app's window that matches `frame` (the focused window, Accessibility coordinates).
-    /// One pixel per point, to keep it small. Nil without Screen Recording permission or on failure.
-    static func window(pid: pid_t, frame: CGRect?) async -> Data? {
+    /// The one picture rule: the front window when the mouse is inside it; otherwise (desktop, menu bar, Dock,
+    /// another app's window, no window) the whole display under the mouse.
+    /// shortcut: another app's window lying over the front window still picks the front window; check the
+    /// cursor element's owner if that case shows up.
+    static func picksWindow(mouse: CGPoint, windowFrame: CGRect?) -> Bool {
+        windowFrame?.contains(mouse) == true
+    }
+
+    /// PNG of the picture `picksWindow` chooses, and where it sits on screen (screen points, top-left origin,
+    /// Accessibility coordinates). One pixel per point, so frame origin + picture pixel = screen point.
+    /// Phew's own windows are left out. Nil without Screen Recording permission or on failure.
+    static func picture(pid: pid_t, windowFrame: CGRect?, mouse: CGPoint) async -> (png: Data, frame: CGRect)? {
         guard CGPreflightScreenCaptureAccess() else { return nil }
         do {
-            let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
-            let windows = content.windows.filter { $0.owningApplication?.processID == pid && $0.windowLayer == 0 }
+            // Off-screen windows too: Phew's panel or card, still being ordered in, must be listed to be left out.
+            let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: false)
+            let filter: SCContentFilter, origin: CGPoint
             // SCWindow frames use the same top-left origin as Accessibility.
-            let match = frame.map { f in windows.min { gap($0.frame, f) < gap($1.frame, f) } }
-                ?? windows.max { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
-            guard let window = match else { return nil }
-
-            let filter = SCContentFilter(desktopIndependentWindow: window)  // that window only, nothing on top
+            if picksWindow(mouse: mouse, windowFrame: windowFrame), let frame = windowFrame,
+               let window = content.windows.filter({ $0.isOnScreen && $0.owningApplication?.processID == pid && $0.windowLayer == 0 })
+                   .min(by: { gap($0.frame, frame) < gap($1.frame, frame) }) {
+                filter = SCContentFilter(desktopIndependentWindow: window)  // that window only, nothing on top
+                origin = window.frame.origin
+            } else {
+                var id: CGDirectDisplayID = 0, count: UInt32 = 0
+                CGGetDisplaysWithPoint(mouse, 1, &id, &count)  // global display coordinates: top-left origin too
+                guard let display = content.displays.first(where: { $0.displayID == id }) ?? content.displays.first
+                else { return nil }
+                // Wallpaper, menu bar and Dock included; every window of Phew left out.
+                let phew = content.applications.filter { $0.processID == getpid() }
+                filter = SCContentFilter(display: display, excludingApplications: phew, exceptingWindows: [])
+                origin = CGDisplayBounds(display.displayID).origin
+            }
             // shortcut: 1 pixel per point halves Retina detail; capture at 2x if small text is misread.
             let config = SCStreamConfiguration()
             config.width = Int(filter.contentRect.width)
             config.height = Int(filter.contentRect.height)
             config.showsCursor = false
             let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
-            return NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
+            guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { return nil }
+            return (png, CGRect(origin: origin, size: filter.contentRect.size))
         } catch {
             shellLog("screenshot failed: \(error.localizedDescription)")
             return nil

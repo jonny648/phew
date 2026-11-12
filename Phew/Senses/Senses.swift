@@ -4,10 +4,10 @@ import AppKit
 enum Senses {
     /// Call the moment the shortcut fires, before any Phew panel appears: the panel opens under the
     /// cursor and would hide the user's element. The cursor read happens now, on the main thread;
-    /// the window walk and any screenshot run in the returned task.
+    /// the window walk and the screenshot run in the returned task.
     /// `app` defaults to the front app; the debug self-check may name another running app.
     @MainActor
-    static func capture(forceScreenshot: Bool = false, app: NSRunningApplication? = nil) -> Task<ContextPacket?, Never> {
+    static func capture(app: NSRunningApplication? = nil) -> Task<ContextPacket?, Never> {
         let start = Date()
         guard let app = app ?? NSWorkspace.shared.frontmostApplication else { return Task { nil } }
         let pid = app.processIdentifier, name = app.localizedName ?? "", bundleID = app.bundleIdentifier ?? "unknown"
@@ -25,18 +25,21 @@ enum Senses {
             let texts = window.texts.map { WindowReader.Text(string: SecretsFilter.clean($0.string), frame: $0.frame) }
             var packet = ContextPacket(appName: name, bundleID: bundleID, windowTitle: window.title,
                                        visibleText: ContextPacket.trim(texts, near: point), cursor: cursor,
-                                       windowFrame: window.frame, pointables: ContextPacket.select(window.pointables, near: point))
+                                       windowFrame: window.frame, pointables: ContextPacket.select(window.pointables, near: point),
+                                       mouse: point)
             // The cursor element's id when it is listed: the same frame, clipped and rounded the same way.
             // shortcut: no id when the walk's limits stopped before reaching it; walk the cursor's branch first if seen.
             let cursorFrame = WindowReader.pointableFrame(cursor?.frame, clip: window.frame)
             packet.cursor?.id = packet.pointables.first { $0.frame == cursorFrame }?.id
             packet = packet.filtered()
+            // Text and picture together, every time.
             // shortcut: screenshot pixels are not filtered (a key on screen stays visible); OCR redaction if that matters.
-            if forceScreenshot || packet.needsScreenshot {
-                packet.screenshot = await ScreenCapture.window(pid: pid, frame: window.frame)
+            if let shot = await ScreenCapture.picture(pid: pid, windowFrame: window.frame, mouse: point) {
+                packet.screenshot = shot.png
+                packet.screenshotFrame = shot.frame
             }
             #if DEBUG
-            packet.logStats(mouse: point, pointablesFound: window.pointables.count, cursorMS: cursorMS, walkMS: walkMS,
+            packet.logStats(pointablesFound: window.pointables.count, cursorMS: cursorMS, walkMS: walkMS,
                             totalMS: ms(since: start))
             if ContextPacket.debugDump { packet.writeDebugFiles() }
             #endif

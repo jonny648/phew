@@ -56,7 +56,7 @@ WEBSITE
 | Input panel | A few typed words at the cursor | Non-activating panel | Yes |
 | Pointer overlay | Second cursor, highlight, text card | Transparent full-screen window that ignores the mouse | Yes, simple |
 | Window reader | Text, structure and position of elements | macOS Accessibility API | Yes |
-| Screen capture | Image when text is not enough | ScreenCaptureKit | Yes |
+| Screen capture | A picture with the text on every call | ScreenCaptureKit | Yes |
 | Voice in | Speech to text on the device | Apple speech, or WhisperKit | Yes, last |
 | Secrets filter | Removes keys, card numbers, password fields | Local rules | Yes |
 | Local store | The Map and recent context | SQLite | Yes |
@@ -91,7 +91,7 @@ Flow of one request:
 6. The pointer shows them.
 7. Librarian records what happened.
 
-Keeping it cheap and quick in the MVP: small model for three of four agents, window text before screenshots, short context packets, streamed answers, cost and latency logged for every call. The wider question of how similar tools do this is a research item in the parking list.
+Keeping it cheap and quick in the MVP: small model for three of four agents, window text and one picture together on every call (the window under the mouse, or the whole screen when the mouse is not on the front window), one pixel per point, short context packets, streamed answers, cost and latency logged for every call. The wider question of how similar tools do this is a research item in the parking list.
 
 ## 4.5 Backend, later
 

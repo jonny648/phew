@@ -62,12 +62,22 @@ final class SecretsFilterTests: XCTestCase {
     func testPacketFilterCoversEveryString() {
         let key = "sk-" + filler
         let packet = ContextPacket(appName: "App", bundleID: "id", windowTitle: "t \(key)", visibleText: "v \(key)",
-                                   cursor: CursorElement(role: "AXStaticText", label: "l \(key)", value: "4111 1111 1111 1111", frame: nil))
+                                   cursor: CursorElement(role: "AXStaticText", label: "l \(key)", value: "4111 1111 1111 1111", frame: nil),
+                                   pointables: [Pointable(role: "AXLink", label: "p \(key)", frame: .zero)])
             .filtered()
         XCTAssertEqual(packet.windowTitle, "t [key removed]")
         XCTAssertEqual(packet.visibleText, "v [key removed]")
         XCTAssertEqual(packet.cursor?.label, "l [key removed]")
         XCTAssertEqual(packet.cursor?.value, "[card removed]")
+        XCTAssertEqual(packet.pointables.first?.label, "p [key removed]")
+    }
+
+    func testPointableLabelIsFilteredBeforeItIsCut() {
+        // The key starts before the label cap and ends after it: a cut first would leave half a key behind.
+        let label = String(repeating: "a", count: ContextPacket.labelCap - 10) + " sk-" + filler
+        let kept = ContextPacket.select([Pointable(role: "AXLink", label: label, frame: .zero)], near: .zero)
+        XCTAssertFalse(kept[0].label.contains("sk-"))
+        XCTAssertFalse(kept[0].label.contains("aB3x"))
     }
 
     func testTrimKeepsNearestTextInReadingOrder() {

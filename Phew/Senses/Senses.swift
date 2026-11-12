@@ -18,17 +18,27 @@ enum Senses {
             // An Electron tree was still empty 0.5 s after the first ask, and full on the next capture.
             // shortcut: one fixed 1 s wait, the first time per app process; poll until the text stops growing if too short.
             if WindowReader.askForFullTree(pid: pid) { try? await Task.sleep(for: .seconds(1)) }
+            let walkStart = Date()
             let window = WindowReader.readWindow(pid: pid)
+            let walkMS = ms(since: walkStart)
             // Filter before trimming, so a cut cannot leave half a key behind.
             let texts = window.texts.map { WindowReader.Text(string: SecretsFilter.clean($0.string), frame: $0.frame) }
             var packet = ContextPacket(appName: name, bundleID: bundleID, windowTitle: window.title,
-                                       visibleText: ContextPacket.trim(texts, near: point), cursor: cursor).filtered()
+                                       visibleText: ContextPacket.trim(texts, near: point), cursor: cursor,
+                                       windowFrame: window.frame, pointables: ContextPacket.select(window.pointables, near: point))
+            // The cursor element's id when it is listed: the same frame, clipped and rounded the same way.
+            // shortcut: no id when the walk's limits stopped before reaching it; walk the cursor's branch first if seen.
+            let cursorFrame = WindowReader.pointableFrame(cursor?.frame, clip: window.frame)
+            packet.cursor?.id = packet.pointables.first { $0.frame == cursorFrame }?.id
+            packet = packet.filtered()
             // shortcut: screenshot pixels are not filtered (a key on screen stays visible); OCR redaction if that matters.
             if forceScreenshot || packet.needsScreenshot {
                 packet.screenshot = await ScreenCapture.window(pid: pid, frame: window.frame)
             }
             #if DEBUG
-            packet.writeDebugFiles(mouse: point, cursorMS: cursorMS, totalMS: ms(since: start))
+            packet.logStats(mouse: point, pointablesFound: window.pointables.count, cursorMS: cursorMS, walkMS: walkMS,
+                            totalMS: ms(since: start))
+            if ContextPacket.debugDump { packet.writeDebugFiles() }
             #endif
             return packet
         }

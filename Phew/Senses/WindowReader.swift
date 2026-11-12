@@ -53,39 +53,77 @@ enum WindowReader {
             let start = Date()
             defer { shellLog("cursor look-inside: \(Int(Date().timeIntervalSince(start) * 1_000_000)) µs, \(cursor.value.count) chars") }
             #endif
-            let inner = walk(element, a, clip: a.frame, near: point,
+            let inner = walk(element, a, clip: a.frame, near: point, pointables: false,
                              maxElements: cursorElements, maxDepth: cursorDepth, budget: cursorBudget)
-            cursor.value = ContextPacket.trim(inner, near: point, cap: cursorCap)
+            cursor.value = ContextPacket.trim(inner.texts, near: point, cap: cursorCap)
         }
         return (cursor, point)
     }
 
-    /// Focused window of the app (else main, else frontmost): title, frame, and its visible text in reading order.
-    static func readWindow(pid: pid_t) -> (title: String, frame: CGRect?, texts: [Text]) {
-        guard let window = window(pid) else { return ("", nil, []) }
+    /// Focused window of the app (else main, else frontmost): title, frame, its visible text and the elements
+    /// Phew can point at, both in reading order.
+    static func readWindow(pid: pid_t) -> (title: String, frame: CGRect?, texts: [Text], pointables: [Pointable]) {
+        guard let window = window(pid) else { return ("", nil, [], []) }
         let root = attributes(window)
-        let texts = walk(window, root, clip: root.frame, maxElements: maxElements, maxDepth: maxDepth, budget: timeBudget)
-        return (root.title ?? "", root.frame, texts.filter { $0.string != root.title })
+        let found = walk(window, root, clip: root.frame, maxElements: maxElements, maxDepth: maxDepth, budget: timeBudget)
+        return (root.title ?? "", root.frame, found.texts.filter { $0.string != root.title }, found.pointables)
+    }
+
+    // What a student clicks, types into or picks from, as the test apps expose it. Tabs are AXRadioButton, switches
+    // AXCheckBox, sidebar entries AXRow. Cells and images are left out: rows cover the first, the second are mostly
+    // decoration (hundreds on a web page).
+    static let pointableRoles: Set<String> = [
+        "AXButton", "AXLink", "AXTextField", "AXTextArea", "AXComboBox", "AXCheckBox", "AXRadioButton", "AXPopUpButton",
+        "AXMenuButton", "AXMenuItem", "AXSlider", "AXIncrementor", "AXDisclosureTriangle", "AXColorWell", "AXRow",
+    ]
+    // A field's value is what the student typed: it never names the field.
+    private static let fieldRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox"]
+
+    /// The frame Phew points at: clipped, in whole points. Nil below 4 points either way, a sliver at the edge of a
+    /// scroll area: Chromium gives an element scrolled out of sight a 1-point frame there.
+    static func pointableFrame(_ frame: CGRect?, clip: CGRect?) -> CGRect? {
+        guard let frame else { return nil }
+        let f = clip.map { frame.intersection($0) } ?? frame
+        return f.width >= 4 && f.height >= 4 ? f.integral : nil
     }
 
     /// Visible text under `root`, skipping secure fields and anything outside `clip` (scrolled out of sight).
     /// Reading order, or nearest `point` first when given, so a big container gives the text by the mouse.
+    /// With `pointables`, also the named controls on screen (`pointableRoles`), and secure fields without a name.
     /// shortcut: only the first children within the element limit are ranked; a long list under the mouse
     /// may miss its far rows. Use AXVisibleChildren if that bites.
     private static func walk(_ root: AXUIElement, _ rootAttributes: Attributes, clip: CGRect?, near point: CGPoint? = nil,
-                             maxElements: Int, maxDepth: Int, budget: TimeInterval) -> [Text] {
+                             pointables wantsPointables: Bool = true,
+                             maxElements: Int, maxDepth: Int, budget: TimeInterval) -> (texts: [Text], pointables: [Pointable]) {
         let deadline = Date() + budget
         var texts: [Text] = []
+        var pointables: [Pointable] = []
+        var unnamed: [Int] = []  // listed controls around the current element still waiting for a name
         var seen: Set<String> = []  // repeats add nothing: links and their label, list rows
         var count = 0
 
-        func visit(_ el: AXUIElement, _ a: Attributes, depth: Int) {
+        // `pointClip` narrows `clip` for controls: one shows only within the controls around it.
+        func visit(_ el: AXUIElement, _ a: Attributes, depth: Int, pointClip: CGRect?) {
             count += 1
-            if a.isSecure { return }  // never read secure text fields
             if let f = a.frame, let clip, !f.isEmpty, !f.intersects(clip) { return }
-            if let t = text(el, a).map(removeJunk)?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty,
-               seen.insert(t).inserted {
-                texts.append(Text(string: t, frame: a.frame))
+            let frame = wantsPointables ? pointableFrame(a.frame, clip: pointClip) : nil
+            if a.isSecure {  // never read secure text fields: role and frame only, so Phew can still point at one
+                if let frame { pointables.append(Pointable(role: "AXSecureTextField", label: "", frame: frame)) }
+                return
+            }
+            let t = text(el, a).map(removeJunk)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !t.isEmpty {
+                if seen.insert(t).inserted { texts.append(Text(string: t, frame: a.frame)) }
+                for i in unnamed { pointables[i].label = t }  // the first text inside a row or button names it
+                unnamed.removeAll()
+            }
+            let unnamedBefore = unnamed.count
+            defer { unnamed.removeSubrange(min(unnamedBefore, unnamed.count)...) }
+            if let frame, pointableRoles.contains(a.role) {
+                pointables.append(Pointable(role: a.role, label: name(el, a, text: t), frame: frame))
+                if pointables[pointables.count - 1].label.isEmpty && !fieldRoles.contains(a.role) {
+                    unnamed.append(pointables.count - 1)
+                }
             }
             guard depth < maxDepth else { return }
             var children: [(AXUIElement, Attributes)] = []
@@ -94,13 +132,29 @@ enum WindowReader {
                 children.append((child, attributes(child)))
             }
             if let point { children.sort { distance($0.1.frame, point) < distance($1.1.frame, point) } }
+            // A Notion card scrolled half out of sight keeps its buttons' frames: clip them to the card. Not the menu
+            // of a pop-up, which opens outside it.
+            // shortcut: only controls clip what is inside them. A Chromium scroll area is a plain group, so a control
+            // hidden under its edge yet inside the window can still be listed; clip to scrolling groups if seen.
+            let innerClip = pointableRoles.contains(a.role) && a.frame != nil
+                && !["AXPopUpButton", "AXMenuButton", "AXComboBox"].contains(a.role) ? frame ?? .null : pointClip
             for (child, childAttributes) in children {
                 guard count < maxElements, Date() < deadline else { return }
-                visit(child, childAttributes, depth: depth + 1)
+                visit(child, childAttributes, depth: depth + 1, pointClip: innerClip)
             }
         }
-        visit(root, rootAttributes, depth: 0)
-        return texts
+        visit(root, rootAttributes, depth: 0, pointClip: clip)
+        return (texts, pointables.filter { !$0.label.isEmpty || $0.role == "AXSecureTextField" })
+    }
+
+    /// What the Guide calls a control: its title or description, a pop-up's chosen item, a field's placeholder.
+    /// Empty when it has none: the walk then names it after the first text inside it, except fields.
+    /// shortcut: a control named only by a label beside it (a System Settings switch) is left out; read
+    /// AXTitleUIElement if the Guide needs those.
+    private static func name(_ el: AXUIElement, _ a: Attributes, text: String) -> String {
+        let name = a.title ?? a.description ?? (a.role == "AXPopUpButton" ? text
+            : fieldRoles.contains(a.role) ? attribute(el, kAXPlaceholderValueAttribute) as? String : nil)
+        return name.map { removeJunk($0).trimmingCharacters(in: .whitespacesAndNewlines) } ?? ""
     }
 
     /// Distance from `point` to a frame, 0 inside it. No frame counts as farthest.

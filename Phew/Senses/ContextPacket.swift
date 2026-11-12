@@ -9,13 +9,22 @@ struct ContextPacket: Codable {
     /// Visible text of the front window in reading order, trimmed to `textCap` keeping text nearest the cursor.
     var visibleText: String
     var cursor: CursorElement?
+    /// The front window, screen points, top-left origin (Accessibility coordinates). The screenshot is 1 pixel
+    /// per point, so window origin + screenshot pixel = screen point.
+    var windowFrame: CGRect? = nil
+    /// What Phew can point at, in reading order, at most `pointableCap`, the ones nearest the cursor kept.
+    var pointables: [Pointable] = []
     /// PNG of the front window, only when the app exposes too little text.
     /// Left out of the JSON to keep it small: the Brain attaches it as an image.
     var screenshot: Data? = nil
 
-    private enum CodingKeys: String, CodingKey { case appName, bundleID, windowTitle, visibleText, cursor }
+    private enum CodingKeys: String, CodingKey {
+        case appName, bundleID, windowTitle, visibleText, cursor, windowFrame, pointables
+    }
 
     static let textCap = 4000
+    static let pointableCap = 80
+    static let labelCap = 60
     /// Below this many characters of visible text the app exposes too little: a screenshot is added.
     static let screenshotBelow = 300
 
@@ -34,6 +43,7 @@ struct ContextPacket: Codable {
         p.visibleText = SecretsFilter.clean(visibleText)
         p.cursor?.label = SecretsFilter.clean(cursor?.label ?? "")
         p.cursor?.value = SecretsFilter.clean(cursor?.value ?? "")
+        for i in p.pointables.indices { p.pointables[i].label = SecretsFilter.clean(p.pointables[i].label) }
         return p
     }
 
@@ -49,6 +59,24 @@ struct ContextPacket: Codable {
         }
         return texts.indices.compactMap { kept[$0] }.joined(separator: "\n")
     }
+
+    /// One of each element (same role, label and frame), the `cap` nearest `point`, back in reading order,
+    /// numbered e1, e2… Labels become one line, filtered before they are cut, so a cut cannot leave half a key behind.
+    static func select(_ found: [Pointable], near point: CGPoint, cap: Int = pointableCap) -> [Pointable] {
+        var seen: Set<String> = []
+        let unique = found.map { p in
+            var p = p
+            p.label = String(SecretsFilter.clean(p.label).split(whereSeparator: \.isNewline).joined(separator: " ").prefix(labelCap))
+            return p
+        }.filter { seen.insert("\($0.role)\n\($0.label)\n\($0.frame)").inserted }
+        func distance(_ i: Int) -> CGFloat { WindowReader.distance(unique[i].frame, point) }
+        let kept = unique.indices.sorted { (distance($0), $0) < (distance($1), $1) }.prefix(cap).sorted()
+        return kept.enumerated().map { n, i in
+            var p = unique[i]
+            p.id = "e\(n + 1)"
+            return p
+        }
+    }
 }
 
 /// The element under the mouse when Phew was called.
@@ -58,12 +86,34 @@ struct CursorElement: Codable {
     var value: String
     /// Screen points, top-left origin of the main display (Accessibility coordinates).
     var frame: CGRect?
+    /// The id of this same element (same frame) in `ContextPacket.pointables`, when it is listed there.
+    var id: String? = nil
+}
+
+/// An element Phew can point at: a button, link, field, tab… The Guide cites it by `id`.
+struct Pointable: Codable, Equatable {
+    /// Short and stable within one packet: e1, e2… in reading order.
+    var id = ""
+    var role: String
+    /// Title or description; for a field its placeholder, for a pop-up its chosen item. Empty for a secure field.
+    var label: String
+    /// Screen points, top-left origin (Accessibility coordinates), clipped to the window.
+    var frame: CGRect
 }
 
 #if DEBUG
 extension ContextPacket {
-    /// Debug evidence only: the latest packet per app in ~/Library/Application Support/Phew/debug. Never shown.
-    func writeDebugFiles(mouse: CGPoint, cursorMS: Int, totalMS: Int) {
+    /// `--debug-dump`, or `--debug-capture` which implies it. Without it no capture touches the disk (hard rule).
+    static let debugDump = CommandLine.arguments.contains { $0 == "--debug-dump" || $0 == "--debug-capture" }
+
+    /// Counts and timings only, never captured text: safe in the log.
+    func logStats(mouse: CGPoint, pointablesFound: Int, cursorMS: Int, walkMS: Int, totalMS: Int) {
+        shellLog("packet \(bundleID): title \(windowTitle.count) chars, text \(visibleText.count) chars, pointables \(pointables.count) of \(pointablesFound) found, cursor \(cursor?.role ?? "none") at \(Int(mouse.x)),\(Int(mouse.y)) inside its frame \(cursor?.frame?.contains(mouse) ?? false), cursor listed \(cursor?.id != nil), cursor text \((cursor?.label.count ?? 0) + (cursor?.value.count ?? 0)) chars, rule wants screenshot \(needsScreenshot), screenshot \(screenshot != nil), cursor read \(cursorMS) ms, window walk \(walkMS) ms, total \(totalMS) ms")
+    }
+
+    /// Debug evidence only, with `debugDump`: the latest packet per app in ~/Library/Application Support/Phew/debug.
+    /// Never shown.
+    func writeDebugFiles() {
         let dir = URL.applicationSupportDirectory.appending(path: "Phew/debug")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let encoder = JSONEncoder()
@@ -71,7 +121,6 @@ extension ContextPacket {
         try? encoder.encode(self).write(to: dir.appending(path: "packet-\(bundleID).json"))
         let shot = dir.appending(path: "shot-\(bundleID).png")
         if let screenshot { try? screenshot.write(to: shot) } else { try? FileManager.default.removeItem(at: shot) }
-        shellLog("packet \(bundleID): title \(windowTitle.count) chars, text \(visibleText.count) chars, cursor \(cursor?.role ?? "none") at \(Int(mouse.x)),\(Int(mouse.y)) inside its frame \(cursor?.frame?.contains(mouse) ?? false), cursor text \((cursor?.label.count ?? 0) + (cursor?.value.count ?? 0)) chars, rule wants screenshot \(needsScreenshot), screenshot \(screenshot != nil), cursor read \(cursorMS) ms, total \(totalMS) ms")
     }
 }
 #endif

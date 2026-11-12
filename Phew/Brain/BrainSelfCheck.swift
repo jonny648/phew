@@ -50,23 +50,25 @@ enum BrainSelfCheck {
                        "\(page.count) to \(cleaned.count) chars, \(kept.count)/3 key words kept, total \(ms(t0)) ms, $\(CallLog.spentUSD - usd0)")
             } catch { report("observer", false, failure(error)) }
 
-            // (b) The Guide on 5 made-up packets.
+            // (b) The Guide on 6 made-up cases.
             for item in guideCases {
                 let t0 = Date(), usd0 = CallLog.spentUSD
-                var first: Int?, chars = 0, steps: [GuideStep]?
+                var first: Int?, text = "", steps: [GuideStep]?
                 do {
                     try await Guide.answer(item.question, packet: item.packet, route: item.route, provider: provider) { event in
                         switch event {
-                        case .text(let piece): first = first ?? ms(t0); chars += piece.count
+                        case .text(let piece): first = first ?? ms(t0); text += piece
                         case .steps(let s): steps = s
                         default: break
                         }
                     }
                     let onElements = steps?.filter { if case .element = $0.target { true } else { false } }.count ?? 0
                     let onPoints = steps?.filter { if case .point = $0.target { true } else { false } }.count ?? 0
-                    let valid = chars > 0 && (item.route == .guide) == (steps != nil) && item.check(steps ?? [])
+                    // The explanation stays in memory: only whether it names the expected thing is logged.
+                    let named = item.mentions.isEmpty || item.mentions.contains { text.localizedCaseInsensitiveContains($0) }
+                    let valid = !text.isEmpty && named && (item.route == .guide) == (steps != nil) && item.check(steps ?? [])
                     report("guide \(item.name)", valid,
-                           "explanation \(chars) chars, \(steps?.count ?? 0) steps (\(onElements) on elements, \(onPoints) on points), first word \(first ?? -1) ms, total \(ms(t0)) ms, $\(CallLog.spentUSD - usd0)")
+                           "explanation \(text.count) chars\(item.mentions.isEmpty ? "" : ", names it \(named)"), \(steps?.count ?? 0) steps (\(onElements) on elements, \(onPoints) on points), first word \(first ?? -1) ms, total \(ms(t0)) ms, $\(CallLog.spentUSD - usd0)")
                 } catch { report("guide \(item.name)", false, failure(error)) }
             }
 
@@ -92,6 +94,8 @@ enum BrainSelfCheck {
         let question: String
         let route: Route
         let packet: ContextPacket
+        /// The explanation must contain one of these words, when any are given.
+        var mentions: [String] = []
         let check: ([GuideStep]) -> Bool
     }
 
@@ -104,6 +108,9 @@ enum BrainSelfCheck {
             // The red circle spans 260...340 by 60...140 in the screenshot; 20 px of slack.
             steps.contains { if case let .point(x, y) = $0.target { (240...360).contains(x) && (40...160).contains(y) } else { false } }
         },
+        // The mouse is on the blue square: "this" is read from the picture at the pointer.
+        GuideCase(name: "this at the mouse pointer", question: "What is this?", route: .explain, packet: canvasApp,
+                  mentions: ["square"]) { _ in true },
         GuideCase(name: "empty question", question: "", route: .explain, packet: wordApp) { _ in true },
         GuideCase(name: "how do I guide request", question: "How do I submit my homework?", route: .guide, packet: coursePage) { steps in
             !steps.isEmpty && steps.contains { if case .element = $0.target { true } else { false } }
@@ -175,7 +182,9 @@ enum BrainSelfCheck {
         return ContextPacket(
             appName: "Sketchpad", bundleID: "com.example.sketchpad", windowTitle: "Untitled drawing",
             visibleText: "Layers\nCanvas 1", cursor: CursorElement(role: "AXGroup", label: "", value: ""),
-            windowFrame: window, pointables: pointables(["Brush", "Eraser"], y: 4, in: window), screenshot: canvasPNG())
+            windowFrame: window, pointables: pointables(["Brush", "Eraser"], y: 4, in: window),
+            mouse: CGPoint(x: window.minX + 110, y: window.minY + 210),  // on the blue square, away from the circle
+            screenshot: canvasPNG(), screenshotFrame: window)
     }()
 
     static let wordApp: ContextPacket = {

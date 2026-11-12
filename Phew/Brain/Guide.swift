@@ -8,12 +8,20 @@ import Foundation
 enum Guide {
     static let system = """
         You are Phew, a companion on a university student's Mac. The student called you about what is on their \
-        screen. You get the app, the window, the element under the mouse pointer, the elements you can point at, \
-        the visible text, and sometimes a screenshot of the window.
+        screen. You get a screenshot with the text: the window under the mouse pointer, or the whole screen when \
+        the pointer is not on the front window. You also get the app, the front window, the element under the \
+        pointer, the elements you can point at, and the visible text of the front window.
 
-        Write the explanation for a student: plain words, two to five short sentences, straight to the point. No \
-        greeting, no preamble, no restating the question. Use the language of the student's question; when there \
-        is no question, use the language of the screen and explain the element under the pointer in its context.
+        Use the screenshot and the text together. When the question is about something you can see in the \
+        screenshot, such as a photo, a diagram, a chart, the desktop wallpaper or a design, answer from the \
+        screenshot and name specifically what is there. When you cannot tell, say so. "This" means what is at the \
+        mouse pointer.
+
+        Write the explanation for a student in plain words, straight to the point. Let the question set the \
+        length: a sentence or two for a simple question, a fuller explanation in short paragraphs when the student \
+        asks you to explain something. No greeting, no preamble, no restating the question. Use the language of \
+        the student's question; when there is no question, use the language of the screen and explain what is at \
+        the mouse pointer in its context.
 
         When the route is guide, also give the steps to do it on this screen: in order, one action per step, at \
         most six, each a short instruction. Give each step a target when you can: the id of a listed element (for \
@@ -72,18 +80,27 @@ enum Guide {
                             image: shot == nil ? nil : packet?.screenshot, schema: schema, maxTokens: 8192)
     }
 
-    /// The packet as plain lines. Frames are given in window pixels, the screenshot's coordinates.
+    /// The packet as plain lines. With a screenshot, positions are in the pixels the model sees: from the
+    /// screenshot's top-left corner, scaled like the image when the API downsizes it, so they match the points it
+    /// returns. Without one, in window pixels.
     static func context(_ packet: ContextPacket, shot: ScreenshotSize?) -> String {
-        let origin = packet.windowFrame?.origin ?? .zero
+        let frame = shot == nil ? nil : packet.screenshotFrame
+        let origin = frame?.origin ?? packet.windowFrame?.origin ?? .zero
+        let sx = shot.map { CGFloat($0.seenWidth) / CGFloat($0.width) } ?? 1
+        let sy = shot.map { CGFloat($0.seenHeight) / CGFloat($0.height) } ?? 1
+        func at(_ p: CGPoint) -> String { "\(Int(((p.x - origin.x) * sx).rounded())),\(Int(((p.y - origin.y) * sy).rounded()))" }
         var lines = ["App: \(packet.appName)", "Window: \(packet.windowTitle)"]
         if let c = packet.cursor {
             let value = c.value.isEmpty ? "" : " value \"\(c.value.prefix(500))\""
             lines.append("Under the mouse pointer: \(c.role) \"\(c.label)\"\(value)\(c.id.map { " (\($0))" } ?? "")")
         }
+        if let frame, let mouse = packet.mouse, frame.contains(mouse) {
+            lines.append("Mouse pointer: \(at(mouse)) in screenshot pixels.")
+        }
         if !packet.pointables.isEmpty {
-            lines.append("Elements you can point at (id, role, label, x,y and width×height in window pixels):")
+            lines.append("Elements you can point at (id, role, label, x,y and width×height in \(shot == nil ? "window" : "screenshot") pixels):")
             lines += packet.pointables.map { p in
-                "\(p.id) \(p.role) \"\(p.label)\" \(Int(p.frame.minX - origin.x)),\(Int(p.frame.minY - origin.y)) \(Int(p.frame.width))×\(Int(p.frame.height))"
+                "\(p.id) \(p.role) \"\(p.label)\" \(at(p.frame.origin)) \(Int((p.frame.width * sx).rounded()))×\(Int((p.frame.height * sy).rounded()))"
             }
         }
         lines.append(shot.map { "Screenshot: attached, \($0.seenWidth)×\($0.seenHeight) pixels." } ?? "Screenshot: none.")

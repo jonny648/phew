@@ -127,6 +127,33 @@ final class BrainAgentsTests: XCTestCase {
         XCTAssertTrue(request.text.contains("Screenshot: none."))
         XCTAssertTrue(request.text.hasSuffix("Question: How do I add a table?"))
         XCTAssertNil(request.image)
+        XCTAssertFalse(request.text.contains("Mouse pointer:"))
+    }
+
+    func testGuideContextUsesScreenshotPixelsWithTheMouse() {
+        // The whole display under the mouse, not the window: positions count from the display's corner.
+        var p = packet()
+        p.screenshotFrame = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        p.mouse = CGPoint(x: 700, y: 420)
+        let text = Guide.context(p, shot: ScreenshotSize(width: 1440, height: 900))
+        XCTAssertTrue(text.contains("e2 AXButton \"Table\" 190,60 60×28"))
+        XCTAssertTrue(text.contains("Mouse pointer: 700,420 in screenshot pixels."))
+        XCTAssertTrue(text.contains("in screenshot pixels):"))
+
+        // A display too big for the model: the API shows it 2576×1449, so positions are scaled the same way.
+        p.screenshotFrame = CGRect(x: 0, y: 0, width: 3840, height: 2160)
+        p.mouse = CGPoint(x: 1920, y: 1000)
+        let big = Guide.context(p, shot: ScreenshotSize(width: 3840, height: 2160))
+        XCTAssertTrue(big.contains("e2 AXButton \"Table\" 127,40 40×19"))
+        XCTAssertTrue(big.contains("Mouse pointer: 1288,671 in screenshot pixels."))
+
+        // Mouse outside the screenshot, or no screenshot: no mouse line.
+        p.mouse = CGPoint(x: 4000, y: 10)
+        XCTAssertFalse(Guide.context(p, shot: ScreenshotSize(width: 3840, height: 2160)).contains("Mouse pointer:"))
+        p.mouse = CGPoint(x: 700, y: 420)
+        let none = Guide.context(p, shot: nil)
+        XCTAssertFalse(none.contains("Mouse pointer:"))
+        XCTAssertTrue(none.contains("e2 AXButton \"Table\" 90,10 60×28"))  // window pixels
     }
 
     // MARK: The Brain's flow

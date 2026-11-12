@@ -18,6 +18,7 @@ Not in the sprint: notch and character, backend, dashboard, background agents, l
 | P3 Brain | 16 to 17 Nov | Claude API, Conductor, Observer, Guide, text card | brain |
 | P4 Pointer | 18 to 19 Nov | Phew points and guides step by step | shell |
 | P5 Map | 20 to 22 Nov | Memory of courses and topics, read and write | map |
+| PT Manual testing | Before the MVP test | Checks only you can run: InDesign, Acrobat, and others that come up | checker |
 | P6 Voice and test | 23 to 24 Nov | Hold key and speak. MVP test on real coursework | senses, checker |
 
 Tasks and their "done when" are in `roadmap.html`.

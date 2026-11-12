@@ -24,7 +24,7 @@
 | 11 Nov 2026 | Shortcut: Right Option + Right Command together opens the input panel | You |
 | 11 Nov 2026 | Hold key for speech: Right Option held alone. Built in P6 | You |
 | 11 Nov 2026 | App Sandbox off, so Phew can read other apps' windows. Bundle id `com.gianlucatroietto.Phew` | Delegated to Claude |
-| 12 Nov 2026 | Test apps for screen reading: Dia, Figma, Keynote, Adobe InDesign, Notion, Adobe Acrobat | You |
+| 12 Nov 2026 | Test apps for screen reading in P2: Dia, Figma, Keynote, Notion, Finder, Terminal. InDesign and Acrobat move to the new phase PT Manual testing | You |
 | 12 Nov 2026 | Claude Code roles: builders (shell, senses, brain, map) on Opus, checker on Sonnet | You |
 
 ## 7.2 Open
@@ -49,3 +49,4 @@
 | 11 Nov 2026 | P0 | Project moved to the root, Xcode project created, signed with the personal team. P0.1, P0.2, P0.4, P0.5 ticked | P1 |
 | 12 Nov 2026 | P1 | Shell built: menu bar item, shortcut, input panel, permissions screen. Focus bug on second open fixed. P0.3, P1.1, P1.2, P1.5, P1.6 ticked | Your re-test of P1.3 (3 apps) and P1.4 (type without clicking) |
 | 12 Nov 2026 | P1 | Your re-test passed in Finder, Dia and WhatsApp. P1.3 and P1.4 ticked, P1 complete. Role models set, test apps chosen | P2 |
+| 12 Nov 2026 | P2 | Senses built and hand-tested in Dia, Figma, Finder, Keynote, Notion. Three weaknesses found: no screenshot in Figma, empty element under the cursor, Keynote slide text not read. Phase PT added to the roadmap | Fixes, your re-check in Figma and Keynote, then ticks |

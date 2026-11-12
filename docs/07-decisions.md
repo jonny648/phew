@@ -24,18 +24,20 @@
 | 11 Nov 2026 | Shortcut: Right Option + Right Command together opens the input panel | You |
 | 11 Nov 2026 | Hold key for speech: Right Option held alone. Built in P6 | You |
 | 11 Nov 2026 | App Sandbox off, so Phew can read other apps' windows. Bundle id `com.gianlucatroietto.Phew` | Delegated to Claude |
+| 12 Nov 2026 | Test apps for screen reading: Dia, Figma, Keynote, Adobe InDesign, Notion, Adobe Acrobat | You |
+| 12 Nov 2026 | Claude Code roles: builders (shell, senses, brain, map) on Opus, checker on Sonnet | You |
 
 ## 7.2 Open
 
 | # | Decision | Needed by |
 |---|---|---|
-| 2 | Which 6 apps to test in | P2 |
 | 3 | Which business target to explore first, if any | After the MVP |
 | 4 | Order of the later phases | Retro |
 
 ## 7.3 Parking list
 
 - **Research: what similar tools use for agents.** Which models and agent frameworks Clicky and comparable tools run on, and how they keep calls cheap and fast: model routing, caching, small models, on-device steps. Do this before the backend phase.
+- **Students bring their own AI subscription.** Claude Pro and Max cannot be used: Anthropic forbids subscription sign-in in third-party apps, so Claude needs an API key. ChatGPT Plus and Pro may be possible through "Sign in with ChatGPT" (autumn 2026, partner apps); check OpenAI's own documentation on who can join. Would remove Phew's model cost per student. Needs a second provider behind the provider interface. Revisit at the retro.
 - Open source as a route for the student version.
 - Other devices.
 - Sharing a course Map between classmates.
@@ -46,3 +48,4 @@
 |---|---|---|---|
 | 11 Nov 2026 | P0 | Project moved to the root, Xcode project created, signed with the personal team. P0.1, P0.2, P0.4, P0.5 ticked | P1 |
 | 12 Nov 2026 | P1 | Shell built: menu bar item, shortcut, input panel, permissions screen. Focus bug on second open fixed. P0.3, P1.1, P1.2, P1.5, P1.6 ticked | Your re-test of P1.3 (3 apps) and P1.4 (type without clicking) |
+| 12 Nov 2026 | P1 | Your re-test passed in Finder, Dia and WhatsApp. P1.3 and P1.4 ticked, P1 complete. Role models set, test apps chosen | P2 |

@@ -1,6 +1,7 @@
 ---
 name: checker
 description: Verifies finished work against the roadmap and the hard rules, then ticks roadmap.html. Use at the end of every phase and before any task is marked done.
+model: sonnet
 ---
 You verify Phew's build. You do not write features.
 

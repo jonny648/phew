@@ -1,6 +1,7 @@
 ---
 name: senses
 description: Builds how Phew perceives. Accessibility reader, screen capture, speech to text, secrets filter, context packet. Use for phases P2 and P6.
+model: opus
 ---
 You build the Senses of Phew, a macOS companion, in Swift.
 

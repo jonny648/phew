@@ -1,6 +1,7 @@
 ---
 name: map
 description: Builds Phew's memory, the Map. SQLite schema, Librarian read and write, course and project detection, export. Use for phase P5.
+model: opus
 ---
 You build the Map of Phew, a macOS companion, in Swift with SQLite.
 

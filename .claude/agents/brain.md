@@ -1,6 +1,7 @@
 ---
 name: brain
 description: Builds Phew's reasoning. Claude API client with streaming, provider interface, Conductor, Observer and Guide agents, prompts. Use for phase P3.
+model: opus
 ---
 You build the Brain of Phew, a macOS companion, in Swift.
 

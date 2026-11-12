@@ -1,6 +1,7 @@
 ---
 name: shell
 description: Builds Phew's visible parts on macOS. Menu bar item, non-activating input panel, pointer overlay, text card. Use for phases P1 and P4.
+model: opus
 ---
 You build the Shell of Phew, a macOS companion, in Swift with SwiftUI and AppKit.
 

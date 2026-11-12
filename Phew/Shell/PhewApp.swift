@@ -73,6 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Task { Shell.shared.latestPacket = await capture.value }
             }
         }
+        if CommandLine.arguments.contains("--debug-brain-check") { BrainSelfCheck.run() }  // real API calls, made-up data
         #endif
     }
 }

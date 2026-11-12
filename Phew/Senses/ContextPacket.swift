@@ -31,6 +31,17 @@ struct ContextPacket: Codable {
     static let pointableCap = 80
     static let labelCap = 60
 
+    /// Where a guide step points, in screen points, top-left origin: an element's frame, or a zero-size rect at a
+    /// screenshot point. Nil for an id not in `pointables`, or a point without a `screenshotFrame`.
+    func screenRect(for target: StepTarget) -> CGRect? {
+        switch target {
+        case .element(let id):
+            pointables.first { $0.id == id }?.frame
+        case .point(let x, let y):
+            screenshotFrame.map { CGRect(x: $0.minX + CGFloat(x), y: $0.minY + CGFloat(y), width: 0, height: 0) }
+        }
+    }
+
     /// Runs the secrets filter over every string. The last step before a packet leaves Senses.
     func filtered() -> ContextPacket {
         var p = self

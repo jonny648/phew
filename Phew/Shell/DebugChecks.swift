@@ -15,6 +15,7 @@ extension AppDelegate {
         }
         if arguments.contains("--debug-brain-check") { BrainSelfCheck.run() }  // real API calls, made-up data
         if arguments.contains("--debug-card") { Task { await checkCard() } }
+        if arguments.contains("--debug-guide") { Task { await checkGuide() } }
     }
 
     /// Opens the panel twice (the second open is the usual case in real use), then closes it as Escape does.
@@ -61,6 +62,41 @@ extension AppDelegate {
         shellLog("card check done: card visible=\(card.isVisible) keyWindow=\(keyWindow.isShown) frontUnchanged=\(frontUnchanged)")
     }
 
+    /// Plays a made-up three-step guide through the real card and overlay: a made-up element, a screenshot point,
+    /// a step without a target. First it advances with the Next button's own call and goes past the last step;
+    /// then it starts again and closes the card at step 1, as Escape and the close control do. No model calls.
+    private func checkGuide() async {
+        try? await Task.sleep(for: .seconds(1))
+        NSApp.deactivate()
+        let realBrain = brain
+        let main = NSScreen.screens[0].frame
+        let display = CGDisplayBounds(CGMainDisplayID())  // top-left origin, as Senses measures
+        var packet = ContextPacket(appName: "Made Up", bundleID: "com.example.madeup", windowTitle: "Made up",
+                                   visibleText: "", cursor: nil)
+        packet.pointables = [Pointable(id: "e1", role: "AXButton", label: "Made up",
+                                       frame: CGRect(x: display.midX - 160, y: display.midY - 60, width: 120, height: 28))]
+        packet.screenshotFrame = display
+        brain = FakeBrain(targets: [.element("e1"), .point(x: Int(display.width / 2) + 60, y: Int(display.height / 2) + 40), nil])
+        for ending in ["finish", "cancel"] {
+            capture = Task<ContextPacket?, Never> { packet }
+            anchor = NSPoint(x: main.midX - 600, y: main.midY + 160)  // a made-up cursor, left of the targets
+            ask("")
+            try? await Task.sleep(for: .seconds(2))  // the fake answer streams, then step 1 starts
+            weak let overlay = card.overlay
+            shellLog("guide check \(ending): menu bar icon found=\(NSApp.windows.contains { $0.className == "NSStatusBarWindow" })")
+            for step in 1...3 {
+                try? await Task.sleep(for: .seconds(step == 1 ? 3 : 1))
+                shellLog("guide check \(ending) step \(step): current=\(card.model.current + 1) overlay ignoresMouse=\(overlay?.ignoresMouseEvents ?? false) visible=\(overlay?.isVisible ?? false) key=\(overlay?.isKeyWindow ?? false) canBecomeKey=\(overlay?.canBecomeKey ?? true) cardKey=\(card.isKeyWindow) phewFront=\(phewIsFront) appActive=\(NSRunningApplication.current.isActive)")
+                if ending == "cancel" { card.dismiss(); break }  // what Escape, the close control and the shortcut call
+                card.next()  // what the Next (and Done) button calls
+            }
+            try? await Task.sleep(for: .seconds(1))  // the glide home
+            let left = NSApp.windows.filter { $0 is PointerOverlay }.count
+            shellLog("guide check \(ending) end: card visible=\(card.isVisible) overlay released=\(overlay == nil) overlay windows left=\(left) phewFront=\(phewIsFront) cardKey=\(card.isKeyWindow)")
+        }
+        brain = realBrain
+    }
+
     /// The card's frame as the window server has it (top-left origin), and whether it lies inside the screen.
     private var cardFrames: String {
         let windows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] ?? []
@@ -76,9 +112,11 @@ extension AppDelegate {
     }
 }
 
-/// A stand-in Brain for the card check: a guide answer in pieces with three steps, or `failure` after two pieces.
+/// A stand-in Brain for the card and guide checks: a guide answer in pieces with three steps (pointing at
+/// `targets`), or `failure` after two pieces.
 struct FakeBrain: Brain {
     var failure: BrainError?
+    var targets: [StepTarget?] = [nil, nil, nil]
 
     func answer(_ question: String, packet: ContextPacket?) -> AsyncThrowingStream<BrainEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -91,7 +129,7 @@ struct FakeBrain: Brain {
                     continuation.yield(.text(piece))
                 }
                 if let failure { return continuation.finish(throwing: failure) }
-                continuation.yield(.steps((1...3).map { GuideStep(instruction: "Fake step \($0).", target: nil) }))
+                continuation.yield(.steps(targets.enumerated().map { GuideStep(instruction: "Fake step \($0.offset + 1).", target: $0.element) }))
                 continuation.yield(.done)
                 continuation.finish()
             }

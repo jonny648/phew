@@ -20,6 +20,7 @@ Phew is a macOS companion for university students. When called, he explains what
 - He never appears unasked.
 - He never activates the app or takes focus from the front app. Panels are non-activating.
 - No per-answer display of captured context.
+- What Phew captures (screen text and screenshots) lives in memory only. It is dropped when the answer is done or the panel closes, and is never written to disk or to a log, in any build. The one exception is the debug dump, which is off unless Phew is launched with its test flag, and whose files are deleted after the test.
 - Never read secure text fields. Run the secrets filter before any network call.
 - Speech to text runs on the device.
 - The API key lives only in the Keychain. Never in a file, a log or the repository.
@@ -39,16 +40,18 @@ Phew is a macOS companion for university students. When called, he explains what
 | P3 | `docs/04-architecture.md` 4.4 |
 | P4 | `docs/03-experience.md` 3.1 and 3.2 |
 | P5 | `docs/05-map.md` |
+| PT | The task's own "done when". Manual checks only the user can run |
 | P6 | `docs/03-experience.md` 3.3, `docs/06-sprint.md` 6.3 |
 
 ## Subagents
-shell, senses, brain, map, checker. Defined in `.claude/agents/`. The main session is the lead: it plans, delegates and reports.
+shell, senses, brain, map, checker. Defined in `.claude/agents/`. The main session is the lead: it plans, delegates and reports. Builders run on Opus, the checker on Sonnet.
 
 ## Code
 - Swift, SwiftUI, AppKit where SwiftUI cannot do it. One Xcode project named Phew.
 - Folders: `Phew/Shell`, `Phew/Senses`, `Phew/Brain`, `Phew/Map`.
 - The app must build from the terminal with `xcodebuild`, so the checker can verify.
-- Unit tests for the secrets filter and the Map.
+- Unit tests for the secrets filter and the Map, in the `PhewTests` target. Run with `xcodebuild -project Phew.xcodeproj -scheme Phew test`.
+- Test data is made up. No real screen content goes into the repository.
 - Prefer the simplest thing that meets the "done when".
 
 ## Working with the user

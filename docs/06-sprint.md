@@ -31,7 +31,7 @@ Tasks and their "done when" are in `roadmap.html`.
 
 ## 6.4 If time runs short
 
-Cut in this order: voice, pointing from screenshot coordinates, defined terms in the Map. Never cut: explain and guide, the pointer on Accessibility positions, Map read and write.
+Cut in this order: voice, defined terms in the Map. Never cut: explain and guide, the pointer on Accessibility positions, pointing from screenshot coordinates (the only way to point inside Figma and Figma Slides), Map read and write.
 
 P1 and P2 can be built in parallel. So can P4 and P5.
 

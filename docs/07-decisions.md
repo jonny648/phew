@@ -26,12 +26,17 @@
 | 11 Nov 2026 | App Sandbox off, so Phew can read other apps' windows. Bundle id `com.gianlucatroietto.Phew` | Delegated to Claude |
 | 12 Nov 2026 | Test apps for screen reading in P2: Dia, Figma, Keynote, Notion, Finder, Terminal. InDesign and Acrobat move to the new phase PT Manual testing | You |
 | 12 Nov 2026 | Claude Code roles: builders (shell, senses, brain, map) on Opus, checker on Sonnet | You |
+| 12 Nov 2026 | Captures (screen text, screenshots) are never saved. Memory only, dropped after the answer. Debug dump only with a test flag | You |
+| 12 Nov 2026 | Acting in apps (L5 Hand) will be a separate opt-in, off by default. Without it Phew only shows and explains. After the MVP | You |
+| 12 Nov 2026 | Pointing from screenshot coordinates is never cut: Figma and Figma Slides are the main apps and expose no text | You |
+| 12 Nov 2026 | "Full reading" switch stays on in native apps. Needed for Keynote slides, no lag seen | You |
+| 12 Nov 2026 | `docs/review/plan.html` removed. The Markdown files and `roadmap.html` are the source | Delegated to Claude |
 
 ## 7.2 Open
 
 | # | Decision | Needed by |
 |---|---|---|
-| 2 | Keep the "full reading" switch Phew turns on in native apps (needed for Keynote slides)? It can make window moves lag in that app until it quits | End of P2 |
+| 2 | Per-app exclusion list ("never read this app"), promised in `04-architecture.md` 4.6: in the MVP or later? Pause is the only switch today | P6 |
 | 3 | Which business target to explore first, if any | After the MVP |
 | 4 | Order of the later phases | Retro |
 

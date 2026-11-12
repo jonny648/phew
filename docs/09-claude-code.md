@@ -3,11 +3,14 @@
 ## 9.1 What is in the project folder
 
 ```
-phew/
+Phew!/
   CLAUDE.md            rules every session reads
   roadmap.html         the checklist Claude Code ticks
   .claude/agents/      the five roles
   docs/                this plan
+  Phew.xcodeproj       the Xcode project
+  Phew/                the app: Shell, Senses, Brain, Map
+  PhewTests/           unit tests
 ```
 
 `.claude` is a hidden folder. In Finder press Command, Shift and full stop to see it.
@@ -25,22 +28,18 @@ Roles are Claude Code subagents: Markdown files in `.claude/agents/`. The main s
 | map | SQLite, Librarian, course detection | P5 |
 | checker | Builds, runs, verifies each task, ticks `roadmap.html` | End of every phase |
 
-## 9.3 First start, once
+Builders run on Opus, the checker on Sonnet. This is set by the `model` line in each role file.
 
-1. Unzip. Move the `phew` folder where you keep projects.
-2. Open Xcode. New Project, macOS, App. Name: Phew. Interface: SwiftUI. Save it inside the `phew` folder.
-3. In the project's Signing settings choose your personal team.
-4. Open Terminal:
+## 9.3 Starting a session
+
+The project, git and signing are set up (done in P0). To work on it, open Terminal:
 
 ```
-cd path/to/phew
-git init
-git add .
-git commit -m "Plan and project skeleton"
+cd "path/to/Phew!"
 claude
 ```
 
-5. First message to Claude Code:
+First message to Claude Code:
 
 ```
 Read CLAUDE.md, roadmap.html and docs/06-sprint.md.
@@ -72,8 +71,8 @@ Open `roadmap.html` in the browser and refresh to see progress.
 P1 with P2, and P4 with P5, do not touch the same files. To run two at once, give the second its own working copy:
 
 ```
-git worktree add ../phew-senses -b senses
-cd ../phew-senses
+git worktree add ../Phew-senses -b senses
+cd ../Phew-senses
 claude
 ```
 

@@ -119,6 +119,7 @@ How this backend gets made: you rent four managed pieces and connect them. A dat
 - Password fields are never read. Secrets are removed before any network call.
 - A per-app exclusion list and one pause switch in the menu bar.
 - In the MVP everything except the model call stays on your Mac.
+- What Phew captures (screen text, screenshots) is held in memory only and dropped after the answer. It is never saved. The Map keeps what Phew learned, never the capture.
 - macOS shows its own indicators for microphone and screen capture. Phew adds none.
 - Before public release: privacy policy, terms, EU check, recording notice for lectures. Not legal advice.
 

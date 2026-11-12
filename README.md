@@ -1,9 +1,8 @@
 # Phew!
 
-A shy macOS companion for students. Plan version 0.3, 11 November 2026.
+A shy macOS companion for students.
 
 Start here: `docs/09-claude-code.md`.
-Readable plan: `docs/review/plan.html`.
 Progress: `roadmap.html`.
 
 | Path | Content |
@@ -11,6 +10,9 @@ Progress: `roadmap.html`.
 | `CLAUDE.md` | Rules for every Claude Code session |
 | `roadmap.html` | The checklist. Ticked by Claude Code after verification |
 | `.claude/agents/` | Roles: shell, senses, brain, map, checker |
+| `Phew.xcodeproj` | The Xcode project. Double-click to open |
+| `Phew/` | The app: `Shell`, `Senses`, `Brain`, `Map` |
+| `PhewTests/` | Unit tests |
 | `docs/01-foundation.md` | Problem, user, market, who pays |
 | `docs/02-vision.md` | Vision, mission, values, who Phew is |
 | `docs/03-experience.md` | Surfaces, states, ways to call him, MVP and later |

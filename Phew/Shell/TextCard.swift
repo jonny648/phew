@@ -4,8 +4,10 @@ import SwiftUI
 /// The answer, in a small card beside the point where the shortcut was pressed. Non-activating, and it stays
 /// when the student clicks elsewhere, so the steps can be read while working in the app. It never takes the
 /// keyboard on its own: it becomes key only when clicked, for selecting and copying.
-/// For a guide it shows one step at a time while the pointer overlay points at that step's target.
-/// Closed by Escape, its close control, the shortcut, or finishing the guide.
+/// For a guide it lists the steps, the current one emphasized, while the pointer overlay points at its target.
+/// There is no Next button: after the student acts in their app, Phew looks again and the guide moves on by itself
+/// (`FollowRule` says when). Clicking a step line jumps to it, the quiet fallback.
+/// Closed by Escape, its close control, the shortcut, or the last step done.
 final class TextCard: EditPanel {
     static let width: CGFloat = 360
     static let maxHeight: CGFloat = 420
@@ -13,12 +15,22 @@ final class TextCard: EditPanel {
     let model = CardModel()
     private var task: Task<Void, Never>?
     private var top = NSPoint.zero
+    private var brain: (any Brain)?
+    private var onKeyProblem: ((BrainError) -> Void)?
     /// One per step, AppKit screen coordinates: an element's frame, a zero-size rect for a screenshot point, or
-    /// nil. All that is kept of the context for the guide; empty when no guide runs.
+    /// nil. All that is kept of the context for the guide, updated by each look; empty when no guide runs.
     private var targets: [CGRect?] = []
+    /// The guide as the Brain gave it, for the looks that follow the student; empty when no guide runs.
+    private var steps: [GuideStep] = []
     private(set) var overlay: PointerOverlay?
     private var escapeMonitor: Any?
-    private var clickMonitor: Any?
+    /// Observes the student's clicks, keys and scrolls in other apps while the guide follows them; nil otherwise.
+    private(set) var actionMonitor: Any?
+    private(set) var rule = FollowRule()
+    /// The calm wait before a look, and the look itself (capture and Brain check).
+    private var waitTask: Task<Void, Never>?
+    private var lookTask: Task<Void, Never>?
+    var lookPending: Bool { waitTask != nil || lookTask != nil }
 
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 44),
@@ -32,8 +44,7 @@ final class TextCard: EditPanel {
         let host = FirstClickHostingView(rootView: CardView(
             model: model,
             onClose: { [weak self] in self?.dismiss() },
-            onBack: { [weak self] in self?.back() },
-            onNext: { [weak self] in self?.next() },
+            onStep: { [weak self] in self?.jump(to: $0) },
             // Next turn of the run loop: resizing the window inside SwiftUI's layout pass would nest layouts.
             onHeight: { [weak self] height in DispatchQueue.main.async { self?.fit(height: height) } }))
         host.sizingOptions = []  // the card sets its own frame, top-left fixed
@@ -49,6 +60,8 @@ final class TextCard: EditPanel {
               onKeyProblem: @escaping (BrainError) -> Void) {
         dismiss()
         model.reset()
+        self.brain = brain
+        self.onKeyProblem = onKeyProblem
         top = NSPoint(x: point.x + 12, y: point.y - 12)  // beside the cursor, not under its tip
         fit(height: 44)  // the thinking row; the view reports its real height as it grows
         alphaValue = 0
@@ -71,8 +84,7 @@ final class TextCard: EditPanel {
                     self?.model.apply(event)
                     // Only the targets' rects stay for the guide; the packet goes when this task ends.
                     if case .steps(let steps) = event, !steps.isEmpty {
-                        let mainHeight = NSScreen.screens.first?.frame.height ?? 0
-                        self?.startGuide(steps.map { $0.target.flatMap { packet?.screenRect(for: $0) }?.flipped(mainHeight: mainHeight) })
+                        self?.startGuide(steps, targets: steps.map { Self.rect(for: $0.target, in: packet) })
                     }
                 }
             } catch {
@@ -105,32 +117,106 @@ final class TextCard: EditPanel {
         shellLog("card closed, phew front \(phewIsFront)")
     }
 
-    /// The Next button, or a click inside the current target. Past the last step the guide is done: the card closes
-    /// and the pointer goes home.
-    func next() {
-        guard !targets.isEmpty else { return }
-        guard model.current + 1 < targets.count else { return dismiss() }
-        model.current += 1
+    /// A click on a step line: the quiet fallback when following misses. The pointer goes to that step's last known
+    /// place, or rests beside the card.
+    func jump(to step: Int) {
+        guard targets.indices.contains(step), step != model.current else { return }
+        model.current = step
         pointAtCurrentStep()
     }
 
-    func back() {
-        guard model.current > 0, !targets.isEmpty else { return }
-        model.current -= 1
-        pointAtCurrentStep()
+    /// The student clicked, typed or scrolled in another app (the action monitor), or the debug check says so.
+    /// After a calm moment Phew looks again. Events in Phew's own windows never reach a global monitor, so a click
+    /// on the card is not an action.
+    func userActed() {
+        guard actionMonitor != nil, let wait = rule.userActed(at: Date()) else { return }
+        schedule(after: wait)
     }
 
-    private func startGuide(_ targets: [CGRect?]) {
+    private func startGuide(_ steps: [GuideStep], targets: [CGRect?]) {
+        self.steps = steps
         self.targets = targets
         model.current = 0
         let screen = NSScreen.screens.first { $0.frame.contains(frame.origin) } ?? NSScreen.screens[0]
         overlay = PointerOverlay(on: screen)
-        // Observe only: the click still reaches the app, and Phew never makes one.
-        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] _ in
-            self?.clicked(at: NSEvent.mouseLocation)
+        // Observe only: the event still reaches the app, and Phew never makes one.
+        actionMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp, .keyUp, .scrollWheel]) { [weak self] _ in
+            self?.userActed()
         }
-        shellLog("guide started: \(targets.count) steps, \(targets.compactMap { $0 }.count) with a target")
+        shellLog("guide started: \(targets.count) steps, \(targets.compactMap { $0 }.count) with a target, following \(actionMonitor != nil)")
         pointAtCurrentStep()
+    }
+
+    private func schedule(after wait: TimeInterval) {
+        waitTask?.cancel()
+        waitTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(wait))
+            guard !Task.isCancelled else { return }
+            self?.look()
+        }
+    }
+
+    /// Captures the front app (never Phew: it is never front), asks the Brain which step the student is on, applies
+    /// the answer. The packet is dropped when this ends; only the resolved rect stays.
+    private func look() {
+        waitTask = nil
+        guard let brain, !phewIsFront else { return shellLog("guide: look skipped, phew front \(phewIsFront)") }
+        let now = Date(), since = rule.looks > 0 ? Int(now.timeIntervalSince(rule.lastStart) * 1000) : nil
+        guard rule.startLook(at: now) else { return }
+        let from = model.current, steps = steps, look = rule.looks
+        shellLog("guide: look \(look) of \(FollowRule.ceiling) starts on step \(from + 1) of \(steps.count)\(since.map { ", \($0) ms after the last start" } ?? "")")
+        let capture = Senses.capture()
+        lookTask = Task { [weak self] in
+            let packet = await capture.value
+            let captureMS = Int(Date().timeIntervalSince(now) * 1000)
+            guard !Task.isCancelled, let self else { return }
+            let result: GuideProgress
+            do {
+                result = try await brain.progress(steps: steps, current: from, packet: packet)
+            } catch {
+                guard !Task.isCancelled else { return }
+                return lookFailed(BrainError(error))
+            }
+            guard !Task.isCancelled else { return }
+            lookTask = nil
+            let kind = switch result.target { case .element: "element"; case .point: "point"; case nil: "none" }
+            shellLog("guide: look \(look) ended, step \(from + 1) to \(result.current + 1) of \(steps.count), target \(kind), capture \(captureMS) ms, total \(Int(Date().timeIntervalSince(now) * 1000)) ms")
+            apply(result, from: from, packet: packet)
+            guard actionMonitor != nil else { return }  // the guide is done, or stopped
+            if let wait = rule.lookEnded(at: Date()) {
+                schedule(after: wait)
+            } else if rule.exhausted {
+                stopFollowing()
+                shellLog("guide: \(FollowRule.ceiling) looks reached, following stopped")
+            }
+        }
+    }
+
+    /// Moves the guide to what the look saw. Never moves the card.
+    private func apply(_ result: GuideProgress, from: Int, packet: ContextPacket?) {
+        // The student picked a step on the card during the look: their choice wins.
+        guard model.current == from else { return shellLog("guide: look result dropped, a step was picked on the card") }
+        let now = min(max(result.current, 0), targets.count)
+        guard now < targets.count else { return dismiss() }  // every step done: pointer home, card closed
+        let rect = Self.rect(for: result.target, in: packet)
+        if now == from {
+            // No target: the check failed or nothing fits, so the pointer stays where it is.
+            guard let rect, rect != targets[now] else { return }
+        } else {
+            model.current = now
+        }
+        targets[now] = rect
+        pointAtCurrentStep()
+    }
+
+    /// `.noKey` and `.badKey` close the card and ask for the key, as an answer does; anything else only stops
+    /// following, and the guide stays with its step lines.
+    private func lookFailed(_ error: BrainError) {
+        lookTask = nil
+        shellLog("guide: look failed, error \(error), following stopped")
+        guard error == .noKey || error == .badKey else { return stopFollowing() }
+        dismiss()
+        onKeyProblem?(error)
     }
 
     private func pointAtCurrentStep() {
@@ -140,20 +226,31 @@ final class TextCard: EditPanel {
         }
     }
 
-    private func clicked(at point: NSPoint) {
-        guard targets.indices.contains(model.current), let target = targets[model.current],
-              PointerOverlay.ringRect(around: target).contains(point) else { return }
-        next()
+    /// Where a target points, AppKit screen coordinates, measured in the packet it was named in.
+    private static func rect(for target: StepTarget?, in packet: ContextPacket?) -> CGRect? {
+        let mainHeight = NSScreen.screens.first?.frame.height ?? 0
+        return target.flatMap { packet?.screenRect(for: $0) }?.flipped(mainHeight: mainHeight)
     }
 
-    /// The pointer goes home and the overlay lets go; the rects are dropped.
+    /// The monitor goes; no look waits or runs. The card and the pointer stay.
+    private func stopFollowing() {
+        actionMonitor.map(NSEvent.removeMonitor)
+        actionMonitor = nil
+        waitTask?.cancel()
+        waitTask = nil
+        lookTask?.cancel()  // the Brain then cancels its request; the packet goes with the task
+        lookTask = nil
+    }
+
+    /// Following stops, the pointer goes home and the overlay lets go; the steps and rects are dropped.
     private func endGuide() {
-        clickMonitor.map(NSEvent.removeMonitor)
-        clickMonitor = nil
+        stopFollowing()
+        rule = FollowRule()
+        steps = []
+        targets = []
         guard let overlay else { return }
         overlay.goHome()
         self.overlay = nil
-        targets = []
         shellLog("guide ended")
     }
 
@@ -207,8 +304,7 @@ final class CardModel: ObservableObject {
 private struct CardView: View {
     @ObservedObject var model: CardModel
     let onClose: () -> Void
-    let onBack: () -> Void
-    let onNext: () -> Void
+    let onStep: (Int) -> Void
     let onHeight: (CGFloat) -> Void
 
     var body: some View {
@@ -221,21 +317,20 @@ private struct CardView: View {
                     }
                 }
                 if !model.text.isEmpty { Text(verbatim: model.text) }
+                // No Next button: the guide follows the student. A step line jumps to that step.
                 ForEach(Array(model.steps.enumerated()), id: \.offset) { index, step in
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(verbatim: "\(index + 1).").monospacedDigit()
-                        Text(verbatim: step)
+                    Button { onStep(index) } label: {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(verbatim: "\(index + 1).").monospacedDigit()
+                            Text(verbatim: step).multilineTextAlignment(.leading)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                     .fontWeight(index == model.current ? .semibold : .regular)
                     .foregroundStyle(index == model.current ? .primary : .secondary)
-                }
-                if !model.steps.isEmpty {
-                    HStack {
-                        Button("Back", action: onBack).disabled(model.current == 0)
-                        Spacer()
-                        Button(model.current + 1 < model.steps.count ? "Next" : "Done", action: onNext)
-                    }
-                    .controlSize(.small)
+                    .accessibilityAddTraits(index == model.current ? .isSelected : [])
                 }
                 if let problem = model.problem { Text(verbatim: problem).foregroundStyle(.secondary) }
             }

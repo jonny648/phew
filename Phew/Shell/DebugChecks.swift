@@ -62,9 +62,13 @@ extension AppDelegate {
         shellLog("card check done: card visible=\(card.isVisible) keyWindow=\(keyWindow.isShown) frontUnchanged=\(frontUnchanged)")
     }
 
-    /// Plays a made-up three-step guide through the real card and overlay: a made-up element, a screenshot point,
-    /// a step without a target. First it advances with the Next button's own call and goes past the last step;
-    /// then it starts again and closes the card at step 1, as Escape and the close control do. No model calls.
+    /// Plays a made-up four-step guide through the real card and overlay: a made-up element, a screenshot point,
+    /// a step without a target, the element again. First it follows: it calls `userActed`, the action monitor's own
+    /// entry point (no event is made), and each look captures whatever app is front and asks the fake Brain, which
+    /// moves one step per look, until the last look finds every step done. Then it starts again, picks a step line
+    /// and closes the card with a look waiting, as Escape, the close control and the shortcut do. Last, a look that
+    /// fails: overloaded keeps the guide without following, no key closes it and opens the key window. No model calls.
+    /// The action monitor is real: the user's own clicks, keys and scrolls during the check also make looks.
     private func checkGuide() async {
         try? await Task.sleep(for: .seconds(1))
         NSApp.deactivate()
@@ -76,25 +80,75 @@ extension AppDelegate {
         packet.pointables = [Pointable(id: "e1", role: "AXButton", label: "Made up",
                                        frame: CGRect(x: display.midX - 160, y: display.midY - 60, width: 120, height: 28))]
         packet.screenshotFrame = display
-        brain = FakeBrain(targets: [.element("e1"), .point(x: Int(display.width / 2) + 60, y: Int(display.height / 2) + 40), nil])
-        for ending in ["finish", "cancel"] {
+        let targets: [StepTarget?] = [.element("e1"), .point(x: Int(display.width / 2) + 60, y: Int(display.height / 2) + 40), nil, .element("e1")]
+        for (ending, failure) in [("follow", nil), ("cancel", nil), ("overloaded", BrainError.overloaded), ("noKey", .noKey)] {
+            brain = FakeBrain(targets: targets, lookFailure: failure)
             capture = Task<ContextPacket?, Never> { packet }
             anchor = NSPoint(x: main.midX - 600, y: main.midY + 160)  // a made-up cursor, left of the targets
             ask("")
             try? await Task.sleep(for: .seconds(2))  // the fake answer streams, then step 1 starts
             weak let overlay = card.overlay
-            shellLog("guide check \(ending): menu bar icon found=\(NSApp.windows.contains { $0.className == "NSStatusBarWindow" })")
-            for step in 1...3 {
-                try? await Task.sleep(for: .seconds(step == 1 ? 3 : 1))
-                shellLog("guide check \(ending) step \(step): current=\(card.model.current + 1) overlay ignoresMouse=\(overlay?.ignoresMouseEvents ?? false) visible=\(overlay?.isVisible ?? false) key=\(overlay?.isKeyWindow ?? false) canBecomeKey=\(overlay?.canBecomeKey ?? true) cardKey=\(card.isKeyWindow) phewFront=\(phewIsFront) appActive=\(NSRunningApplication.current.isActive)")
-                if ending == "cancel" { card.dismiss(); break }  // what Escape, the close control and the shortcut call
-                card.next()  // what the Next (and Done) button calls
+            shellLog("guide check \(ending): menu bar icon found=\(NSApp.windows.contains { $0.className == "NSStatusBarWindow" }) following=\(card.actionMonitor != nil)")
+            try? await Task.sleep(for: .seconds(3))  // step 1's glide and ring
+            func state(_ moment: String) {
+                shellLog("guide check \(ending) \(moment): step=\(card.model.current + 1) looks=\(card.rule.looks) lookPending=\(card.lookPending) overlay ignoresMouse=\(overlay?.ignoresMouseEvents ?? false) visible=\(overlay?.isVisible ?? false) key=\(overlay?.isKeyWindow ?? false) canBecomeKey=\(overlay?.canBecomeKey ?? true) cardKey=\(card.isKeyWindow) phewFront=\(phewIsFront) appActive=\(NSRunningApplication.current.isActive)")
+            }
+            state("step 1")
+            if ending == "follow" {
+                // Does Accessibility's hit test take the clear overlay for content? The card's centre is the control.
+                shellLog("guide check follow: hit test lands on Phew, inside the card=\(Self.hitIsPhew(NSPoint(x: card.frame.midX, y: card.frame.midY))) on the overlay away from the card=\(Self.hitIsPhew(NSPoint(x: main.midX + 300, y: main.midY - 200)))")
+                try? await Task.sleep(for: .seconds(3))
+                state("after 3 s without an action")
+                card.userActed()
+                await until { !self.card.lookPending }
+                state("after one action")
+                card.userActed()
+                await until { self.card.rule.inFlight }
+                card.userActed(); card.userActed()  // two more while that look runs
+                shellLog("guide check follow: two actions during look \(card.rule.looks), in flight=\(card.rule.inFlight)")
+                await until { !self.card.lookPending }
+                try? await Task.sleep(for: .seconds(3))  // room for any extra look
+                state("after an action and two during its look, then 3 s")
+                card.userActed()  // the last look finds every step done
+                await until { !self.card.lookPending }
+            } else if failure != nil {
+                card.userActed()
+                await until { !self.card.lookPending }
+                state("after a look that failed")
+                card.jump(to: 1)  // step lines still work
+                shellLog("guide check \(ending): card visible=\(card.isVisible) following=\(card.actionMonitor != nil) step after picking line 2=\(card.model.current + 1) keyWindow=\(keyWindow.isShown)")
+                card.dismiss()
+                keyWindow.dismiss()
+            } else {
+                card.jump(to: 2)  // what a click on step line 3 calls
+                card.userActed()
+                try? await Task.sleep(for: .seconds(1))  // the glide, with a look still waiting
+                state("after picking step line 3 and an action")
+                card.dismiss()  // what Escape, the close control and the shortcut call
             }
             try? await Task.sleep(for: .seconds(1))  // the glide home
+            card.userActed()  // after the end nothing may follow
             let left = NSApp.windows.filter { $0 is PointerOverlay }.count
-            shellLog("guide check \(ending) end: card visible=\(card.isVisible) overlay released=\(overlay == nil) overlay windows left=\(left) phewFront=\(phewIsFront) cardKey=\(card.isKeyWindow)")
+            shellLog("guide check \(ending) end: card visible=\(card.isVisible) overlay released=\(overlay == nil) overlay windows left=\(left) phewFront=\(phewIsFront) cardKey=\(card.isKeyWindow) monitor removed=\(card.actionMonitor == nil) lookPending=\(card.lookPending) looks=\(card.rule.looks)")
         }
         brain = realBrain
+    }
+
+    /// Polls `done` every 50 ms, for at most 10 s.
+    private func until(_ done: () -> Bool) async {
+        for _ in 0..<200 where !done() { try? await Task.sleep(for: .milliseconds(50)) }
+    }
+
+    /// Whether Accessibility's hit test at `point` (AppKit coordinates) lands on one of Phew's windows. Reads only
+    /// the owner's process id.
+    private static func hitIsPhew(_ point: NSPoint) -> String {
+        var hit: AXUIElement?
+        let y = (NSScreen.screens.first?.frame.height ?? 0) - point.y
+        guard AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(point.x), Float(y), &hit) == .success,
+              let hit else { return "no element" }
+        var owner: pid_t = 0
+        AXUIElementGetPid(hit, &owner)
+        return "\(owner == getpid())"
     }
 
     /// The card's frame as the window server has it (top-left origin), and whether it lies inside the screen.
@@ -117,6 +171,8 @@ extension AppDelegate {
 struct FakeBrain: Brain {
     var failure: BrainError?
     var targets: [StepTarget?] = [nil, nil, nil]
+    /// Thrown by `progress`, as a look that fails.
+    var lookFailure: BrainError?
 
     func answer(_ question: String, packet: ContextPacket?) -> AsyncThrowingStream<BrainEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -137,8 +193,10 @@ struct FakeBrain: Brain {
         }
     }
 
-    /// One step further per call, pointing where that step pointed.
+    /// One step further per call, pointing where that step pointed, after half a second, as a short model call.
     func progress(steps: [GuideStep], current: Int, packet: ContextPacket?) async throws -> GuideProgress {
+        try await Task.sleep(for: .milliseconds(500))
+        if let lookFailure { throw lookFailure }
         let next = min(max(current + 1, 0), steps.count)
         return GuideProgress(current: next, target: next < steps.count ? steps[next].target : nil)
     }

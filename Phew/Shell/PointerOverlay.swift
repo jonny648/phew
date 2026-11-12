@@ -14,7 +14,7 @@ final class PointerOverlay: NSPanel {
     private let ring = CAShapeLayer()
     /// Where the pointer's tip is, AppKit screen coordinates.
     private var tip: NSPoint
-    /// Counts moves, so a glide that was overtaken (Next pressed mid-way) does not show its ring late.
+    /// Counts moves, so a glide that was overtaken (a new step mid-way) does not show its ring late.
     private var moves = 0
 
     init(on screen: NSScreen) {
@@ -104,7 +104,7 @@ final class PointerOverlay: NSPanel {
         }
     }
 
-    /// The ring, and the area where a click moves the guide on: the frame with a little room, or a point's circle.
+    /// The ring: the frame with a little room, or a point's circle.
     static func ringRect(around target: NSRect) -> NSRect {
         target.isEmpty
             ? NSRect(x: target.midX - pointRadius, y: target.midY - pointRadius, width: pointRadius * 2, height: pointRadius * 2)

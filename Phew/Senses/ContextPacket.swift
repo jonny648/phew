@@ -17,9 +17,13 @@ struct ContextPacket: Codable {
 
     static let textCap = 4000
     /// Below this many characters of visible text the app exposes too little: a screenshot is added.
-    /// shortcut: one threshold for all apps; a canvas app (Figma) may expose enough panel text to skip the
-    /// screenshot. Let the Brain ask for one if that bites.
     static let screenshotBelow = 300
+
+    /// The one screenshot rule: the app exposes too little text, or nothing about the element under the cursor
+    /// (a canvas in Figma or Keynote, whose menus and panels alone pass the threshold).
+    var needsScreenshot: Bool {
+        visibleText.count < Self.screenshotBelow || ((cursor?.label ?? "").isEmpty && (cursor?.value ?? "").isEmpty)
+    }
 
     /// Runs the secrets filter over every string. The last step before a packet leaves Senses.
     func filtered() -> ContextPacket {
@@ -35,10 +39,7 @@ struct ContextPacket: Codable {
 
     /// Keeps the texts nearest `point` until `cap` characters are used, then restores reading order.
     static func trim(_ texts: [WindowReader.Text], near point: CGPoint, cap: Int = textCap) -> String {
-        func distance(_ f: CGRect?) -> CGFloat {
-            guard let f else { return .infinity }
-            return hypot(max(f.minX - point.x, 0, point.x - f.maxX), max(f.minY - point.y, 0, point.y - f.maxY))
-        }
+        func distance(_ f: CGRect?) -> CGFloat { WindowReader.distance(f, point) }
         let nearestFirst = texts.indices.sorted { (distance(texts[$0].frame), $0) < (distance(texts[$1].frame), $1) }
         var kept: [Int: Substring] = [:]
         var room = cap
@@ -70,7 +71,7 @@ extension ContextPacket {
         try? encoder.encode(self).write(to: dir.appending(path: "packet-\(bundleID).json"))
         let shot = dir.appending(path: "shot-\(bundleID).png")
         if let screenshot { try? screenshot.write(to: shot) } else { try? FileManager.default.removeItem(at: shot) }
-        shellLog("packet \(bundleID): title \(windowTitle.count) chars, text \(visibleText.count) chars, cursor \(cursor?.role ?? "none") at \(Int(mouse.x)),\(Int(mouse.y)) inside its frame \(cursor?.frame?.contains(mouse) ?? false), screenshot \(screenshot != nil), cursor read \(cursorMS) ms, total \(totalMS) ms")
+        shellLog("packet \(bundleID): title \(windowTitle.count) chars, text \(visibleText.count) chars, cursor \(cursor?.role ?? "none") at \(Int(mouse.x)),\(Int(mouse.y)) inside its frame \(cursor?.frame?.contains(mouse) ?? false), cursor text \((cursor?.label.count ?? 0) + (cursor?.value.count ?? 0)) chars, rule wants screenshot \(needsScreenshot), screenshot \(screenshot != nil), cursor read \(cursorMS) ms, total \(totalMS) ms")
     }
 }
 #endif

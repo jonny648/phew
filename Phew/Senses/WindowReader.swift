@@ -17,69 +17,153 @@ enum WindowReader {
     static let maxElements = 3000
     static let maxDepth = 60
     static let timeBudget: TimeInterval = 0.8
+    // The look inside the element under the cursor runs on the main thread before the panel opens: keep it tiny.
+    static let cursorElements = 30
+    static let cursorDepth = 4
+    static let cursorBudget: TimeInterval = 0.015
+    static let cursorCap = 300
 
     /// The element under the mouse, read synchronously: it must be the user's app, not Phew's panel.
-    /// Also returns the mouse point.
-    static func elementUnderCursor() -> (element: CursorElement?, point: CGPoint) {
+    /// Also returns the mouse point. `pid` is the app being read, used only by the debug point.
+    static func elementUnderCursor(pid: pid_t) -> (element: CursorElement?, point: CGPoint) {
         let systemWide = AXUIElementCreateSystemWide()
         AXUIElementSetMessagingTimeout(systemWide, 0.1)  // global for Phew: a hung app costs at most 0.1 s per call
         let mouse = NSEvent.mouseLocation  // bottom-left origin; flip against the main display
-        let point = CGPoint(x: mouse.x, y: (NSScreen.screens.first?.frame.height ?? 0) - mouse.y)
+        var point = CGPoint(x: mouse.x, y: (NSScreen.screens.first?.frame.height ?? 0) - mouse.y)
         var hit: AXUIElement?
-        guard AXUIElementCopyElementAtPosition(systemWide, Float(point.x), Float(point.y), &hit) == .success,
-              let element = hit else { return (nil, point) }
-        var pid: pid_t = 0
-        AXUIElementGetPid(element, &pid)
-        guard pid != getpid() else { return (nil, point) }
+        #if DEBUG
+        if let p = debugPoint { point = p; hit = debugHit(pid: pid, at: p) }
+        #endif
+        if hit == nil { AXUIElementCopyElementAtPosition(systemWide, Float(point.x), Float(point.y), &hit) }
+        guard let element = hit else { return (nil, point) }
+        var owner: pid_t = 0
+        AXUIElementGetPid(element, &owner)
+        guard owner != getpid() else { return (nil, point) }
 
         let a = attributes(element)
         // Password field: its frame lets Phew point at it; nothing else is read.
         if a.isSecure { return (CursorElement(role: "AXSecureTextField", label: "", value: "", frame: a.frame), point) }
-        // Whole documents and pages: their visible part is already in the window text.
-        let value = ["AXTextArea", "AXWebArea"].contains(a.role) ? nil : valueString(element)
-        return (CursorElement(role: a.role, label: a.title ?? a.description ?? "",
-                              value: String((value ?? "").prefix(300)), frame: a.frame), point)
+        // Whole documents and pages: their value can be a whole file; the look-inside below reads the visible part.
+        let value = ["AXTextArea", "AXWebArea"].contains(a.role) ? nil : valueString(element).map(removeJunk)
+        var cursor = CursorElement(role: a.role, label: a.title ?? a.description ?? "",
+                                   value: String((value ?? "").prefix(cursorCap)), frame: a.frame)
+        if cursor.label.isEmpty && cursor.value.isEmpty {
+            // No text of its own (a list cell, a block): the text inside it, nearest the mouse first.
+            #if DEBUG
+            let start = Date()
+            defer { shellLog("cursor look-inside: \(Int(Date().timeIntervalSince(start) * 1_000_000)) µs, \(cursor.value.count) chars") }
+            #endif
+            let inner = walk(element, a, clip: a.frame, near: point,
+                             maxElements: cursorElements, maxDepth: cursorDepth, budget: cursorBudget)
+            cursor.value = ContextPacket.trim(inner, near: point, cap: cursorCap)
+        }
+        return (cursor, point)
     }
 
     /// Focused window of the app (else main, else frontmost): title, frame, and its visible text in reading order.
     static func readWindow(pid: pid_t) -> (title: String, frame: CGRect?, texts: [Text]) {
-        let app = AXUIElementCreateApplication(pid)
-        guard let window = element(app, kAXFocusedWindowAttribute) ?? element(app, kAXMainWindowAttribute)
-                ?? (attribute(app, kAXWindowsAttribute) as? [AXUIElement])?.first else {
-            return ("", nil, [])
-        }
+        guard let window = window(pid) else { return ("", nil, []) }
         let root = attributes(window)
-        let deadline = Date() + timeBudget
+        let texts = walk(window, root, clip: root.frame, maxElements: maxElements, maxDepth: maxDepth, budget: timeBudget)
+        return (root.title ?? "", root.frame, texts.filter { $0.string != root.title })
+    }
+
+    /// Visible text under `root`, skipping secure fields and anything outside `clip` (scrolled out of sight).
+    /// Reading order, or nearest `point` first when given, so a big container gives the text by the mouse.
+    /// shortcut: only the first children within the element limit are ranked; a long list under the mouse
+    /// may miss its far rows. Use AXVisibleChildren if that bites.
+    private static func walk(_ root: AXUIElement, _ rootAttributes: Attributes, clip: CGRect?, near point: CGPoint? = nil,
+                             maxElements: Int, maxDepth: Int, budget: TimeInterval) -> [Text] {
+        let deadline = Date() + budget
         var texts: [Text] = []
-        var seen: Set<String> = [root.title ?? ""]  // repeats add nothing: links and their label, list rows
+        var seen: Set<String> = []  // repeats add nothing: links and their label, list rows
         var count = 0
 
         func visit(_ el: AXUIElement, _ a: Attributes, depth: Int) {
             count += 1
             if a.isSecure { return }  // never read secure text fields
-            if let f = a.frame, let w = root.frame, !f.isEmpty, !f.intersects(w) { return }  // scrolled out of sight
-            if let t = text(el, a)?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty, seen.insert(t).inserted {
+            if let f = a.frame, let clip, !f.isEmpty, !f.intersects(clip) { return }
+            if let t = text(el, a).map(removeJunk)?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty,
+               seen.insert(t).inserted {
                 texts.append(Text(string: t, frame: a.frame))
             }
-            for child in a.children {
-                guard depth < maxDepth, count < maxElements, Date() < deadline else { return }
-                visit(child, attributes(child), depth: depth + 1)
+            guard depth < maxDepth else { return }
+            var children: [(AXUIElement, Attributes)] = []
+            for child in a.children.prefix(max(maxElements - count, 0)) {
+                guard Date() < deadline else { break }
+                children.append((child, attributes(child)))
+            }
+            if let point { children.sort { distance($0.1.frame, point) < distance($1.1.frame, point) } }
+            for (child, childAttributes) in children {
+                guard count < maxElements, Date() < deadline else { return }
+                visit(child, childAttributes, depth: depth + 1)
             }
         }
-        visit(window, root, depth: 0)
-        return (root.title ?? "", root.frame, texts)
+        visit(root, rootAttributes, depth: 0)
+        return texts
     }
 
-    private static let webContentAsked = OSAllocatedUnfairLock(initialState: Set<pid_t>())
+    /// Distance from `point` to a frame, 0 inside it. No frame counts as farthest.
+    static func distance(_ frame: CGRect?, _ point: CGPoint) -> CGFloat {
+        guard let f = frame else { return .infinity }
+        return hypot(max(f.minX - point.x, 0, point.x - f.maxX), max(f.minY - point.y, 0, point.y - f.maxY))
+    }
 
-    /// Chromium and Electron apps build their web content tree only after an assistive client asks.
+    // A data URI, or a whitespace-free run of base64 characters (image data leaked into a label).
+    private static let junkCandidate = try! NSRegularExpression(
+        pattern: #"(?<!\S)(?:data:\w+/[\w.+-]+;base64,\S*|[A-Za-z0-9+/]{30,}={0,2})(?!\S)"#)
+
+    /// Drops image data and data URIs from a text. URLs, paths, emails and long words stay: base64 has a part of
+    /// 30 or more characters between slashes mixing upper case, lower case and digits; they have dots, @, or short parts.
+    static func removeJunk(_ text: String) -> String {
+        let out = NSMutableString(string: text)
+        for match in junkCandidate.matches(in: text, range: NSRange(location: 0, length: out.length)).reversed() {
+            let run = out.substring(with: match.range)
+            let base64 = run.split(separator: "/").contains { $0.count >= 30 }
+                && run.contains(where: \.isNumber) && run.contains(where: \.isUppercase) && run.contains(where: \.isLowercase)
+            if run.hasPrefix("data:") || base64 { out.replaceCharacters(in: match.range, with: "") }
+        }
+        return out as String
+    }
+
+    private static let fullTreeAsked = OSAllocatedUnfairLock(initialState: Set<pid_t>())
+
+    /// Some apps build their full tree only after an assistive client asks: Chromium and Electron their web content
+    /// (AXManualAccessibility), native apps such as Keynote their canvas (AXEnhancedUserInterface, which VoiceOver sets).
     /// Returns true the first time per app process, when the tree may still be filling.
-    static func askForWebContent(pid: pid_t) -> Bool {
+    static func askForFullTree(pid: pid_t) -> Bool {
         let app = AXUIElementCreateApplication(pid)
-        // Native apps answer "unsupported". AXEnhancedUserInterface is not settable on macOS 26 (not implemented).
-        let asked = AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue) == .success
-        return asked && webContentAsked.withLock { $0.insert(pid).inserted }
+        let enhanced = "AXEnhancedUserInterface"
+        // Native apps answer "unsupported" to the first. The second is set only where the app reports it off.
+        var asked = AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue) == .success
+        if !asked, attribute(app, enhanced) as? Bool == false {
+            // Keynote answers "not implemented" on macOS 26 yet takes the value: read it back.
+            AXUIElementSetAttributeValue(app, enhanced as CFString, kCFBooleanTrue)
+            asked = attribute(app, enhanced) as? Bool == true
+        }
+        return asked && fullTreeAsked.withLock { $0.insert(pid).inserted }
     }
+
+    #if DEBUG
+    /// `--debug-point x,y` (Accessibility coordinates): the self-check reads that point instead of the mouse's,
+    /// because the checker cannot move the mouse. The real mouse is never moved.
+    private static let debugPoint: CGPoint? = {
+        let args = CommandLine.arguments
+        guard let i = args.firstIndex(of: "--debug-point"), i + 1 < args.count else { return nil }
+        let xy = args[i + 1].split(separator: ",").compactMap { Double($0) }
+        return xy.count == 2 ? CGPoint(x: xy[0], y: xy[1]) : nil
+    }()
+
+    /// The deepest element of the app's window containing `point`, found by frames: it works on windows behind
+    /// others or on another Space, where the system hit test sees a different app.
+    private static func debugHit(pid: pid_t, at point: CGPoint) -> AXUIElement? {
+        func deepest(_ el: AXUIElement) -> (element: AXUIElement, depth: Int) {
+            attributes(el).children.filter { attributes($0).frame?.contains(point) == true }
+                .map { let d = deepest($0); return (d.element, d.depth + 1) }.max { $0.depth < $1.depth } ?? (el, 0)
+        }
+        return window(pid).map { deepest($0).element }
+    }
+    #endif
 
     // MARK: - Accessibility helpers
 
@@ -112,6 +196,12 @@ enum WindowReader {
 
     private static func axValue(_ object: AnyObject, _ type: AXValueType, _ out: UnsafeMutableRawPointer) -> Bool {
         CFGetTypeID(object) == AXValueGetTypeID() && AXValueGetValue(object as! AXValue, type, out)
+    }
+
+    private static func window(_ pid: pid_t) -> AXUIElement? {
+        let app = AXUIElementCreateApplication(pid)
+        return element(app, kAXFocusedWindowAttribute) ?? element(app, kAXMainWindowAttribute)
+            ?? (attribute(app, kAXWindowsAttribute) as? [AXUIElement])?.first
     }
 
     private static func attribute(_ el: AXUIElement, _ name: String) -> CFTypeRef? {

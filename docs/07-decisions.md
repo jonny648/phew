@@ -31,6 +31,7 @@
 
 | # | Decision | Needed by |
 |---|---|---|
+| 2 | Keep the "full reading" switch Phew turns on in native apps (needed for Keynote slides)? It can make window moves lag in that app until it quits | End of P2 |
 | 3 | Which business target to explore first, if any | After the MVP |
 | 4 | Order of the later phases | Retro |
 

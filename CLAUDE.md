@@ -18,6 +18,7 @@ Phew is a macOS companion for university students. When called, he explains what
 - No main window and no Dock icon. Menu bar, input panel, pointer overlay, text card.
 - He never speaks aloud. Voice is input only.
 - He never appears unasked.
+- He reads the screen only when called. During a guide he may look again after the user acts. Never otherwise.
 - He never activates the app or takes focus from the front app. Panels are non-activating.
 - No per-answer display of captured context.
 - What Phew captures (screen text and screenshots) lives in memory only. It is dropped when the answer is done or the panel closes, and is never written to disk or to a log, in any build. The one exception is the debug dump, which is off unless Phew is launched with its test flag, and whose files are deleted after the test.
@@ -39,6 +40,7 @@ Phew is a macOS companion for university students. When called, he explains what
 | P2 | `docs/04-architecture.md` 4.3 and 4.6 |
 | P3 | `docs/04-architecture.md` 4.4 |
 | P4 | `docs/03-experience.md` 3.1 and 3.2 |
+| PR | `docs/07-decisions.md` 7.5, then every file in `docs/`. Research and review with the user. No code |
 | P5 | `docs/05-map.md` |
 | PT | The task's own "done when". Manual checks only the user can run |
 | P6 | `docs/03-experience.md` 3.3, `docs/06-sprint.md` 6.3 |

@@ -17,6 +17,7 @@ Not in the sprint: notch and character, backend, dashboard, background agents, l
 | P2 Senses | 14 to 15 Nov | Window text, positions, screenshot, secrets filter | senses |
 | P3 Brain | 16 to 17 Nov | Claude API, Conductor, Observer, Guide, text card | brain |
 | P4 Pointer | 18 to 19 Nov | Phew points and guides step by step | shell |
+| PR Research and review | 13 to 14 Nov | Your review of 12 Nov answered: product restated, MVP re-scoped. No code. May change every phase below | lead |
 | P5 Map | 20 to 22 Nov | Memory of courses and topics, read and write | map |
 | PT Manual testing | Before the MVP test | Checks only you can run: InDesign, Acrobat, and others that come up | checker |
 | P6 Voice and test | 23 to 24 Nov | Hold key and speak. MVP test on real coursework | senses, checker |

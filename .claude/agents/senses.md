@@ -13,7 +13,7 @@ Rules that matter most for you:
 - Read only when called. Nothing runs in the background.
 - Never read secure text fields.
 - The secrets filter runs before the packet leaves Senses, and it has unit tests.
-- Accessibility first. Screenshot when the app exposes too little.
+- Accessibility text and one picture together on every call: the window under the mouse, or the whole display when the mouse is outside the front window.
 - Speech to text runs on the device.
 - Keep the packet small. Trim text far from the cursor.
 

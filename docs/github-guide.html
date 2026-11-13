@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GitHub guide</title>
+<style>
+:root{--paper:#fff;--ink:#15171c;--muted:#5a606c;--rule:#d8dbe1;--tint:#f3f5f9;box-sizing:border-box;
+padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--paper:#0f1115;--ink:#e7e9ee;--muted:#9aa1ae;--rule:#2a2e37;--tint:#171a20}}
+:root[data-theme="dark"]{color-scheme:dark;--paper:#0f1115;--ink:#e7e9ee;--muted:#9aa1ae;--rule:#2a2e37;--tint:#171a20}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;font-size:14px;line-height:1.6}
+main{max-width:84ch;margin:0 auto;padding:2.5rem 1.25rem 4rem}
+h1{font-size:1.5rem;margin:0 0 .3rem}
+h2{font-size:1.05rem;margin:0 0 .6rem}
+h3{font-size:.95rem;margin:1.2rem 0 .3rem}
+p{margin:.5rem 0}
+.meta,.muted{color:var(--muted)}
+section{border-top:1px solid var(--rule);margin-top:2rem;padding-top:.9rem}
+nav{display:flex;flex-wrap:wrap;gap:.2rem 1.2rem;margin-top:1rem}
+a{color:inherit}
+nav a{color:var(--muted);text-decoration:none} nav a:hover{color:var(--ink)}
+ul,ol{margin:.4rem 0;padding-left:1.4rem} li{margin:.25rem 0}
+code{background:var(--tint);padding:0 .3em;border-radius:3px}
+pre{background:var(--tint);padding:.8rem 1rem;overflow-x:auto;margin:.6rem 0;line-height:1.45}
+.wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;margin:.6rem 0;min-width:34rem}
+th,td{text-align:left;vertical-align:top;padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--rule)}
+th{color:var(--muted);font-weight:400}
+.flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:.4rem;margin:.8rem 0}
+.flow div{border:1px solid var(--rule);padding:.5rem .7rem;flex:1 1 9rem;background:var(--tint)}
+.flow b{display:block}
+.flow span{color:var(--muted);font-size:.92em}
+.box{border:1px solid var(--rule);padding:.6rem .9rem;margin:.8rem 0;background:var(--tint)}
+.yes::before{content:"yes  ";color:var(--muted)} .no::before{content:"no   ";color:var(--muted)} .part::before{content:"part ";color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+<h1>GitHub, and how software is packaged and shipped</h1>
+<p class="meta">A plain guide for Phew. Written 13 November 2026. Prices and limits change: the sources are at the end.</p>
+<nav>
+<a href="#s1">1 Git and GitHub</a><a href="#s2">2 Why</a><a href="#s3">3 Daily use</a><a href="#s4">4 Getting an app there</a>
+<a href="#s5">5 What a repository contains</a><a href="#s6">6 A Mac app's folder</a><a href="#s7">7 Professional checklist</a>
+<a href="#s8">8 Reaching users</a><a href="#s9">9 Versions</a><a href="#s10">10 Private and public</a><a href="#s11">11 Glossary</a>
+</nav>
+
+<section id="s1">
+<h2>1. Git and GitHub are two different things</h2>
+<p><b>Git</b> is a program on your Mac. It records the history of a folder. Each time you say "save this state", it stores a snapshot called a <b>commit</b>, with a message, a date and an author. You can go back to any snapshot, compare two of them, or try an idea on the side without touching the main line.</p>
+<p><b>GitHub</b> is a website that hosts a copy of that history online, and adds tools around it: a page to read the code, discussions, task lists, automatic checks, and a place to publish finished versions for download.</p>
+<p>Phew already uses Git: the project folder holds about 20 commits, one per finished piece of work. It does not use GitHub yet. Today the history exists only on your Mac.</p>
+<div class="box">Git is the notebook. GitHub is the shared shelf where a copy of the notebook is kept, with a reading room around it.</div>
+<p class="muted">GitHub is the best known host. GitLab and Bitbucket do the same job. All of them speak Git.</p>
+</section>
+
+<section id="s2">
+<h2>2. Why people use it</h2>
+<ul>
+<li><b>History.</b> Every change is recorded with its reason. When something breaks, you can see what changed and go back.</li>
+<li><b>Backup.</b> A second copy outside your Mac. If the disk dies, nothing is lost.</li>
+<li><b>Working together.</b> Several people change the same project without overwriting each other. Each change is proposed, read, then merged.</li>
+<li><b>Trust.</b> Users and employers can read the code, the history and how problems were handled. For open source it is the main proof that software does what it says.</li>
+<li><b>Automation.</b> At every change GitHub can build the app and run the tests on its own machines, and tell you if something broke.</li>
+<li><b>Distribution.</b> A finished version can be published on the project's page as a download.</li>
+</ul>
+</section>
+
+<section id="s3">
+<h2>3. How it is used day to day</h2>
+<div class="flow">
+<div><b>1. Change</b><span>Edit files on your Mac.</span></div>
+<div><b>2. Commit</b><span>Save a snapshot with a message. Local only.</span></div>
+<div><b>3. Push</b><span>Send the new commits to GitHub.</span></div>
+<div><b>4. Check</b><span>GitHub builds and tests automatically.</span></div>
+<div><b>5. Release</b><span>Mark a version and attach the app.</span></div>
+</div>
+<div class="wrap"><table>
+<tr><th>Word</th><th>What it is</th><th>When it is used</th></tr>
+<tr><td>Repository</td><td>One project: its files and its whole history</td><td>One per app. "Repo" for short</td></tr>
+<tr><td>Commit</td><td>One snapshot with a message</td><td>After each finished piece of work</td></tr>
+<tr><td>Push, pull</td><td>Send your commits to GitHub; fetch other people's</td><td>Push after committing. Pull before starting</td></tr>
+<tr><td>Clone</td><td>Download a repository with its history</td><td>Once, to start working on another Mac</td></tr>
+<tr><td>Branch</td><td>A side line of history for one idea or fix</td><td>So the main line always works</td></tr>
+<tr><td>Pull request</td><td>A proposal to merge a branch into the main line, with a page to discuss it</td><td>In teams: someone else reads it first</td></tr>
+<tr><td>Issue</td><td>A numbered note: a bug, an idea, a task</td><td>The public to-do list of a project</td></tr>
+<tr><td>Actions</td><td>Automatic jobs GitHub runs for you</td><td>Build and test at every push</td></tr>
+<tr><td>Tag, release</td><td>A named point in history ("v0.1.0"), and a page with notes and downloads for it</td><td>When a version is ready for users</td></tr>
+<tr><td>Fork</td><td>Your own copy of someone else's repository</td><td>To propose a change to a project you do not own</td></tr>
+</table></div>
+<p>A person working alone, as on Phew, mostly needs four of these: commit, push, tag, release. Branches and pull requests matter once a second person joins.</p>
+</section>
+
+<section id="s4">
+<h2>4. How an app gets onto GitHub</h2>
+<ol>
+<li><b>Clean first.</b> Check that no password, API key or personal file is in the folder or in any past commit. History is pushed too: a key deleted last week is still in last week's commit.</li>
+<li><b>Tell Git what to ignore.</b> A file named <code>.gitignore</code> lists what never goes in: build output, personal editor settings, system files.</li>
+<li><b>Create the repository on GitHub.</b> Choose a name, and private or public.</li>
+<li><b>Connect and push.</b> The local folder is told where its online copy lives, then every commit is sent.</li>
+<li><b>Switch on the automatic checks.</b> A small file in <code>.github/workflows/</code> tells GitHub to build and test at each push.</li>
+<li><b>From then on:</b> commit, push. When a version is ready: tag it and publish a release.</li>
+</ol>
+<pre># what steps 3 and 4 look like in the terminal
+gh repo create phew --private --source=. --push</pre>
+<p class="muted">For Phew this is roadmap phase PG, at the end of the MVP. Claude Code runs the commands; you approve the push.</p>
+</section>
+
+<section id="s5">
+<h2>5. What a repository contains</h2>
+<div class="wrap"><table>
+<tr><th>File or folder</th><th>Purpose</th><th>Needed</th></tr>
+<tr><td><code>README.md</code></td><td>The front page. What the project is, a screenshot, how to install it, how to build it</td><td>Always</td></tr>
+<tr><td><code>LICENSE</code></td><td>What others may do with the code. Without one, nobody may legally reuse it, even if they can read it</td><td>Always when public</td></tr>
+<tr><td><code>.gitignore</code></td><td>What Git must not record</td><td>Always</td></tr>
+<tr><td>Source folder</td><td>The code itself</td><td>Always</td></tr>
+<tr><td>Tests folder</td><td>Code that checks the code</td><td>Expected</td></tr>
+<tr><td><code>.github/workflows/</code></td><td>The automatic build and test</td><td>Expected</td></tr>
+<tr><td><code>CHANGELOG.md</code></td><td>What changed in each version, for people</td><td>Expected once there are users</td></tr>
+<tr><td><code>docs/</code></td><td>Longer explanations: design, decisions, guides</td><td>When the README gets long</td></tr>
+<tr><td><code>CONTRIBUTING.md</code></td><td>How to propose a change</td><td>Public projects that accept help</td></tr>
+<tr><td><code>SECURITY.md</code></td><td>How to report a security problem privately</td><td>Public projects</td></tr>
+<tr><td><code>CODE_OF_CONDUCT.md</code></td><td>Rules of behaviour for the community</td><td>Public projects with a community</td></tr>
+</table></div>
+<h3>What never goes in</h3>
+<ul>
+<li><b>Secrets:</b> API keys, passwords, signing certificates. Phew keeps its key in the Keychain for this reason.</li>
+<li><b>Build output:</b> the compiled app and Xcode's working files. They are large and can be rebuilt from the source.</li>
+<li><b>Personal files:</b> editor settings, <code>.DS_Store</code>, anything with your data or a real user's data.</li>
+<li><b>Large binaries:</b> videos, datasets, installers. They belong in a release or elsewhere.</li>
+</ul>
+</section>
+
+<section id="s6">
+<h2>6. How a Mac app's folder is laid out</h2>
+<p>There are two different folders, and they are often confused.</p>
+<div class="wrap"><table>
+<tr><th></th><th>The project folder (source)</th><th>The build folder (output)</th></tr>
+<tr><td>What</td><td>What people wrote: code, tests, settings, documents</td><td>What the computer made from it: the compiled app</td></tr>
+<tr><td>Where, for Phew</td><td><code>Documents/…/Phew!</code></td><td><code>~/Library/Developer/Xcode/DerivedData/Phew-…</code>, about 680 MB</td></tr>
+<tr><td>On GitHub</td><td>Yes. This is the repository</td><td>Never. Deleted and rebuilt at will</td></tr>
+</table></div>
+<h3>Phew's project folder today</h3>
+<pre>Phew!/
+  README.md            front page (today a file index)
+  CLAUDE.md            rules for Claude Code
+  roadmap.html         the checklist
+  .gitignore           what Git ignores
+  .claude/agents/      the five roles
+  docs/                the plan, decisions, this guide
+  Phew.xcodeproj/      the Xcode project: targets, settings, signing
+  Phew/                the app's source
+    Shell/             what you see: menu bar, panel, card, pointer
+    Senses/            reading the screen
+    Brain/             the model calls and agents
+    Map/               memory (empty until P5)
+  PhewTests/           57 tests</pre>
+<h3>What the finished app is</h3>
+<p><code>Phew.app</code> looks like one file and is a folder (a "bundle"). Inside: the program itself, an <code>Info.plist</code> with its name, version and identifier, its icon and other resources, and a signature that proves who built it and that nothing was changed since.</p>
+<h3>Phew against the usual standard</h3>
+<ul style="list-style:none;padding-left:0">
+<li class="yes">Source in clear folders by job</li>
+<li class="yes">Tests that run with one command</li>
+<li class="yes">Builds from the terminal, so a machine can check it</li>
+<li class="yes">No secrets in files or history</li>
+<li class="yes"><code>.gitignore</code> present</li>
+<li class="part">README: exists, and does not yet say how to build and run</li>
+<li class="part">Version: 0.1 in the project, with no tag and no change log</li>
+<li class="no">Online copy</li>
+<li class="no">Automatic build and test</li>
+<li class="no">App icon</li>
+<li class="no">Licence (only needed when public)</li>
+</ul>
+</section>
+
+<section id="s7">
+<h2>7. What makes a project "professional"</h2>
+<p>There is no official rating. People judge a repository in the first minute by these signs:</p>
+<ol>
+<li>The README tells a stranger what it is, shows it, and gets them running in a few steps.</li>
+<li>A fresh download builds with one documented command, on a machine that is not yours.</li>
+<li>Tests exist and a green check shows they passed on the latest commit.</li>
+<li>Commits are small, with messages that say what changed and why.</li>
+<li>Versions are tagged, and a change log says what each one brought.</li>
+<li>There is a licence.</li>
+<li>No secrets, no personal data, no build output, no leftover files.</li>
+<li>The folders are named for what they hold, and nothing important hides in an odd place.</li>
+<li>Releases are signed, and installing does not trigger a security warning.</li>
+<li>Problems are tracked in the open and answered.</li>
+</ol>
+<p class="muted">Points 1 to 8 are roadmap phase PG. Point 9 needs the paid Apple programme and is item L8. Point 10 starts when there are users.</p>
+</section>
+
+<section id="s8">
+<h2>8. How software reaches users</h2>
+<p>The code on GitHub is for developers. Users need the built app. The usual routes for a Mac app:</p>
+<div class="wrap"><table>
+<tr><th>Route</th><th>How it works</th><th>For Phew</th></tr>
+<tr><td>GitHub Releases</td><td>The built app, zipped or as a disk image (<code>.dmg</code>), attached to a version page. Users download and drag it to Applications</td><td>The natural first route</td></tr>
+<tr><td>Own website</td><td>The same file behind a download button</td><td>Later, with the dashboard</td></tr>
+<tr><td>Homebrew</td><td>A catalogue used by technical users: <code>brew install --cask name</code> downloads the same file</td><td>Possible once releases exist</td></tr>
+<tr><td>Automatic updates</td><td>The app checks a small file online and updates itself. Sparkle is the common open source tool</td><td>Needed as soon as other people use it</td></tr>
+<tr><td>Mac App Store</td><td>Apple reviews, hosts and updates the app, and takes a share of sales</td><td>Not possible as built: the Store requires the App Sandbox, and Phew must read other apps' windows</td></tr>
+</table></div>
+<h3>Signing and notarization</h3>
+<p>macOS blocks apps from unknown sources. To open without a warning, an app distributed outside the Store must be:</p>
+<ol>
+<li><b>Signed</b> with a "Developer ID" certificate, which ties it to an identified developer.</li>
+<li><b>Notarized:</b> sent to Apple, whose service scans it automatically and returns a ticket. The ticket is attached to the app.</li>
+</ol>
+<p>Both need membership of the Apple Developer Program, a yearly fee (99 US dollars a year when last checked; confirm on Apple's page). Phew is signed today with your free personal team, which is enough for your own Mac. On anyone else's Mac it would show a warning. That is roadmap item L8.</p>
+</section>
+
+<section id="s9">
+<h2>9. Versions and change logs</h2>
+<p>The common scheme is three numbers, <code>MAJOR.MINOR.PATCH</code>:</p>
+<ul>
+<li><b>PATCH</b> (0.1.0 to 0.1.1): fixes only.</li>
+<li><b>MINOR</b> (0.1.1 to 0.2.0): new features, nothing breaks.</li>
+<li><b>MAJOR</b> (0.9 to 1.0, 1.4 to 2.0): a big change, or something stops working the old way.</li>
+</ul>
+<p>Anything starting with 0 says "still early, expect changes". Phew's MVP would be <code>0.1.0</code>, tagged in Git as <code>v0.1.0</code>.</p>
+<p>The <b>change log</b> is written for people, newest first: for each version, what was added, changed and fixed. Commit messages are for developers; the change log is for users.</p>
+</section>
+
+<section id="s10">
+<h2>10. Private, public, and your two-repository idea</h2>
+<div class="wrap"><table>
+<tr><th></th><th>Private</th><th>Public</th></tr>
+<tr><td>Who can see it</td><td>You, and people you invite</td><td>Everyone</td></tr>
+<tr><td>Good for</td><td>Backup, history, work in progress, business plans</td><td>Open source, trust, a portfolio, getting help</td></tr>
+<tr><td>Needs</td><td>Nothing more</td><td>A licence, a clean history, a README for strangers</td></tr>
+<tr><td>Automatic checks</td><td>A monthly free allowance, then paid. Mac machines cost about ten times Linux ones</td><td>Free on standard machines</td></tr>
+</table></div>
+<p>Your decision: <b>private now, pushed at the end of the MVP.</b> Later, a second, public repository with only what is needed to build the app.</p>
+<p>That split is a known pattern. How it would look:</p>
+<ul>
+<li><b>Private repository:</b> everything, as today. Plan, business targets, decisions, roadmap, and the code.</li>
+<li><b>Public repository:</b> <code>Phew/</code>, <code>PhewTests/</code>, <code>Phew.xcodeproj</code>, a README for strangers, a licence, the change log. No <code>docs/</code>, no roadmap, no role files.</li>
+<li><b>History:</b> the public one starts fresh, with one first commit, so the private history is not exposed.</li>
+<li><b>Cost:</b> two places to keep in step. A small script copies the code across at each release.</li>
+<li><b>Before going public:</b> the project settings contain your Apple team number and an app identifier with your name in it. Neither is a secret, and both are personal. Decide then whether to change them.</li>
+</ul>
+<p class="muted">Automatic checks while private: GitHub's free plan includes 12 US dollars of machine time a month, and a Mac machine costs about 6 cents a minute. A Phew build with tests takes a few minutes, so roughly 50 checked pushes a month fit before anything is charged.</p>
+</section>
+
+<section id="s11">
+<h2>11. Glossary</h2>
+<div class="wrap"><table>
+<tr><td>Bundle</td><td>A folder macOS shows as one file, such as <code>Phew.app</code></td></tr>
+<tr><td>CI</td><td>"Continuous integration": the automatic build and test at every push</td></tr>
+<tr><td>Clone</td><td>Download a repository with its history</td></tr>
+<tr><td>Commit</td><td>One saved snapshot with a message</td></tr>
+<tr><td>DerivedData</td><td>Xcode's build folder. Safe to delete</td></tr>
+<tr><td>Disk image, DMG</td><td>A file that opens like a small disk, used to hand out Mac apps</td></tr>
+<tr><td>Main</td><td>The main line of history</td></tr>
+<tr><td>Markdown</td><td>Plain text with light formatting. Files ending in <code>.md</code></td></tr>
+<tr><td>Notarization</td><td>Apple's automatic scan of an app distributed outside the Store</td></tr>
+<tr><td>Open source</td><td>Code published under a licence that lets others use and change it</td></tr>
+<tr><td>Remote</td><td>The online copy a local repository is connected to</td></tr>
+<tr><td>Signing</td><td>A seal that proves who built an app and that it was not altered</td></tr>
+<tr><td>Target</td><td>One thing an Xcode project builds. Phew has two: the app and its tests</td></tr>
+</table></div>
+</section>
+
+<section>
+<h2>Sources</h2>
+<ul>
+<li><a href="https://docs.github.com/en/billing/concepts/product-billing/github-actions">GitHub Docs: GitHub Actions billing</a></li>
+<li><a href="https://docs.github.com/en/billing/reference/actions-runner-pricing">GitHub Docs: Actions runner pricing</a></li>
+<li><a href="https://docs.github.com/en/billing/reference/product-usage-included">GitHub Docs: Product usage included with each plan</a></li>
+<li><a href="https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution">Apple: Notarizing macOS software before distribution</a></li>
+<li><a href="https://developer.apple.com/news/?id=04102019a">Apple: New notarization requirements</a></li>
+</ul>
+<p class="muted">Not confirmed from an official page: the current Apple Developer Program fee. The App Store's sandbox requirement and Sparkle are stated from general knowledge, not checked today.</p>
+</section>
+</main>
+</body>
+</html>

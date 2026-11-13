@@ -27,7 +27,7 @@ Phew is a macOS companion for university students. When called, he explains what
 - The API key lives only in the Keychain. Never in a file, a log or the repository.
 - Shell and Senses reach the Brain only through the `Brain` interface, so it can move to a backend later.
 - All model calls go through one provider interface. Read current model names from the Claude API documentation. Do not guess them.
-- Small model for Conductor, Observer, Librarian. Main model for Guide.
+- Small model for Conductor, Observer, Librarian. Main model for Guide and Follower.
 - Map writes use only the classes and links in `docs/05-map.md`.
 - Log cost and latency of every model call locally.
 - Nothing from the "Later" section of the roadmap is built during the MVP.
@@ -44,6 +44,7 @@ Phew is a macOS companion for university students. When called, he explains what
 | P5 | `docs/05-map.md` |
 | PT | The task's own "done when". Manual checks only the user can run |
 | P6 | `docs/03-experience.md` 3.3, `docs/06-sprint.md` 6.3 |
+| PG | `docs/github-guide.html` sections 5 to 7. Ask before any push |
 
 ## Subagents
 shell, senses, brain, map, checker. Defined in `.claude/agents/`. The main session is the lead: it plans, delegates and reports. Builders run on Opus, the checker on Sonnet.

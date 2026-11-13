@@ -22,3 +22,4 @@ Progress: `roadmap.html`.
 | `docs/07-decisions.md` | Decisions, parking list, log |
 | `docs/08-b2b-targets.md` | Who could pay |
 | `docs/09-claude-code.md` | How to start and run the build |
+| `docs/github-guide.html` | What GitHub is, how projects are structured and shipped |

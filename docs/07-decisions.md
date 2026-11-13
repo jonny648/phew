@@ -36,6 +36,8 @@
 | 12 Nov 2026 | Direction widens from a student helper to a general, professional tool, partly in the MVP. The new phase PR Research and review decides how. Product line and hard rules stay as written until PR.1 | You |
 | 12 Nov 2026 | Deadline stays 24 November. PR decides the scope, with that date as the aim | You |
 | 12 Nov 2026 | The Follower (the check that follows a guide) runs on the main model. The small model missed "two steps done at once" in the self-check. About 0.25 cents per look instead of 0.015 | Delegated to Claude |
+| 13 Nov 2026 | GitHub: one private repository, pushed at the end of the MVP (phase PG). A separate public repository with only the code may follow later, under L8 | You |
+| 13 Nov 2026 | The guide's speed when following is improved after the MVP | You |
 
 ## 7.2 Open
 
@@ -52,6 +54,9 @@
 - **Tool connections (MCP).** Phew reads a project through the tool's own connection, for Figma, Notion and others, not only through the screen. Decided in PR.4.
 - **Independent work.** Phew edits things locally and runs agents by himself (L3, L5). Decided in PR.5.
 - **Follow-up questions.** Today each question starts from zero. Input to PR.3.
+- **Following a guide is slow and costs more than estimated.** Measured on 29 real looks: 1 s wait, then 2.1 s on average and up to 6.2 s; 0.9 cents per look. Scrolling also triggers looks. Routes, after the MVP: check cheaply whether the screen changed before asking the model, send a smaller picture, retry the small model with a better prompt.
+- **The project has no copy off this Mac until phase PG.** Keep a Time Machine backup or a copy of the folder meanwhile.
+- **`TextCard.swift` does three jobs** (card, guide, following). Split it the next time it changes.
 - **The card can cover a guide's target.** Move it out of the way if it bothers you.
 - Open source as a route for the student version.
 - Other devices.
@@ -82,3 +87,4 @@ In your words, shortened:
 7. **From student to general.** Not small tasks on projects, but understanding what the user is doing, why, and how to do what they ask. A professional tool, partly reached in the MVP.
 
 Rules this touches, unchanged until PR.1: "Explain and guide is the only visible feature", "Nothing from the Later section of the roadmap is built during the MVP", and the product line "for university students".
+| 13 Nov 2026 | P4 | P4.7 built and hand-tested: the guide follows you, no buttons. Works, feels slow. P4 complete. Full review done; $0.52 spent on the model so far. Phase PG GitHub and project structure added at the end of the MVP. GitHub guide written | PR Research and review |

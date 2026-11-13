@@ -21,6 +21,7 @@ Not in the sprint: notch and character, backend, dashboard, background agents, l
 | P5 Map | 20 to 22 Nov | Memory of courses and topics, read and write | map |
 | PT Manual testing | Before the MVP test | Checks only you can run: InDesign, Acrobat, and others that come up | checker |
 | P6 Voice and test | 23 to 24 Nov | Hold key and speak. MVP test on real coursework | senses, checker |
+| PG GitHub and project structure | 24 Nov, after the MVP test | Folder brought to the usual standard, private repository pushed, version 0.1.0 tagged | lead, checker |
 
 Tasks and their "done when" are in `roadmap.html`.
 

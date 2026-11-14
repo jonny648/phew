@@ -2,3 +2,6 @@
 xcuserdata/
 build/
 DerivedData/
+*.profraw
+*.profdata
+.claude/worktrees/

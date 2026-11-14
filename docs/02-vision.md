@@ -6,7 +6,7 @@ AI help that needs no managing.
 
 ## 2.2 Mission
 
-Help students understand and move forward on what is in front of them, with no chat, no re-explaining and no app to keep open.
+Help people understand and move forward on what is in front of them, with no chat, no re-explaining and no app to keep open.
 
 ## 2.3 Who Phew is
 
@@ -25,7 +25,7 @@ Help students understand and move forward on what is in front of them, with no c
 | Familiar | Lives where Mac users already look: notch, menu bar, cursor. System shortcuts and gestures |
 | Transparent | Everything he knows is visible and editable in the Map on the dashboard. No disclosures during use |
 | Effortless | No prompts to write, no project forms, no setup beyond permissions |
-| Consumer value-dense | Every feature removes a step the student already takes |
+| Consumer value-dense | Every feature removes a step you already take |
 | Flow-first | He never takes keyboard focus. Results arrive at the cursor or wait in the notch |
 | Frontier, where needed | Small models and local rules first. Frontier models only for explaining, guiding and acting |
 | Non-intrusive | Three parts, below |
@@ -38,16 +38,16 @@ Help students understand and move forward on what is in front of them, with no c
 
 ## 2.6 Feature order
 
-Explaining and guiding is the one visible feature and the output. Everything else serves it.
+Two visible features. Everything else serves them.
 
 1. **Explain and guide.** Visible.
-2. Context understanding. Underneath.
-3. Memory and the Map. Underneath.
-4. Agent task handoff. Underneath, shown as a pleasant detail.
-5. Lecture listening, actions in other apps, background work. Extensions of 1.
+2. **A task he researches alone.** Visible: you give it, a mark shows he is working, the result waits for you.
+3. Context understanding. Underneath.
+4. Memory and the Map. Underneath. This is what sets him apart.
+5. Lecture listening, actions in other apps, connections to other tools. Later.
 
 ## 2.7 What Phew is not
 
 - Not a chat app.
 - Not a talking assistant.
-- Not a tool the student has to manage.
+- Not a tool you have to manage.

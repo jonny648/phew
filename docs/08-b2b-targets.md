@@ -2,6 +2,8 @@
 
 Secondary research, 11 November 2026. A first pass, not a decision.
 
+Written when Phew was a student-first product. Since 13 November 2026 Phew is for anyone who works on a Mac. This file has not been revised yet; read "student" here as the first user, not the only one.
+
 ## 8.1 The point
 
 Students use Phew and cannot pay. The pattern that works is an organisation that buys and an individual who uses. Explain and guide, in any app, with memory of what the person is learning, is the same product in each case below. Only the content of the Map changes.

@@ -22,11 +22,11 @@ Roles are Claude Code subagents: Markdown files in `.claude/agents/`. The main s
 | Role | Owns | Phases |
 |---|---|---|
 | lead | The main session. Plans, delegates, talks to you | All |
-| shell | Menu bar, input panel, pointer overlay, text card | P1, P4 |
-| senses | Accessibility reader, screen capture, speech, secrets filter | P2, P6 |
-| brain | Claude API client, agents, prompts | P3 |
-| map | SQLite, Librarian, course detection | P5 |
-| checker | Builds, runs, verifies each task, ticks `roadmap.html` | End of every phase |
+| shell | Menu bar, input panel, pointer overlay, text card, the card that asks before a forget, the screens for imported memory and for tasks | P1, P4, P5, PB, PS, PA |
+| senses | Accessibility reader, screen capture, screen watch during a guide, speech, secrets filter | P2, P5, PS, P6 |
+| brain | Claude API client, agents, prompts | P3, P5, PS, PA |
+| map | SQLite, Librarian, recall, project detection, imported memory, export | P5, PB |
+| checker | Builds, runs, verifies each task, ticks `roadmap.html` | End of every phase. Also PT, PM, PG |
 
 Builders run on Opus, the checker on Sonnet. This is set by the `model` line in each role file.
 
@@ -66,17 +66,9 @@ Tick only what passes in roadmap.html, add a line to the log in docs/07-decision
 
 Open `roadmap.html` in the browser and refresh to see progress.
 
-## 9.5 Two terminals in parallel, optional
+## 9.5 One phase at a time
 
-P1 with P2, and P4 with P5, do not touch the same files. To run two at once, give the second its own working copy:
-
-```
-git worktree add ../Phew-senses -b senses
-cd ../Phew-senses
-claude
-```
-
-When both are verified, ask the lead in the main folder to merge the branch. If this sounds like more trouble than it saves, run the phases one after the other.
+Run the phases one after the other, in the order shown in `roadmap.html`. The phases that are left share files: the Map, the Brain and the Shell are each changed by more than one phase, so two at once would clash.
 
 ## 9.6 The API key
 
@@ -87,6 +79,6 @@ In P3 Claude Code will ask for a Claude API key. Create it in the Claude Console
 - One phase per session. Start a fresh session for the next phase.
 - If Claude Code proposes something outside the phase, say "parking list".
 - When something breaks, describe what you saw. Do not suggest the fix.
-- From P3, use Phew for your own coursework every day.
+- From P3, use Phew for your own work every day.
 
 Documentation: https://code.claude.com/docs/en/sub-agents

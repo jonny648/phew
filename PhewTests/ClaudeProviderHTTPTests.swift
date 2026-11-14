@@ -119,8 +119,10 @@ final class ClaudeProviderHTTPTests: XCTestCase {
         XCTAssertEqual(tools[0]["strict"] as? Bool, true)
         XCTAssertNotNil(tools[0]["input_schema"] as? [String: Any])
         let choice = try XCTUnwrap(sent["tool_choice"] as? [String: Any])
-        XCTAssertEqual(choice["type"] as? String, "none")
-        XCTAssertEqual(choice["disable_parallel_tool_use"] as? Bool, true)
+        XCTAssertEqual(choice as NSDictionary, ["type": "none"], "none takes no other field, or the API answers 400")
+        request.toolChoice = .auto
+        let auto = try XCTUnwrap(try body(request)["tool_choice"] as? [String: Any])
+        XCTAssertEqual(auto as NSDictionary, ["type": "auto", "disable_parallel_tool_use": true])
         XCTAssertNotNil((sent["output_config"] as? [String: Any])?["format"])  // structured output with tools (docs)
         XCTAssertEqual(sent["fallbacks"] as? String, "default")
     }

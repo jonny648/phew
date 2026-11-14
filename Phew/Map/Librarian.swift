@@ -76,8 +76,16 @@ enum Librarian {
         - ask_back: remember route only. When you are not sure which stored fact the user means, one short \
         question back, and forget []. Else "".
         - card: remember route only. One short line telling the user what is stored or replaced. Else "".
+        - window_project: remember route only. When the user says the window or file they are on belongs to a \
+        Project ("this is the Acme project", "questo è il progetto Acme"), that Project's name as they wrote it. \
+        Else "".
         On the remember route there is no answer: store what the user tells or corrects. When nothing is worth \
         storing, return empty lists.
+        A stored fact the question or the answer names (a person, a file, a task) goes in things again with status \
+        "same" and its fact number, even when nothing about it changed: Phew records what each question was about.
+        Sensitive facts (a balance, a payment, someone's health, a private message) are stored like any other, as a \
+        thing or a Note marked sensitive: Phew puts them under a second lock. Leave out only a secret itself, never \
+        the facts around it. "\(secretMarker)" marks a secret Phew already took out.
         """
 
     /// The fixed form (5.9): every field always present, a value not known is "" (structured outputs).
@@ -100,7 +108,7 @@ enum Librarian {
         let link = object([("from", text), ("link", choice(links)), ("to", text)] + stamp)
         return object([("things", #"{"type":"array","items":"# + thing + "}"), ("notes", #"{"type":"array","items":"# + note + "}"),
                        ("links", #"{"type":"array","items":"# + link + "}"), ("summary", text), ("project", text),
-                       ("forget", texts), ("ask_back", text), ("card", text)])
+                       ("forget", texts), ("ask_back", text), ("card", text), ("window_project", text)])
     }()
 
     static func request(_ brief: LibrarianBrief) -> ModelRequest {
@@ -131,7 +139,7 @@ enum Librarian {
         lines += facts
         lines.append("Kinds in use: " + (kindsInUse.isEmpty ? "none" : kindsInUse.joined(separator: "; ")))
         lines.append("Starting kinds: " + startingKinds.map { "\($0.0): \($0.1)" }.joined(separator: "; "))
-        return SecretsFilter.clean(lines.joined(separator: "\n"))
+        return scrub(lines.joined(separator: "\n"))
     }
 
     static let startingKinds = [
@@ -142,14 +150,16 @@ enum Librarian {
         ("Place", "room, office, city, venue"), ("Note", "decision, preference, instruction, identity, fix, reference"),
     ]
 
-    /// After the secrets filter, what still reads as a password or a removed key or card is dropped whole.
+    static let secretMarker = SecretsFilter.secretMarker
+
+    /// What the secrets filter changes, or a marker it already left, reads as a secret and is dropped whole.
     static func looksSecret(_ text: String) -> Bool {
-        text.contains(SecretsFilter.keyMarker) || text.contains(SecretsFilter.cardMarker)
-            || secretWords.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
+        let clean = SecretsFilter.clean(text)
+        return clean != text || [SecretsFilter.keyMarker, SecretsFilter.cardMarker, secretMarker].contains { clean.contains($0) }
     }
 
-    private static let secretWords = try! NSRegularExpression(pattern:
-        #"(?i)\b(?:password|passwort|passcode|passphrase|pwd|pin|otp|parola d'ordine|parola chiave|codice pin|chiave api|api key|secret key|access token|token)\b[^.\n]{0,30}?(?:\bis\b|\bwas\b|\bè\b|:|=)\s*\S+"#)
+    /// The secrets filter, password words included, so the Librarian never sees a secret (5.9).
+    static func scrub(_ text: String) -> String { SecretsFilter.clean(text) }
 }
 
 /// What one Librarian call is built from, and what its reply's fact numbers mean. Made by
@@ -162,6 +172,9 @@ struct LibrarianBrief: Sendable {
     var project: Int64?
     var route: Route
     var appName: String
+    /// The other two labels, for "this is the X project" (5.11). Filtered.
+    var windowTitle = ""
+    var documentPath: String?
     var now: Date
 }
 
@@ -197,8 +210,10 @@ struct LibrarianReply: Decodable, Sendable, Equatable {
     var summary, project: String
     var forget: [String]
     var askBack, card: String
+    /// Remember route: the Project the user says this window or file belongs to. Else "".
+    var windowProject: String
 
     enum CodingKeys: String, CodingKey {
-        case things, notes, links, summary, project, forget, askBack = "ask_back", card
+        case things, notes, links, summary, project, forget, askBack = "ask_back", card, windowProject = "window_project"
     }
 }

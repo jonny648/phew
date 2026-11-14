@@ -268,8 +268,8 @@ extension MapStore {
         searchMap((try? JSONDecoder().decode(MapSearchArguments.self, from: input)) ?? MapSearchArguments(), now: now, forRunner: forRunner)
     }
 
-    /// At most 10 result lines. A named list in place of a query; else a text search, limited to one class or to
-    /// past questions (`History`). An unknown list or class name returns nothing. Sensitive facts are found from
+    /// At most 10 result lines. A named list in place of a query; else a text search of things and past questions,
+    /// limited to one class of things or to past questions only (`History`). An unknown list or class name returns nothing. Sensitive facts are found from
     /// their own index, as any other (5.12). For the Runner, web addresses are left out of every line.
     func searchMap(_ arguments: MapSearchArguments, now: Date = .now, forRunner: Bool = false) -> String {
         let context = LineContext(now: now, stale: Set(term("stale", now: now)), runner: forRunner)
@@ -288,22 +288,26 @@ extension MapStore {
             case "about_me": lines = aboutMe(context).filter { $0.hasPrefix("- ") }.map { String($0.dropFirst(2)) }
             default: return ""
             }
-        } else if className == "history" {
-            let events = query.isEmpty
-                ? ((try? db.query("""
-                    SELECT * FROM all_events WHERE deleted = '' AND summary != '' AND (julianday(?1) IS NULL OR julianday(time) >= julianday(?1))
-                    ORDER BY time DESC, id DESC LIMIT 10
-                    """, [SQLValue(since)])) ?? []).compactMap(Self.event)
-                : searchEvents([query], since: since, limit: 10)
-            lines = events.map { line($0, context) }
         } else {
+            let history = className == "history"
             var classes: [MapClass] = []
-            if !className.isEmpty {
+            if !className.isEmpty, !history {
                 guard let mapClass = MapClass.allCases.first(where: { $0.rawValue.lowercased() == className }) else { return "" }
                 classes = [mapClass]
             }
+            // No class: things and past questions together (5.11: `History` searches only past questions). With no
+            // query, past questions only when `since` or `History` asks for them. A period asked with words that
+            // match no past question ("my work this month") gets the latest past questions of that period.
+            let matched = classes.isEmpty && !query.isEmpty ? searchEvents([query], since: since, limit: 10) : []
+            let latest = classes.isEmpty && matched.isEmpty && (since != nil || (history && query.isEmpty))
+            let events = !latest ? matched : ((try? db.query("""
+                SELECT * FROM all_events WHERE deleted = '' AND summary != '' AND (julianday(?1) IS NULL OR julianday(time) >= julianday(?1))
+                ORDER BY time DESC, id DESC LIMIT 10
+                """, [SQLValue(since)])) ?? []).compactMap(Self.event)
             let found: [MapNode]
-            if !query.isEmpty {
+            if history {
+                found = []
+            } else if !query.isEmpty {
                 found = search([query], classes: classes, since: since, past: arguments.past, limit: 10)
             } else if let mapClass = classes.first {
                 found = ((try? db.query("""
@@ -314,7 +318,8 @@ extension MapStore {
             } else {
                 found = []
             }
-            lines = found.map { line($0, context) }
+            // Up to 5 of the 10 places are kept for past questions, so many things cannot crowd them out.
+            lines = found.prefix(10 - min(events.count, 5)).map { line($0, context) } + events.map { line($0, context) }
         }
         return lines.prefix(10).map { "- " + $0 }.joined(separator: "\n")
     }

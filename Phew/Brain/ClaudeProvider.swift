@@ -83,7 +83,9 @@ struct ClaudeProvider: ModelProvider {
                 ["name": tool.name, "description": tool.description, "strict": true,
                  "input_schema": try JSONSerialization.jsonObject(with: Data(tool.schema.utf8))]
             }
-            body["tool_choice"] = ["type": request.toolChoice.rawValue, "disable_parallel_tool_use": true]
+            // `none` takes no other field: with `disable_parallel_tool_use` the API answers 400 (live, 14 Nov).
+            body["tool_choice"] = request.toolChoice == .none ? ["type": "none"]
+                : ["type": request.toolChoice.rawValue, "disable_parallel_tool_use": true]
         }
         var http = URLRequest(url: endpoint)
         http.httpMethod = "POST"

@@ -53,6 +53,56 @@ final class SecretsFilterTests: XCTestCase {
                        "keys [key removed] and [key removed]; card [card removed]; date 2026-11-12.")
     }
 
+    // Made-up passwords, written in ordinary text: the value goes, the word stays, the marker shows where.
+    func testPasswordsInPlainTextAreRemoved() {
+        let cases = [
+            ("the password Brisk-Otter-77", "Brisk-Otter-77"), ("password: x", "x"), ("pw x", "x"), ("pwd: tango", "tango"),
+            ("pin 4421", "4421"), ("PIN = 4421", "4421"), ("The wifi password is Tangerine", "Tangerine"),
+            ("passcode 99-ab", "99-ab"), ("passphrase - lunar", "lunar"), ("la password è gattonero", "gattonero"),
+            ("La password è Gatto77", "Gatto77"), ("codice PIN 1234", "1234"), ("la parola d'ordine è mela", "mela"),
+            ("Password \"Fiume_12\" saved", "Fiume_12"), ("PIN: [4421]", "4421"),
+        ]
+        for (text, value) in cases {
+            let out = SecretsFilter.clean(text)
+            XCTAssertFalse(out.contains(value), text)
+            XCTAssertTrue(out.contains(SecretsFilter.secretMarker), text)
+        }
+        XCTAssertEqual(SecretsFilter.clean("the password Brisk-Otter-77 works"), "the password [secret removed] works")
+    }
+
+    func testOrdinaryPasswordPhrasesAreKept() {
+        for text in ["Open the password manager", "Click the password field", "Forgot password?", "Reset the PIN code from settings",
+                     "Use a strong password.", "Pin this tab", "Pinterest board", "Change the password in Settings",
+                     "The file is password-protected", "Il codice è pronto", "Parola chiave: scarpe rosse", "input_tokens: 25"] {
+            XCTAssertEqual(SecretsFilter.clean(text), text)
+        }
+    }
+
+    func testAKeyOrCardAfterAPasswordWordIsOneMarker() {
+        XCTAssertEqual(SecretsFilter.clean("token: sk-\(filler)"), "token: \(SecretsFilter.keyMarker)")
+        XCTAssertEqual(SecretsFilter.clean("PIN 4111 1111 1111 1111"), "PIN \(SecretsFilter.cardMarker)")
+        let once = SecretsFilter.clean("password: hunter2")
+        XCTAssertEqual(SecretsFilter.clean(once), once, "filtering twice changes nothing")
+    }
+
+    func testOnePasswordInALongScreenText() {
+        let text = """
+        Studio Lumen — Onboarding checklist
+        Welcome to the team! Before Monday, please finish the steps below.
+        1. Install the design apps from the Self Service portal.
+        2. Open the password manager and accept the shared vault invite.
+        3. Join the #brand-refresh channel and say hello.
+        4. Wi-Fi in the office: network LumenGuest, the password is Copper-Kettle-58 (changes every month).
+        5. Book a desk for Thursday, room 204, from 09:30 to 17:00.
+        If you forgot your password, use "Forgot password?" on the login page or call +39 333 123 4567.
+        Reset the PIN code from settings if the badge reader asks for it.
+        """
+        let out = SecretsFilter.clean(text)
+        XCTAssertFalse(out.contains("Copper"))
+        XCTAssertFalse(out.contains("Kettle-58"))
+        XCTAssertEqual(out, text.replacingOccurrences(of: "password is Copper-Kettle-58", with: "password \(SecretsFilter.secretMarker)"))
+    }
+
     func testSecureFieldsAreRecognised() {
         XCTAssertTrue(SecretsFilter.isSecure(role: "AXTextField", subrole: "AXSecureTextField"))
         XCTAssertTrue(SecretsFilter.isSecure(role: "AXSecureTextField", subrole: ""))

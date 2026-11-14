@@ -334,6 +334,35 @@ final class MapRecallTests: XCTestCase {
 
     // MARK: - search_map
 
+    /// The live P5.4 failure: the model searched "this month" with a query and `since` but no class, and got the
+    /// Project only. With no class, past questions come back too, beside the things.
+    func testSearchMapWithNoClassFindsPastQuestions() async throws {
+        let store = try MapStore()
+        let project = try await add(store, .project, "Orchard Bakery website", kind: "client job", seen: -12)
+        for (n, summary) in ["Asked how to set up the colour palette for the Orchard Bakery website.",
+                             "Asked which fonts to use for the Orchard Bakery menu page.",
+                             "Asked how to export the Orchard Bakery hero banner."].enumerated() {
+            try await ask(store, summary, project: project, days: Double(n * 3 - 10))
+        }
+        for input in [#"{"query":"Orchard Bakery website","since":"\#(day(-13))","past":true}"#,
+                      #"{"query":"Orchard Bakery","since":"\#(day(-13))"}"#,
+                      #"{"query":"","since":"\#(day(-13))"}"#,
+                      #"{"query":"work done this month","since":"\#(day(-13))"}"#] {
+            let text = await store.searchMap(input: Data(input.utf8), now: now)
+            XCTAssertTrue(text.contains("palette") && text.contains("fonts"), "\(input): \(text)")
+        }
+        let things = await store.searchMap(MapSearchArguments(query: "Orchard Bakery"), now: now)
+        XCTAssertTrue(things.hasPrefix("- Orchard Bakery website (Project"), "things first: \(things)")
+        let onlyProjects = await store.searchMap(MapSearchArguments(query: "Orchard Bakery", mapClass: "Project"), now: now)
+        XCTAssertFalse(onlyProjects.contains("Past question"), "one class of things: no past questions")
+        let nothing = await store.searchMap(MapSearchArguments(), now: now)
+        XCTAssertEqual(nothing, "", "no query, no class, no since, no list")
+        let noMatch = await store.searchMap(MapSearchArguments(query: "work done this month"), now: now)
+        XCTAssertEqual(noMatch, "", "words that match nothing, with no period, find nothing")
+        let tooLate = await store.searchMap(MapSearchArguments(query: "work done", since: day(1)), now: now)
+        XCTAssertEqual(tooLate, "", "nothing in the period, nothing found")
+    }
+
     func testSearchMapListsClassesHistoryAndOddInput() async throws {
         let (store, _) = try await acmeMap()
         let due = await store.searchMap(input: Data(#"{"query":"","list":"DUE_SOON"}"#.utf8), now: now)

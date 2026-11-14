@@ -90,7 +90,8 @@ extension MapStore {
         let projectLine = project.map { p in "\(facts.first { $0.value == p.id }?.key ?? "") \(p.name)" }
         let text = Librarian.text(question: question, answer: answer, route: route, appName: appName, windowTitle: windowTitle,
                                   documentPath: path, project: projectLine, lastTurn: lastTurn, facts: lines, kindsInUse: kinds, now: now)
-        return LibrarianBrief(text: text, facts: facts, project: project?.id, route: route, appName: SecretsFilter.clean(appName), now: now)
+        return LibrarianBrief(text: text, facts: facts, project: project?.id, route: route, appName: SecretsFilter.clean(appName),
+                              windowTitle: SecretsFilter.clean(windowTitle), documentPath: path.map(SecretsFilter.clean), now: now)
     }
 
     /// Every check of 5.9 on one reply, then the writes in one transaction: things (with name matching and the
@@ -110,6 +111,13 @@ extension MapStore {
             if !ids.isEmpty, let forgotten = try forget(ids, now: brief.now) {
                 out.forgot = forgotten
                 out.card = forgotten.label
+                return out
+            }
+            // "This is the X project": code links this window's labels to X (5.11), so the next call names it.
+            let named = Self.cleaned(reply.windowProject, 100)
+            if !named.isEmpty, !Librarian.looksSecret(named),
+               let project = try setProject(named: named, windowTitle: brief.windowTitle, documentPath: brief.documentPath, now: brief.now) {
+                out.card = "This window is now in \(project.name)."
                 return out
             }
         }
@@ -331,6 +339,7 @@ extension MapStore {
         for ref in proposal.about {
             guard let node = try current(ref, s) else { out.dropped += 1; continue }
             if !about.contains(node.id) { about.append(node.id) }
+            if node.mapClass != .me { s.mention(node.id) }   // the past question mentions what its Notes are about
         }
         let status = proposal.status.lowercased()
         let named = status == "same" || status == "replaces" ? try current(proposal.fact, s).flatMap { $0.mapClass == .note ? $0 : nil } : nil
@@ -393,6 +402,7 @@ extension MapStore {
         guard let link = MapLink(rawValue: proposal.link.lowercased().trimmingCharacters(in: .whitespaces)), link != .understands,
               let from = try current(proposal.from, s), let to = try current(proposal.to, s), link.allows(from.mapClass, to.mapClass)
         else { out.dropped += 1; return }
+        for end in [from, to] where end.mapClass != .me { s.mention(end.id) }
         let origin = Self.origin(proposal.origin)
         let validFrom = s.trueFrom(proposal.date)
         let live = "valid_to IS NULL AND deleted = ''"

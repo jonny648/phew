@@ -26,9 +26,10 @@ enum Made {
     }
 
     static func reply(things: [[String: Any]] = [], notes: [[String: Any]] = [], links: [[String: Any]] = [], summary: String = "",
-                      project: String = "", forget: [String] = [], askBack: String = "", card: String = "") -> String {
+                      project: String = "", forget: [String] = [], askBack: String = "", card: String = "",
+                      windowProject: String = "") -> String {
         let object: [String: Any] = ["things": things, "notes": notes, "links": links, "summary": summary, "project": project,
-                                     "forget": forget, "ask_back": askBack, "card": card]
+                                     "forget": forget, "ask_back": askBack, "card": card, "window_project": windowProject]
         return String(decoding: try! JSONSerialization.data(withJSONObject: object), as: UTF8.self)
     }
 
@@ -350,9 +351,57 @@ final class LibrarianTests: XCTestCase {
                      "Your API key is abc", "token: x1", SecretsFilter.keyMarker, "card \(SecretsFilter.cardMarker)"] {
             XCTAssertTrue(Librarian.looksSecret(text), text)
         }
-        for text in ["The client approved logo v3", "Pinterest board for the moodboard", "Answer in Italian", "Spinning class on Monday"] {
+        for text in ["The client approved logo v3", "Pinterest board for the moodboard", "Answer in Italian", "Spinning class on Monday",
+                     "Change the password in Settings", "Use a password manager", "Reset the PIN code from settings"] {
             XCTAssertFalse(Librarian.looksSecret(text), text)
         }
+        // No "is" or ":": a value with a digit or a symbol right after the word is still a password.
+        for text in ["The login box shows the password Quiet-Heron-42 typed in a normal field", "pin 4421", "La password \"gatto_99\" è sbagliata"] {
+            XCTAssertTrue(Librarian.looksSecret(text), text)
+            XCTAssertFalse(Librarian.scrub(text).contains(where: \.isNumber), text)
+        }
+    }
+
+    /// "Known person reused": a reply with only a Note about a stored person and a link to her still makes the past
+    /// question mention her and the Project, never Me.
+    func testThePastQuestionMentionsWhatItsNotesAndLinksAreAbout() async throws {
+        let store = try MapStore()
+        let acme = try await store.add(MapNode(mapClass: .project, name: "Acme rebrand", origin: .told))
+        let marta = try await store.add(MapNode(mapClass: .person, name: "Zeppelina", origin: .told))
+        let question = "What does Zeppelina want changed?"
+        let packet = Made.packet(app: "Mail", window: "Re: launch – Acme rebrand")
+        let mFact = await Made.fact(store, marta, question: question, packet: packet)
+        let aFact = await Made.fact(store, acme, question: question, packet: packet)
+        let m = try XCTUnwrap(mFact), a = try XCTUnwrap(aFact)
+        let (out, _) = try await Made.learn(store, Made.reply(
+            notes: [Made.note("Zeppelina wants the launch in December", about: [m]), Made.note("Short answers", about: ["me"])],
+            links: [Made.link(a, "involves", m)]), question: question, packet: packet)
+        let event = try await store.event(try XCTUnwrap(out.event))
+        let mentions = Set(try XCTUnwrap(event).mentions)
+        XCTAssertTrue(mentions.isSuperset(of: [marta, acme]))
+        let me = await store.visibleNodes().first { $0.mapClass == .me }?.id
+        XCTAssertFalse(mentions.contains(try XCTUnwrap(me)))
+        XCTAssertEqual(event?.project, acme)
+    }
+
+    /// P5.2 sensitive case, whatever the model does: a password shown in a normal field never reaches the request,
+    /// and a reply that still carries one (in a thing, a Note or the summary) leaves no trace in the Map.
+    func testAPasswordWithoutIsNeverReachesTheRequestOrTheMap() async throws {
+        let store = try MapStore()
+        let password = "Quiet-Heron-42"
+        let (_, sent) = try await Made.learn(store, Made.reply(
+            things: [Made.thing("t1", "Document", "Login with password \(password)")],
+            notes: [Made.note("The login box shows the password \(password) in a normal text field"),
+                    Made.note("The balance is 1,020.00 euros", kind: "reference", sensitive: true)],
+            summary: "Asked what the page shows; it shows the password \(password)."),
+            question: "What is on this page?", answer: "The login box below shows the password \(password) typed in a normal text field.")
+        let request = try XCTUnwrap(sent)
+        XCTAssertFalse(request.text.contains("Heron"), "scrubbed before the call")
+        XCTAssertTrue(request.text.contains(Librarian.secretMarker))
+        let everything = await store.visibleNodes(currentOnly: false).map { "\($0.name) \($0.text) \($0.properties) \($0.aliases)" }.joined()
+            + store.visibleEvents().map(\.summary).joined()
+        XCTAssertFalse(everything.contains("Heron"))
+        XCTAssertTrue(everything.contains("1,020.00"), "the rest is still stored")
     }
 
     /// The live check's harness runs end to end on a fake that proposes nothing: every case fails, nothing crashes.
@@ -363,5 +412,49 @@ final class LibrarianTests: XCTestCase {
         XCTAssertEqual(result.total, 10)
         XCTAssertEqual(result.passed, 0)
         XCTAssertFalse(result.sensitive, "nothing stored: no sensitive fact")
+    }
+
+    // MARK: P5.6 "this is the X project"
+
+    func testThisIsTheProjectLinksTheFileAndASecondCorrectionWins() async throws {
+        let store = try MapStore()
+        let path = "/Users/someone/Acme/logo-v3.fig"
+        let (first, request) = try await Made.learn(store, Made.reply(windowProject: "Acme rebrand"), question: "This is the Acme rebrand project",
+                                                    route: .remember, packet: Made.packet(window: "logo-v3", path: path, text: "SCREEN-TEXT"))
+        XCTAssertEqual(first.card, "This window is now in Acme rebrand.")
+        XCTAssertFalse(try XCTUnwrap(request).text.contains("SCREEN-TEXT"))  // labels only
+        // The next call from the same file names it, whatever the title says.
+        let found = await store.detectProject(appName: "Figma", windowTitle: "Untitled", documentPath: path)
+        XCTAssertEqual(found?.name, "Acme rebrand")
+        XCTAssertEqual(found?.origin, .told)
+
+        let (second, _) = try await Made.learn(store, Made.reply(windowProject: "Orchard Bakery"), question: "No, questo è il progetto Orchard Bakery",
+                                               route: .remember, packet: Made.packet(window: "logo-v3", path: path))
+        XCTAssertEqual(second.card, "This window is now in Orchard Bakery.")
+        let now = await store.detectProject(appName: "Figma", windowTitle: "Untitled", documentPath: path)
+        XCTAssertEqual(now?.name, "Orchard Bakery")
+        // The old link ended and is kept as history; one Document, one current part_of.
+        let edges = await store.visibleEdges(currentOnly: false).filter { $0.link == .partOf }
+        XCTAssertEqual(edges.count, 2)
+        XCTAssertEqual(edges.filter { $0.validTo == nil }.count, 1)
+        let documents = await store.visibleNodes().filter { $0.mapClass == .document }
+        XCTAssertEqual(documents.count, 1)
+    }
+
+    func testThisIsTheProjectWithATitleOnly() async throws {
+        let store = try MapStore()
+        let (outcome, _) = try await Made.learn(store, Made.reply(windowProject: "Thesis"), question: "This is the Thesis project",
+                                                route: .remember, packet: Made.packet(app: "Pages", window: "Chapter 3 draft"))
+        XCTAssertEqual(outcome.card, "This window is now in Thesis.")
+        let found = await store.detectProject(appName: "Pages", windowTitle: "Chapter 3 draft", documentPath: nil)
+        XCTAssertEqual(found?.name, "Thesis")
+    }
+
+    func testWindowProjectIsReadOnlyOnTheRememberRoute() async throws {
+        let store = try MapStore()
+        try await Made.learn(store, Made.reply(summary: "Asked.", windowProject: "Acme rebrand"), route: .explain,
+                             packet: Made.packet(path: "/Users/someone/Acme/logo-v3.fig"))
+        let projects = await store.visibleNodes().filter { $0.mapClass == .project }
+        XCTAssertTrue(projects.isEmpty)
     }
 }

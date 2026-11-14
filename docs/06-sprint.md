@@ -31,7 +31,7 @@ Since 14 November, after your P5 hand test, the phases after PD are open to chan
 | 7 | PM MVP test | Version 1 on real work | checker | |
 | 8 | PG GitHub and project structure | Folder to the usual standard, private repository pushed, version 0.1.0 tagged | lead, checker | |
 
-Rough size, an estimate and not a promise: Map 5 days with the encryption research and Recently deleted, second brain 2, guide speed 2, agents 8 to 12 with several tasks and PDF reports, voice 2, tests 2.5, GitHub 1. About 22 to 27 working days. Re-estimated on 14 November after your answers added work. The agents figure starts from the research estimate in `10-research.md` 10.2, 4 to 7 days to read and research and 2 to 3 more to save reports as files, plus about 2 for several tasks at once and PDF reports.
+Rough size, an estimate and not a promise: Map 5 days with the encryption research and Recently deleted, second brain 2, guide speed 2, agents 8 to 12 with several tasks and PDF reports, voice 2, tests 2.5, GitHub 1. About 22 to 27 working days. Re-estimated on 14 November after your answers added work. The agents figure starts from the research estimate in `10-research-agents.md` 10.2, 4 to 7 days to read and research and 2 to 3 more to save reports as files, plus about 2 for several tasks at once and PDF reports.
 
 Tasks and their "done when" are in `roadmap.html`.
 

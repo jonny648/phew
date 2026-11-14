@@ -1,6 +1,6 @@
 import Foundation
 
-/// The Map as one readable Markdown file (docs/05-map.md 5.13, roadmap P5.10): you, your projects with their tasks,
+/// The Map as one readable Markdown file (docs/05-map-storage.md 5.13, roadmap P5.10): you, your projects with their tasks,
 /// documents, events and notes, the other things by class, every link, the old versions, then past questions by
 /// date. Each fact shows its origin, when it was stored and its confidence. Forgotten items never appear; sensitive
 /// facts only when `includeSensitive`. Plain code, no model call. The same Map and `now` give the same text.

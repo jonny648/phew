@@ -70,7 +70,7 @@ After Allow the screen is not shown again. After Not now the task does not start
 
 ## 3.6 What he may do alone: consent levels
 
-Decided on 13 November 2026 after the research in `10-research.md` 10.2.
+Decided on 13 November 2026 after the research in `10-research-agents.md` 10.2.
 
 | Level | What he may do | When |
 |---|---|---|

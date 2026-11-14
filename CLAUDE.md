@@ -30,7 +30,7 @@ These rules are direction, not strict rules (your choice of 14 November). Follow
 - Never read secure text fields. Run the secrets filter before any network call.
 - Speech to text runs on the device.
 - The API key lives only in the Keychain. Never in a file, a log or the repository.
-- The Map lives only on the Mac. The whole Map is encrypted, and sensitive facts get a second lock with their own key (design in `docs/05-map.md` 5.12, approved 14 November).
+- The Map lives only on the Mac. The whole Map is encrypted, and sensitive facts get a second lock with their own key (design in `docs/05-map-storage.md` 5.12, approved 14 November).
 - Shell and Senses reach the Brain only through the `Brain` interface, so it can move to a backend later.
 - All model calls go through one provider interface. Read current model names from the Claude API documentation. Do not guess them.
 - Small model for Conductor, Observer, Librarian. Main model for Guide, Follower and Runner.
@@ -47,11 +47,11 @@ These rules are direction, not strict rules (your choice of 14 November). Follow
 | P3 | `docs/04-architecture.md` 4.4 |
 | P4 | `docs/03-experience.md` 3.1 and 3.2 |
 | PR | `docs/07-decisions.md` 7.5, then every file in `docs/`. Research and review with the user. No code |
-| PV | `docs/review.html`, `docs/07-decisions.md` 7.2. The user reads and answers. No code |
-| P5 | `docs/05-map.md`, `docs/04-architecture.md` 4.4, `docs/10-research.md` 10.3 |
-| PB | `docs/05-map.md`, `docs/10-research.md` 10.3 |
-| PS | `docs/04-architecture.md` 4.4 and 4.6, `docs/10-research.md` 10.4 |
-| PA | `docs/03-experience.md` 3.5 and 3.6, `docs/04-architecture.md` 4.4 and 4.6, `docs/05-map.md` 5.11, `docs/10-research.md` 10.2 |
+| PV | `docs/archive/review.html`, `docs/07-decisions.md` 7.2. The user reads and answers. No code |
+| P5 | `docs/05-map.md`, `docs/05-map-storage.md`, `docs/04-architecture.md` 4.4, `docs/10-research-memory.md` 10.3 |
+| PB | `docs/05-map.md`, `docs/10-research-memory.md` 10.3 |
+| PS | `docs/04-architecture.md` 4.4 and 4.6, `docs/10-research-speed.md` 10.4 |
+| PA | `docs/03-experience.md` 3.5 and 3.6, `docs/04-architecture.md` 4.4 and 4.6, `docs/05-map.md` 5.11, `docs/10-research-agents.md` 10.2 |
 | P6 | `docs/03-experience.md` 3.3 |
 | PT | The task's own "done when". Manual checks only the user can run |
 | PM | `docs/06-sprint.md` 6.3 |

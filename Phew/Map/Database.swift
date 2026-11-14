@@ -26,7 +26,7 @@ extension Dictionary where Key == String, Value == SQLValue {
 }
 
 /// The Map's one SQLite connection, and the only file in Phew that calls `sqlite3_*` (SQLCipher, never the system
-/// SQLite). `map.sqlite` is `main` with key 1; `map-sensitive.sqlite` is attached as `s` with key 2 (docs/05-map.md 5.12).
+/// SQLite). `map.sqlite` is `main` with key 1; `map-sensitive.sqlite` is attached as `s` with key 2 (docs/05-map-storage.md 5.12).
 /// Keys never appear in SQL text, logs or errors: they are passed to `sqlite3_key` and bound as an ATTACH parameter.
 /// Errors carry a SQLite result code and a fixed step name only, never SQL, a key or any Map words.
 final class Database {

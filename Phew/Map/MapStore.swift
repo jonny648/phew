@@ -93,7 +93,7 @@ enum MapError: Error, Equatable {
     case underTests, keyMissingForExistingFile, randomFailed, keyNotStored
 }
 
-/// The Map: two encrypted SQLite files, one connection (docs/05-map.md 5.12). Writes name their file (`main` or `s`);
+/// The Map: two encrypted SQLite files, one connection (docs/05-map-storage.md 5.12). Writes name their file (`main` or `s`);
 /// reads go through the `all_*` views. Nothing opens it at launch: `openOnMac()` is called when it is first needed.
 actor MapStore {
     let db: Database

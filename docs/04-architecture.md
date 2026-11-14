@@ -127,7 +127,7 @@ Three tie-breaks:
 
 Today the code sends "what do you remember?" to the remember route and answers it with one fixed line. From phase P5 that question goes to explain, and the fixed line goes away.
 
-Keeping it cheap and quick in the MVP: small model for three of six agents, window text and one picture together on every call (the window under the mouse, or the whole screen when the mouse is not on the front window), one pixel per point, short context packets, streamed answers, cost and latency logged for every call. How similar tools do this is in `10-research.md` 10.2 and 10.4.
+Keeping it cheap and quick in the MVP: small model for three of six agents, window text and one picture together on every call (the window under the mouse, or the whole screen when the mouse is not on the front window), one pixel per point, short context packets, streamed answers, cost and latency logged for every call. How similar tools do this is in `10-research-agents.md` 10.2 and `10-research-speed.md` 10.4.
 
 ## 4.5 Backend, later
 

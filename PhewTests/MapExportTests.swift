@@ -1,7 +1,7 @@
 import XCTest
 @testable import Phew
 
-/// P5.10: the Map exported to one readable Markdown file (docs/05-map.md 5.13), on a made-up Map in memory. The
+/// P5.10: the Map exported to one readable Markdown file (docs/05-map-storage.md 5.13), on a made-up Map in memory. The
 /// save window itself is a hand test.
 final class MapExportTests: XCTestCase {
     private let now = Made.now

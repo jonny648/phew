@@ -26,11 +26,11 @@ Job to be done: help me understand and move forward on what is in front of me, w
 - Sector: screen-aware desktop AI companions, inside AI assistants and agents.
 - Parent market: AI agents, about $7.6B to $7.8B in 2025, about $50B to $53B by 2030. Mostly enterprise. No credible figure for consumer companions.
 - Screen reading alone became a free macOS feature on 14 September 2026.
-- No credible figure exists for desktop companions. See `10-research.md` 10.1.
+- No credible figure exists for desktop companions. See `10-research-market.md` 10.1.
 
 ## 1.4 Competitors
 
-Researched on 13 November 2026: 32 products, in `10-research.md` 10.1 and in the Figma market map linked there. The closest:
+Researched on 13 November 2026: 32 products, in `10-research-market.md` 10.1 and in the Figma market map linked there. The closest:
 
 | Product | Overlap | What Phew does differently |
 |---|---|---|
@@ -51,7 +51,7 @@ The experience is the product. Memory, context, agents and the Map work undernea
 - Scope. This is five products in one. Since 13 November 2026 the MVP in `06-sprint.md` carries most of it: explain and guide, memory of your projects, the second brain, a faster guide, a task he researches alone, and speech. There is no deadline, so nothing is skipped. Lecture listening, actions in other apps, connections to other tools and the dashboard wait.
 - Apple, Microsoft, Google and OpenAI are each one feature away from pointing. Expect the gap to narrow within 6 to 12 months.
 - People pay little for pointing (a first paid plan costs $5 to $29 a month), and paying for personal memory is unproven.
-- An agent that reads the web can be tricked by hidden instructions. Rules in `10-research.md` 10.2.
+- An agent that reads the web can be tricked by hidden instructions. Rules in `10-research-agents.md` 10.2.
 - Trust: screen, microphone and actions in other apps are the three most sensitive permissions on a Mac.
 - Model cost per user against what a user pays.
 - Students and early founders rarely pay for tools. See 1.7.

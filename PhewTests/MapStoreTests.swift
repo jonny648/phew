@@ -1,7 +1,7 @@
 import XCTest
 @testable import Phew
 
-/// P5.1: the tables of docs/05-map.md 5.12 and text search, on a plain Map in memory. All data is made up.
+/// P5.1: the tables of docs/05-map-storage.md 5.12 and text search, on a plain Map in memory. All data is made up.
 final class MapStoreTests: XCTestCase {
     func testSQLCipherIsTheSQLiteInUse() throws {
         let db = try Database(folder: nil, key: nil, sensitiveKey: nil)

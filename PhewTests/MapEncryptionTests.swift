@@ -2,7 +2,7 @@ import XCTest
 @testable import Phew
 
 /// P5.14: the two Map files are encrypted, each with its own key, and a real delete leaves no word behind
-/// (docs/05-map.md 5.12, "Encryption: the design"). Temporary folders and made-up keys only: never the real
+/// (docs/05-map-storage.md 5.12, "Encryption: the design"). Temporary folders and made-up keys only: never the real
 /// Keychain or map.sqlite.
 final class MapEncryptionTests: XCTestCase {
     private let key1 = String(repeating: "3f9a", count: 16)

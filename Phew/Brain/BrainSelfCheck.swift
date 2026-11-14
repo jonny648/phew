@@ -28,7 +28,7 @@ enum BrainSelfCheck {
                 var pieces = 0, chars = 0, first: Int?, stop = ""
                 do {
                     let request = ModelRequest(agent: "check", tier: tier, system: "Reply in one short sentence.",
-                                               text: "Say hello to a university student.", maxTokens: 1024)
+                                               text: "Say hello to someone who works on a Mac.", maxTokens: 1024)
                     for try await event in provider.stream(request) {
                         switch event {
                         case .text(let piece): pieces += 1; chars += piece.count; first = first ?? ms(t0)
@@ -73,7 +73,7 @@ enum BrainSelfCheck {
                 } catch { report("guide \(item.name)", false, failure(error)) }
             }
 
-            // (c) The Conductor on 10 requests.
+            // (c) The Conductor on 12 requests.
             for (question, expected) in conductorCases {
                 let t0 = Date()
                 do {
@@ -141,6 +141,8 @@ enum BrainSelfCheck {
         ("Come faccio a inserire una tabella?", .guide),
         ("Ricordati questa definizione", .remember),
         ("Why does this graph go down at the end?", .explain),
+        ("What do you remember about this project?", .explain),
+        ("Forget what I told you about the exam", .remember),
     ]
 
     private static func pointables(_ labels: [String], role: String = "AXButton", y: CGFloat, in window: CGRect) -> [Pointable] {
@@ -224,7 +226,7 @@ enum BrainSelfCheck {
 
     struct FollowerCase {
         let name: String
-        /// The step the student was on, 0-based.
+        /// The step the user was on, 0-based.
         let current: Int
         let packet: ContextPacket
         /// The step they should be on now, 0-based; `noteSteps.count` is done.

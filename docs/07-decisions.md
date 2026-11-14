@@ -77,6 +77,7 @@
 | 14 Nov 2026 | Speech: Italian and English | You |
 | 14 Nov 2026 | Academic buyers removed: universities and schools buying for students are not targets. The business target is chosen after the MVP; the order of later phases at the retro | You |
 | 14 Nov 2026 | Ideas for after the MVP, from your notes: links that change meaning (L10), the Map also in the cloud on a personal page (L11), usage rate limits (L12), an install interview and asking you when he cannot understand (L13), reports that teach the Map after an internal review (L14) | You |
+| 14 Nov 2026 | Locking the Map (P5.13): design in `05-map.md` 5.12 approved. SQLCipher 4.20.0, two encrypted files (whole Map, sensitive facts) with two keys in the login Keychain, rollback journal. The Map files stay in Time Machine backups. No Touch ID on the sensitive key in the MVP: it goes to the Later list (L15) | You |
 
 ## 7.2 Open
 
@@ -118,6 +119,7 @@ Your 33 answers of 14 November are in 7.1. Two decisions wait for later.
 | 13 Nov 2026 | P4 | P4.7 built and hand-tested: the guide follows you, no buttons. Works, feels slow. P4 complete. Full review done; $0.52 spent on the model so far. Phase PG GitHub and project structure added at the end of the MVP. GitHub guide written | PR Research and review |
 | 14 Nov 2026 | PR | Research and review, no code. 13 Nov: product line and hard rules restated, research written in `10-research.md` with sources, market map drawn in Figma, deadline dropped, phases rewritten (P5, PB, PS, PA, P6, PT, PM, PG). 14 Nov: the Map redesigned for a general user with eleven classes, then all documents reviewed by seven reviewers, 70 problems confirmed and corrected. Nothing ticked: PR.1 to PR.6 wait for your approval. Three hard-rule changes approved and written. Phase PV, Your review, added | PV Your review, then P5 Map |
 | 14 Nov 2026 | PV | Your review answered: 33 decisions and approval. Written into CLAUDE.md, the docs, the agent files and the roadmap; checked by two agents, fixes applied. Rule changes: all rules are now direction; folder-window exception; small panels and the consent screen allowed; agents may open a typed address, read the project's Claude Code files when needed, and save reports as PDF plus a Markdown copy. New tasks P5.13 to P5.15, PB.6, PS.8, PS.9; Later L10 to L14. PR.1 to PR.6 and PV.1 to PV.4 ticked by the checker. 57 tests pass, no code changed. No rule was bent | P5 Map, starting with P5.13 encryption research |
+| 14 Nov 2026 | P5 | Stage S0. P5.13: research on locking the Map written in `10-research.md` 10.7, design in `05-map.md` 5.12 with 12 reviewer fixes, approved by you: SQLCipher 4.20.0, two files, two keys in the login Keychain, rollback journal, backups kept, Touch ID later (L15). P5.12: "student" gone from every prompt, live self-check 25 of 25, $0.04 (one earlier run lost its results, a few cents). Senses part of P5.6: open document path or web address read, through the secrets filter. P5.12 and P5.13 ticked by the checker. No rule was bent | S1: encrypted storage (P5.1, P5.14), Brain tools and follow-ups (P5.5) |
 
 ## 7.5 Your review of 12 November. Input to phase PR
 

@@ -30,7 +30,7 @@ These rules are direction, not strict rules (your choice of 14 November). Follow
 - Never read secure text fields. Run the secrets filter before any network call.
 - Speech to text runs on the device.
 - The API key lives only in the Keychain. Never in a file, a log or the repository.
-- The Map lives only on the Mac. The whole Map file is encrypted, and sensitive facts get a second lock (design after the P5 research).
+- The Map lives only on the Mac. The whole Map is encrypted, and sensitive facts get a second lock with their own key (design in `docs/05-map.md` 5.12, approved 14 November).
 - Shell and Senses reach the Brain only through the `Brain` interface, so it can move to a backend later.
 - All model calls go through one provider interface. Read current model names from the Claude API documentation. Do not guess them.
 - Small model for Conductor, Observer, Librarian. Main model for Guide, Follower and Runner.

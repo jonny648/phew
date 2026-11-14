@@ -22,9 +22,12 @@ struct ContextPacket: Codable {
     /// Where the screenshot sits on screen, same coordinates as `windowFrame`. The screenshot is 1 pixel per
     /// point, so this origin + screenshot pixel = screen point.
     var screenshotFrame: CGRect? = nil
+    /// The open document's file path or page address, when the app gives one (`WindowReader.documentPath`).
+    /// A label for project detection (docs/05-map.md 5.11), not capture: the Map may keep it.
+    var documentPath: String? = nil
 
     private enum CodingKeys: String, CodingKey {
-        case appName, bundleID, windowTitle, visibleText, cursor, windowFrame, pointables, mouse, screenshotFrame
+        case appName, bundleID, windowTitle, documentPath, visibleText, cursor, windowFrame, pointables, mouse, screenshotFrame
     }
 
     static let textCap = 4000
@@ -48,6 +51,7 @@ struct ContextPacket: Codable {
         p.appName = SecretsFilter.clean(appName)
         p.bundleID = SecretsFilter.clean(bundleID)
         p.windowTitle = SecretsFilter.clean(windowTitle)
+        p.documentPath = documentPath.map(SecretsFilter.clean)
         p.visibleText = SecretsFilter.clean(visibleText)
         p.cursor?.label = SecretsFilter.clean(cursor?.label ?? "")
         p.cursor?.value = SecretsFilter.clean(cursor?.value ?? "")
@@ -117,7 +121,8 @@ extension ContextPacket {
     /// Counts and timings only, never captured text: safe in the log.
     func logStats(pointablesFound: Int, cursorMS: Int, walkMS: Int, totalMS: Int) {
         let shot = screenshotFrame.map { "\(Int($0.width))×\(Int($0.height)) points" }
-        shellLog("packet: title \(windowTitle.count) chars, text \(visibleText.count) chars, pointables \(pointables.count) of \(pointablesFound) found, cursor \(cursor?.role ?? "none") inside its frame \(mouse.map { cursor?.frame?.contains($0) ?? false } ?? false), cursor listed \(cursor?.id != nil), cursor text \((cursor?.label.count ?? 0) + (cursor?.value.count ?? 0)) chars, screenshot \(shot ?? "none"), cursor read \(cursorMS) ms, window walk \(walkMS) ms, total \(totalMS) ms")
+        let path = documentPath.map { $0.hasPrefix("/") ? "file" : "address" } ?? "none"
+        shellLog("packet: title \(windowTitle.count) chars, document path \(path), text \(visibleText.count) chars, pointables \(pointables.count) of \(pointablesFound) found, cursor \(cursor?.role ?? "none") inside its frame \(mouse.map { cursor?.frame?.contains($0) ?? false } ?? false), cursor listed \(cursor?.id != nil), cursor text \((cursor?.label.count ?? 0) + (cursor?.value.count ?? 0)) chars, screenshot \(shot ?? "none"), cursor read \(cursorMS) ms, window walk \(walkMS) ms, total \(totalMS) ms")
     }
 
     /// Debug evidence only, with `debugDump`: the latest packet per app in ~/Library/Application Support/Phew/debug.

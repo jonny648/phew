@@ -8,9 +8,9 @@ enum Observer {
     static let minChars = 1500
 
     static let system = """
-        You prepare screen text for another assistant, who will answer a university student's question about \
+        You prepare screen text for another assistant, who will answer the user's question about \
         their screen. Rewrite the visible text so it keeps everything that matters for the question: the content \
-        itself, headings, terms, names, numbers, formulas, code, and the exact wording of anything the student \
+        itself, headings, terms, names, numbers, formulas, code, and the exact wording of anything the user \
         might ask about. Drop navigation, menus, button labels, ads, cookie notices, footers and repeated lines. \
         Keep the original language and order. Do not answer the question, do not summarize away details, do not \
         add anything. Reply with the cleaned text only.
@@ -22,7 +22,7 @@ enum Observer {
     }
 
     static func request(_ text: String, question: String) -> ModelRequest {
-        let asked = question.isEmpty ? "(none: the student wants what is under the mouse pointer explained)" : question
+        let asked = question.isEmpty ? "(none: the user wants what is under the mouse pointer explained)" : question
         return ModelRequest(agent: "observer", tier: .small, system: system,
                             text: "Question: \(asked)\n\nVisible text:\n\(text)", maxTokens: 4096)
     }

@@ -71,4 +71,30 @@ final class SensesRulesTests: XCTestCase {
         ]
         for text in kept { XCTAssertEqual(WindowReader.removeJunk(text), text, text) }
     }
+
+    func testDocumentPathFromFileURL() {
+        let url = "file:///Users/someone/Made%20Up/notes.txt" as CFString
+        XCTAssertEqual(WindowReader.documentPath(url), "/Users/someone/Made Up/notes.txt")
+        XCTAssertEqual(WindowReader.documentPath(URL(fileURLWithPath: "/tmp/made-up.pdf") as CFURL), "/tmp/made-up.pdf")
+        XCTAssertEqual(WindowReader.documentPath("/tmp/plain.md" as CFString), "/tmp/plain.md")
+    }
+
+    func testWebAddressLosesQueryFragmentAndLogin() {
+        func path(_ s: String) -> String? { WindowReader.documentPath(s as CFString) }
+        XCTAssertEqual(path("https://example.com/docs/page?id=7&q=secret#part"), "https://example.com/docs/page")
+        XCTAssertEqual(path("https://example.com/a#top"), "https://example.com/a")
+        XCTAssertEqual(path("http://user:pass@example.com/b?x=1"), "http://example.com/b")
+        XCTAssertEqual(WindowReader.documentPath(URL(string: "https://example.org/x?y=1")! as CFURL), "https://example.org/x")
+    }
+
+    func testNoDocumentPathStaysNil() {
+        XCTAssertNil(WindowReader.documentPath(nil))
+        XCTAssertNil(WindowReader.documentPath("" as CFString))
+        XCTAssertNil(WindowReader.documentPath("about:blank" as CFString))
+        XCTAssertNil(WindowReader.documentPath(42 as CFNumber))
+        // An Electron app's own page is not the user's document.
+        XCTAssertNil(WindowReader.documentPath("file:///Applications/Made%20Up.app/Contents/Resources/index.html" as CFString))
+        let packet = ContextPacket(appName: "App", bundleID: "id", windowTitle: "t", visibleText: "", cursor: nil).filtered()
+        XCTAssertNil(packet.documentPath)
+    }
 }

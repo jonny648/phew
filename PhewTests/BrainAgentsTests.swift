@@ -247,7 +247,7 @@ final class BrainAgentsTests: XCTestCase {
         XCTAssertTrue(request.text.contains("e2 AXButton \"Table\" 90,10 60×28"))  // the screen, as the Guide sees it
         XCTAssertTrue(request.text.contains("Screenshot: attached, 400×300 pixels."))
         XCTAssertTrue(request.text.contains("1. Click Insert\n2. Click Table\n3. Pick a style"))
-        XCTAssertTrue(request.text.contains("The student was on step 2."))
+        XCTAssertTrue(request.text.contains("The user was on step 2."))
         XCTAssertTrue(request.text.hasSuffix("a number from 1 to 3, or 4 when every step is done."))
         // No picture: no image, positions in window pixels.
         XCTAssertNil(Follower.request(steps: guideSteps, current: 0, packet: packet(), shot: nil).image)

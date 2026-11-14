@@ -60,13 +60,40 @@ enum WindowReader {
         return (cursor, point)
     }
 
-    /// Focused window of the app (else main, else frontmost): title, frame, its visible text and the elements
-    /// Phew can point at, both in reading order.
-    static func readWindow(pid: pid_t) -> (title: String, frame: CGRect?, texts: [Text], pointables: [Pointable]) {
-        guard let window = window(pid) else { return ("", nil, [], []) }
+    /// Focused window of the app (else main, else frontmost): title, frame, the open document's path or address,
+    /// its visible text and the elements Phew can point at, both in reading order.
+    static func readWindow(pid: pid_t) -> (title: String, frame: CGRect?, documentPath: String?, texts: [Text], pointables: [Pointable]) {
+        guard let window = window(pid) else { return ("", nil, nil, [], []) }
         let root = attributes(window)
         let found = walk(window, root, clip: root.frame, maxElements: maxElements, maxDepth: maxDepth, budget: timeBudget)
-        return (root.title ?? "", root.frame, found.texts.filter { $0.string != root.title }, found.pointables)
+        // A document app names its file on the window; a browser its page on the web area, sometimes on the window.
+        // shortcut: the first web area in reading order is taken as the page; check if a browser lists another first.
+        let path = documentPath(attribute(window, kAXDocumentAttribute))
+            ?? found.webArea.flatMap { documentPath(attribute($0, kAXURLAttribute)) }
+            ?? documentPath(attribute(window, kAXURLAttribute))
+        return (root.title ?? "", root.frame, path, found.texts.filter { $0.string != root.title }, found.pointables)
+    }
+
+    /// A file URL as a plain path; a web address without its query, fragment or login (docs/05-map.md 5.9).
+    /// Nil for anything else (about:blank, a browser's own pages).
+    static func documentPath(_ value: CFTypeRef?) -> String? {
+        guard let raw = (value as? URL)?.absoluteString ?? value as? String, !raw.isEmpty else { return nil }
+        // Electron apps (Notion) give their own page inside the app: not the user's document.
+        func userFile(_ path: String) -> String? { path.isEmpty || path.contains(".app/Contents/") ? nil : path }
+        if raw.hasPrefix("/") { return userFile(raw) }
+        guard var url = URLComponents(string: raw) else { return nil }
+        switch url.scheme?.lowercased() {
+        case "file":
+            return userFile(url.path)
+        case "http", "https":
+            url.query = nil
+            url.fragment = nil
+            url.user = nil
+            url.password = nil
+            return url.string
+        default:
+            return nil
+        }
     }
 
     // What a student clicks, types into or picks from, as the test apps expose it. Tabs are AXRadioButton, switches
@@ -94,18 +121,21 @@ enum WindowReader {
     /// may miss its far rows. Use AXVisibleChildren if that bites.
     private static func walk(_ root: AXUIElement, _ rootAttributes: Attributes, clip: CGRect?, near point: CGPoint? = nil,
                              pointables wantsPointables: Bool = true,
-                             maxElements: Int, maxDepth: Int, budget: TimeInterval) -> (texts: [Text], pointables: [Pointable]) {
+                             maxElements: Int, maxDepth: Int, budget: TimeInterval)
+        -> (texts: [Text], pointables: [Pointable], webArea: AXUIElement?) {
         let deadline = Date() + budget
         var texts: [Text] = []
         var pointables: [Pointable] = []
         var unnamed: [Int] = []  // listed controls around the current element still waiting for a name
         var seen: Set<String> = []  // repeats add nothing: links and their label, list rows
+        var webArea: AXUIElement?  // the first, so the page's address is read without a second walk
         var count = 0
 
         // `pointClip` narrows `clip` for controls: one shows only within the controls around it.
         func visit(_ el: AXUIElement, _ a: Attributes, depth: Int, pointClip: CGRect?) {
             count += 1
             if let f = a.frame, let clip, !f.isEmpty, !f.intersects(clip) { return }
+            if webArea == nil, a.role == "AXWebArea" { webArea = el }
             let frame = wantsPointables ? pointableFrame(a.frame, clip: pointClip) : nil
             if a.isSecure {  // never read secure text fields: role and frame only, so Phew can still point at one
                 if let frame { pointables.append(Pointable(role: "AXSecureTextField", label: "", frame: frame)) }
@@ -144,7 +174,7 @@ enum WindowReader {
             }
         }
         visit(root, rootAttributes, depth: 0, pointClip: clip)
-        return (texts, pointables.filter { !$0.label.isEmpty || $0.role == "AXSecureTextField" })
+        return (texts, pointables.filter { !$0.label.isEmpty || $0.role == "AXSecureTextField" }, webArea)
     }
 
     /// What the Guide calls a control: its title or description, a pop-up's chosen item, a field's placeholder.

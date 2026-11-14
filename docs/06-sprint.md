@@ -71,3 +71,4 @@ Order to confirm at the retro. Unscheduled.
 | L12 Usage limits | A rate limit for usage, then every limit written into the code |
 | L13 Getting to know you | A short interview at install, and asking you when he cannot understand. Research first |
 | L14 Reports that teach the Map | Research findings become connected facts, web findings after an internal review |
+| L15 Touch ID on sensitive facts | Sensitive facts open only after Touch ID or your password; needs a provisioning profile |

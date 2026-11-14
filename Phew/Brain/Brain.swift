@@ -5,7 +5,7 @@ protocol Brain: Sendable {
     /// Errors are `BrainError`; `.noKey` means the Shell should ask for the API key.
     func answer(_ question: String, packet: ContextPacket?) -> AsyncThrowingStream<BrainEvent, Error>
 
-    /// During a guide, after the student acts: looks at a fresh `packet` and says which of `steps` the student is on
+    /// During a guide, after the user acts: looks at a fresh `packet` and says which of `steps` the user is on
     /// now, starting from `current` (0-based), so the guide moves on by itself. A refusal or a bad answer from this
     /// check does not end the guide: it returns `current` with no target. Key, network and rate errors throw
     /// `BrainError` like `answer`.
@@ -13,7 +13,7 @@ protocol Brain: Sendable {
 }
 
 struct GuideProgress: Sendable, Equatable {
-    /// The step the student is on now, 0-based. `steps.count` means every step is done.
+    /// The step the user is on now, 0-based. `steps.count` means every step is done.
     var current: Int
     /// Where that step points on the fresh screen, validated like `GuideStep.target`: an id in this packet, or a
     /// point inside its screenshot. Nil when the guide is done, nothing safe fits, or the check failed.

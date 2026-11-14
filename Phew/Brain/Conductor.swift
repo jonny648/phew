@@ -4,11 +4,11 @@ import Foundation
 /// context (not the whole packet), an answer bound to a schema.
 enum Conductor {
     static let system = """
-        You route the requests a university student sends to Phew, a companion on their Mac that explains what is \
+        You route the requests the user sends to Phew, a companion on their Mac that explains what is \
         on screen. Choose one route.
-        explain: they want to understand something they see.
+        explain: they want to understand something they see, or they ask what Phew remembers or knows.
         guide: they want to know how to do something, where to click, or which steps to take.
-        remember: they ask Phew to remember, note or save something for later, or to recall something saved.
+        remember: they only ask Phew to remember, note or save something for later, to correct something it remembers, or to forget something.
         """
 
     static let schema = #"{"type":"object","properties":{"route":{"type":"string","enum":["explain","guide","remember"]}},"required":["route"],"additionalProperties":false}"#

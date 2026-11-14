@@ -26,7 +26,7 @@ enum Senses {
             var packet = ContextPacket(appName: name, bundleID: bundleID, windowTitle: window.title,
                                        visibleText: ContextPacket.trim(texts, near: point), cursor: cursor,
                                        windowFrame: window.frame, pointables: ContextPacket.select(window.pointables, near: point),
-                                       mouse: point)
+                                       mouse: point, documentPath: window.documentPath)
             // The cursor element's id when it is listed: the same frame, clipped and rounded the same way.
             // shortcut: no id when the walk's limits stopped before reaching it; walk the cursor's branch first if seen.
             let cursorFrame = WindowReader.pointableFrame(cursor?.frame, clip: window.frame)

@@ -72,6 +72,13 @@ final class SecretsFilterTests: XCTestCase {
         XCTAssertEqual(packet.pointables.first?.label, "p [key removed]")
     }
 
+    func testDocumentPathIsFiltered() {
+        let key = "sk-" + filler
+        let packet = ContextPacket(appName: "App", bundleID: "id", windowTitle: "t", visibleText: "", cursor: nil,
+                                   documentPath: "/Users/someone/keys/\(key).txt").filtered()
+        XCTAssertEqual(packet.documentPath, "/Users/someone/keys/[key removed].txt")
+    }
+
     func testPointableLabelIsFilteredBeforeItIsCut() {
         // The key starts before the label cap and ends after it: a cut first would leave half a key behind.
         let label = String(repeating: "a", count: ContextPacket.labelCap - 10) + " sk-" + filler

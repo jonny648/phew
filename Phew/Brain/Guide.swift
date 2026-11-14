@@ -15,7 +15,8 @@ enum Guide {
         Use the screenshot and the text together. When the question is about something you can see in the \
         screenshot, such as a photo, a diagram, a chart, the desktop wallpaper or a design, answer from the \
         screenshot and name specifically what is there. When you cannot tell, say so. "This" means what is at the \
-        mouse pointer.
+        mouse pointer. Earlier questions and your answers may come first, as text: use them to understand a \
+        follow-up question. Only the latest message shows the screen as it is now.
 
         Write the explanation for anyone who works on a Mac, in plain words, straight to the point. Let the question set the \
         length: a sentence or two for a simple question, a fuller explanation in short paragraphs when the user \
@@ -45,19 +46,27 @@ enum Guide {
         let steps: [Step]
     }
 
-    static func answer(_ question: String, packet: ContextPacket?, route: Route, provider: any ModelProvider,
-                       emit: (BrainEvent) -> Void) async throws {
+    /// `earlier`: the kept turns, text only. `tools`: the Map search (and later project memory); nil, none.
+    static func answer(_ question: String, packet: ContextPacket?, route: Route, earlier: [Turn] = [],
+                       tools: (any ToolRunner)? = nil, provider: any ModelProvider, emit: (BrainEvent) -> Void) async throws {
         let shot = packet?.screenshot.flatMap(ScreenshotSize.init(png:))
         var json = "", stop = "", shown = false
         var explanation = ExplanationStream()
-        for try await event in provider.stream(request(question, packet: packet, route: route, shot: shot)) {
+        let request = request(question, packet: packet, route: route, shot: shot, earlier: earlier)
+        for try await event in ToolLoop.stream(request, runner: tools, provider: provider) {
             switch event {
             case .text(let piece):
                 json += piece
                 let words = explanation.feed(piece)
                 if !words.isEmpty { shown = true; emit(.text(words)) }
+            case .stop("tool_use"):
+                // A search round ended; the answer comes in the next round.
+                // shortcut: words already shown in a search round stay and are not shown twice; the JSON grammar
+                // makes such words unlikely. Revisit if the card ever shows a cut explanation after a search.
+                json = ""
+                if !shown { explanation = ExplanationStream() }
             case .stop(let reason): stop = reason
-            case .usage: break
+            case .usage, .content: break
             }
         }
         guard stop != "max_tokens", let output = try? JSONDecoder().decode(Output.self, from: Data(json.utf8)) else {
@@ -72,12 +81,23 @@ enum Guide {
         emit(.steps(valid))
     }
 
-    static func request(_ question: String, packet: ContextPacket?, route: Route, shot: ScreenshotSize?) -> ModelRequest {
+    static func request(_ question: String, packet: ContextPacket?, route: Route, shot: ScreenshotSize?,
+                        earlier: [Turn] = []) -> ModelRequest {
         let task = route == .guide ? "Route: guide. Explain briefly, then give the steps." : "Route: explain. Leave the steps empty."
-        let asked = question.isEmpty ? "Question: none. Explain what is under the mouse pointer." : "Question: \(question)"
         let screen = packet.map { context($0, shot: shot) } ?? "No screen context."
-        return ModelRequest(agent: "guide", tier: .main, system: system, text: [screen, task, asked].joined(separator: "\n\n"),
-                            image: shot == nil ? nil : packet?.screenshot, schema: schema, maxTokens: 8192)
+        return ModelRequest(agent: "guide", tier: .main, system: system, text: [screen, task, asked(question)].joined(separator: "\n\n"),
+                            image: shot == nil ? nil : packet?.screenshot, schema: schema, maxTokens: 8192, earlier: earlier)
+    }
+
+    static func asked(_ question: String) -> String {
+        question.isEmpty ? "Question: none. Explain what is under the mouse pointer." : "Question: \(question)"
+    }
+
+    /// What the working memory keeps of one answer: the question and the answer as text, with the steps' words.
+    /// No screen text, no picture, no targets.
+    static func turn(_ question: String, explanation: String, steps: [GuideStep]) -> Turn {
+        let list = steps.enumerated().map { "\($0.offset + 1). \($0.element.instruction)" }
+        return Turn(question: asked(question), answer: ([explanation] + (list.isEmpty ? [] : ["Steps:"] + list)).joined(separator: "\n"))
     }
 
     /// The packet as plain lines. With a screenshot, positions are in the pixels the model sees: from the

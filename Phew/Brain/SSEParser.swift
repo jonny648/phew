@@ -6,19 +6,47 @@ struct SSEParser {
     private(set) var usage = Usage()
     private(set) var stopReason: String?
     private(set) var ended = false
+    /// The reply's content blocks by index, built from the stream so they can be sent back unchanged.
+    private var blocks: [Int: [String: Any]] = [:]
+    private var toolInput: [Int: String] = [:]
 
     /// One line of the stream. Returns the text it adds, if any. Throws the API's mid-stream error event.
     mutating func consume(_ line: String) throws -> String? {
         guard line.hasPrefix("data:"),
               let event = (try? JSONSerialization.jsonObject(with: Data(line.dropFirst(5).utf8))) as? [String: Any]
         else { return nil }
+        let index = event["index"] as? Int ?? 0
         switch event["type"] as? String {
         case "message_start":
             merge((event["message"] as? [String: Any])?["usage"])
+        case "content_block_start":
+            // thinking, redacted_thinking, text, tool_use, fallback… kept as the API sent them.
+            blocks[index] = event["content_block"] as? [String: Any] ?? [:]
         case "content_block_delta":
-            // Thinking, signature and tool-input deltas are not shown.
-            let delta = event["delta"] as? [String: Any]
-            if delta?["type"] as? String == "text_delta" { return delta?["text"] as? String }
+            // Only text is shown. Thinking, its signature and tool input are kept for sending back.
+            guard let delta = event["delta"] as? [String: Any] else { break }
+            switch delta["type"] as? String {
+            case "text_delta":
+                let text = delta["text"] as? String ?? ""
+                append(text, to: "text", at: index)
+                return text
+            case "thinking_delta":
+                append(delta["thinking"] as? String ?? "", to: "thinking", at: index)
+            case "signature_delta":
+                blocks[index]?["signature"] = delta["signature"]
+            case "input_json_delta":
+                toolInput[index, default: ""] += delta["partial_json"] as? String ?? ""
+            default:
+                break
+            }
+        case "content_block_stop":
+            if blocks[index]?["type"] as? String == "tool_use" {
+                let json = toolInput[index] ?? ""
+                // Strict tools: the input matches its schema. Anything unreadable is not run.
+                let input: Any? = json.isEmpty ? [String: Any]() : try? JSONSerialization.jsonObject(with: Data(json.utf8))
+                guard let input else { throw BrainError.badOutput }
+                blocks[index]?["input"] = input
+            }
         case "message_delta":
             if let reason = (event["delta"] as? [String: Any])?["stop_reason"] as? String { stopReason = reason }
             merge(event["usage"])
@@ -28,9 +56,26 @@ struct SSEParser {
             let type = (event["error"] as? [String: Any])?["type"] as? String ?? ""
             throw BrainError(status: Self.status(ofType: type))
         default:
-            break  // ping, content_block_start/stop (thinking, fallback), and event types added later
+            break  // ping, and event types added later
         }
         return nil
+    }
+
+    private mutating func append(_ piece: String, to key: String, at index: Int) {
+        guard var block = blocks[index] else { return }
+        block[key] = (block[key] as? String ?? "") + piece
+        blocks[index] = block
+    }
+
+    /// The reply's blocks as a JSON array, ready to send back as the assistant turn of a tool round.
+    /// After a server-side fallback, the blocks the declining model wrote before the last `fallback` block are
+    /// dropped as the docs say (thinking, redacted thinking, connector text, client tool calls); text is kept.
+    var content: Data {
+        let all = blocks.keys.sorted().compactMap { blocks[$0] }
+        let cut = all.lastIndex { $0["type"] as? String == "fallback" } ?? 0
+        let dropped: Set = ["thinking", "redacted_thinking", "connector_text", "tool_use"]
+        let kept = all.enumerated().filter { $0.offset >= cut || !dropped.contains($0.element["type"] as? String ?? "") }
+        return (try? JSONSerialization.data(withJSONObject: kept.map(\.element))) ?? Data("[]".utf8)
     }
 
     /// After the last line: a refusal, or a stream cut before `message_stop`, is an error.

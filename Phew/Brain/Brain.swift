@@ -10,6 +10,13 @@ protocol Brain: Sendable {
     /// check does not end the guide: it returns `current` with no target. Key, network and rate errors throw
     /// `BrainError` like `answer`.
     func progress(steps: [GuideStep], current: Int, packet: ContextPacket?) async throws -> GuideProgress
+
+    /// Drops the earlier questions and answers kept for follow-up questions. The Shell calls it on Quit.
+    func forgetTurns()
+}
+
+extension Brain {
+    func forgetTurns() {}
 }
 
 struct GuideProgress: Sendable, Equatable {

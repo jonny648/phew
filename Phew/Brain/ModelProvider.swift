@@ -4,7 +4,7 @@ import Foundation
 enum Tier: String, Sendable {
     /// Conductor, Observer, Librarian.
     case small
-    /// Guide, Follower.
+    /// Guide, Follower, Runner.
     case main
 
     /// The one table of model ids and prices, read from the Claude API docs (models overview, pricing), Nov 2026.
@@ -37,7 +37,9 @@ struct Usage: Sendable, Equatable {
     }
 }
 
-/// One call: a system prompt and one user turn, with an optional PNG and an optional schema for the answer.
+/// One call: a system prompt and the current user turn (text, optional PNG), after the earlier turns as text,
+/// followed by the tool rounds so far. Optional schema for the answer, optional tools.
+/// Messages go out in this order: `earlier`, the current turn, `after`.
 struct ModelRequest: Sendable {
     /// conductor, observer, guide: names the call in the cost log.
     var agent: String
@@ -50,12 +52,49 @@ struct ModelRequest: Sendable {
     /// Interactive overlay: time to the first word matters more than depth.
     var effort = "low"
     var maxTokens: Int
+    /// Earlier questions and answers of this conversation, text only: never an earlier screen text or picture.
+    var earlier: [Turn] = []
+    /// Tool rounds, append-only: the model's reply exactly as received, then the user turn with the tool results.
+    var after: [ModelMessage] = []
+    var tools: [ToolSpec] = []
+    /// Sent only with tools. Always at most one call per reply.
+    var toolChoice = ToolChoice.auto
+}
+
+/// One earlier question and its answer, as text.
+struct Turn: Sendable, Equatable {
+    var question: String
+    var answer: String
+}
+
+/// A message in a tool round. `content` is the JSON array of its content blocks, kept as bytes so the model's
+/// blocks (thinking with its signature, tool_use with its input) go back unchanged.
+struct ModelMessage: Sendable, Equatable {
+    var role: String
+    var content: Data
+}
+
+/// A client tool. Sent with `strict: true`, so its input always matches `schema`.
+struct ToolSpec: Sendable, Equatable {
+    var name: String
+    var description: String
+    /// JSON schema of the input.
+    var schema: String
+}
+
+enum ToolChoice: String, Sendable {
+    /// The model may call a tool or answer.
+    case auto
+    /// The model must answer: no more tool calls.
+    case none
 }
 
 enum ModelEvent: Sendable, Equatable {
     case text(String)
+    /// The reply's content blocks as received (JSON array), for sending back in a tool round. Never logged.
+    case content(Data)
     case usage(Usage)
-    /// end_turn, max_tokens… A refusal is thrown as `BrainError.refused` instead.
+    /// end_turn, tool_use, max_tokens… A refusal is thrown as `BrainError.refused` instead.
     case stop(String)
 }
 

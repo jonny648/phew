@@ -597,7 +597,7 @@ After a delete, any leftover on the disk is ciphertext. The steps above also mea
 16. Time a Map open and one recall, and compare with plain SQLite on the same made-up data.
 17. The licence notice can be reached from the menu bar.
 18. `Package.resolved` is committed. The first `xcodebuild` needs the network to download the framework, which is checked against its checksum.
-19. PhewTests runs inside Phew.app: add the SQLCipher product to PhewTests so `import SQLCipher` compiles there, linked but not embedded, and run `otool -L` on the test bundle too.
+19. PhewTests runs inside Phew.app and uses the app's one copy of SQLCipher through `@testable import Phew`. The tests never write `import SQLCipher`, so the product is not linked to PhewTests: linking it copied a second framework into the test bundle. `otool -L` on the test bundle shows neither SQLCipher nor libsqlite3. Changed during the build of 14 November.
 20. Under the tests, Phew does not open the real Map or read `map-key` at launch: the Map opens only when first needed, or not at all when running under XCTest.
 
 ## 5.13 Seeing and exporting it

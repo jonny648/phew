@@ -1,7 +1,8 @@
 import Foundation
 
 /// The Claude implementation of `ModelProvider`: raw HTTPS to the Messages API (no official Swift SDK), streamed.
-/// Request and event shapes from the Claude API docs, Nov 2026: Messages, streaming, vision, structured outputs.
+/// Request and event shapes from the Claude API docs, Nov 2026: Messages, streaming, vision, structured outputs,
+/// tool use (structured outputs and strict tools in one request; thinking blocks sent back unchanged).
 struct ClaudeProvider: ModelProvider {
     var key: @Sendable () -> String? = { KeyStore().read() }
 
@@ -29,6 +30,7 @@ struct ClaudeProvider: ModelProvider {
                         continuation.yield(.text(text))
                     }
                     try parser.end()
+                    continuation.yield(.content(parser.content))
                     continuation.yield(.usage(parser.usage))
                     continuation.yield(.stop(parser.stopReason ?? ""))
                     CallLog.record(request, usage: parser.usage, msFirst: first, msTotal: Self.ms(since: start),
@@ -59,14 +61,30 @@ struct ClaudeProvider: ModelProvider {
         if let schema = request.schema {
             output["format"] = ["type": "json_schema", "schema": try JSONSerialization.jsonObject(with: Data(schema.utf8))]
         }
+        // Earlier turns as text only, then the current turn with the fresh look, then the tool rounds unchanged.
+        var messages: [[String: Any]] = request.earlier.flatMap { turn in
+            [["role": "user", "content": turn.question], ["role": "assistant", "content": turn.answer]]
+        }
+        messages.append(["role": "user", "content": content])
+        for message in request.after {
+            messages.append(["role": message.role, "content": try JSONSerialization.jsonObject(with: message.content)])
+        }
         var body: [String: Any] = [
             "model": request.tier.model.id,
             "max_tokens": request.maxTokens,
             "stream": true,
             "system": request.system,
-            "messages": [["role": "user", "content": content]],
+            "messages": messages,
             "output_config": output,
         ]
+        if !request.tools.isEmpty {
+            // The same tools on every round, so the thinking blocks sent back stay valid; `none` forces the answer.
+            body["tools"] = try request.tools.map { tool in
+                ["name": tool.name, "description": tool.description, "strict": true,
+                 "input_schema": try JSONSerialization.jsonObject(with: Data(tool.schema.utf8))]
+            }
+            body["tool_choice"] = ["type": request.toolChoice.rawValue, "disable_parallel_tool_use": true]
+        }
         var http = URLRequest(url: endpoint)
         http.httpMethod = "POST"
         http.setValue(key, forHTTPHeaderField: "x-api-key")

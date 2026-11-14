@@ -3,21 +3,35 @@ import XCTest
 
 /// Conductor, Observer, Guide and the Brain's flow, with a fake provider and made-up packets. No network.
 final class BrainAgentsTests: XCTestCase {
-    /// Answers each agent with canned text pieces and records every request.
+    /// Answers each agent with canned replies and records every request. An agent's n-th call gets its n-th
+    /// reply; the last one repeats.
     final class FakeProvider: ModelProvider, @unchecked Sendable {
+        struct Reply {
+            var pieces: [String] = []
+            /// The reply's content blocks, as the provider would hand them back.
+            var blocks = "[]"
+            var stop = "end_turn"
+        }
+
         private let lock = NSLock()
-        private let replies: [String: [String]]
+        private let replies: [String: [Reply]]
         private var made: [ModelRequest] = []
-        init(_ replies: [String: [String]]) { self.replies = replies }
+        init(_ replies: [String: [String]]) { self.replies = replies.mapValues { [Reply(pieces: $0)] } }
+        init(rounds: [String: [Reply]]) { self.replies = rounds }
 
         var requests: [ModelRequest] { lock.withLock { made } }
 
         func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
-            lock.withLock { made.append(request) }
-            let pieces = replies[request.agent] ?? []
+            let reply = lock.withLock {
+                let calls = made.filter { $0.agent == request.agent }.count
+                made.append(request)
+                let list = replies[request.agent] ?? [Reply()]
+                return list[min(calls, list.count - 1)]
+            }
             return AsyncThrowingStream { continuation in
-                for piece in pieces { continuation.yield(.text(piece)) }
-                continuation.yield(.stop("end_turn"))
+                for piece in reply.pieces { continuation.yield(.text(piece)) }
+                continuation.yield(.content(Data(reply.blocks.utf8)))
+                continuation.yield(.stop(reply.stop))
                 continuation.finish()
             }
         }

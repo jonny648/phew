@@ -33,7 +33,7 @@ enum BrainSelfCheck {
                         switch event {
                         case .text(let piece): pieces += 1; chars += piece.count; first = first ?? ms(t0)
                         case .stop(let reason): stop = reason
-                        case .usage: break
+                        case .usage, .content: break
                         }
                     }
                     report("stream \(tier)", chars > 0 && stop == "end_turn",

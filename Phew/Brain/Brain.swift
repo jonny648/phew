@@ -13,11 +13,23 @@ protocol Brain: Sendable {
 
     /// Drops the earlier questions and answers kept for follow-up questions. The Shell calls it on Quit.
     func forgetTurns()
+
+    /// Each forget waiting in Recently deleted, for the menu's list.
+    func recentlyDeleted() async -> [DeletedItem]
+    /// Puts a forget back as it was. False if it could not.
+    func restore(_ id: Int64) async -> Bool
+    /// Wipes a forget for real at once. False if it could not.
+    func deleteNow(_ id: Int64) async -> Bool
 }
 
 extension Brain {
     func forgetTurns() {}
+    func recentlyDeleted() async -> [DeletedItem] { [] }
+    func restore(_ id: Int64) async -> Bool { false }
+    func deleteNow(_ id: Int64) async -> Bool { false }
 }
+
+struct DeletedItem: Sendable, Identifiable { let id: Int64; let label: String; let daysLeft: Int }
 
 struct GuideProgress: Sendable, Equatable {
     /// The step the user is on now, 0-based. `steps.count` means every step is done.

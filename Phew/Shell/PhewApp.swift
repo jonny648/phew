@@ -11,7 +11,9 @@ struct PhewApp: App {
         MenuBarExtra {
             Button(shell.paused ? "Resume" : "Pause") { shell.paused.toggle() }
             Button("API Key…") { delegate.keyWindow.show() }
+            Button("Recently deleted…") { delegate.showRecentlyDeleted() }
             Divider()
+            Button("About and licences") { delegate.menuPanel.show(title: "About Phew", AboutView()) }
             Button("Quit Phew") { NSApp.terminate(nil) }
         } label: {
             Image(systemName: shell.paused ? "pause.circle" : "cursorarrow.rays")
@@ -33,6 +35,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let panel = InputPanel()
     let card = TextCard()
     let keyWindow = KeyWindow()
+    /// Recently deleted or About: one small panel at a time.
+    let menuPanel = MenuPanel()
     private let permissions = PermissionsWindow()
     /// The context read at the shortcut, kept only until the question is asked or the panel closes without one.
     var capture: Task<ContextPacket?, Never>?
@@ -47,6 +51,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
         runDebugChecks()
         #endif
+    }
+
+    /// P5.5: the turns kept for follow-up questions do not outlive the app.
+    func applicationWillTerminate(_ notification: Notification) {
+        brain.forgetTurns()
+        shellLog("quit: turns dropped")
+    }
+
+    func showRecentlyDeleted() {
+        menuPanel.show(title: "Recently deleted", DeletedView(list: DeletedList(brain: brain)))
     }
 
     private func shortcut() {

@@ -96,6 +96,23 @@ enum BrainSelfCheck {
                 } catch { report("follower \(item.name)", false, failure(error)) }
             }
 
+            // (e) The Librarian on 10 made-up interactions and the sensitive case (P5.2), each on its own Map in memory.
+            do {
+                let usd0 = CallLog.spentUSD
+                let result = await LibrarianSelfCheck.run(provider: provider)
+                report("librarian interactions", result.passed >= 8, "\(result.passed)/\(result.total), $\(CallLog.spentUSD - usd0)")
+                report("librarian sensitive", result.sensitive, "see the line above")
+            }
+
+            // (f) The whole Brain on made-up Maps in memory, never the real one: recall, search_map, follow-ups.
+            for item in mapCases {
+                let t0 = Date(), usd0 = CallLog.spentUSD
+                do {
+                    let (ok, detail) = try await item.run(provider)
+                    report("map \(item.name)", ok, "\(detail), total \(ms(t0)) ms, $\(CallLog.spentUSD - usd0)")
+                } catch { report("map \(item.name)", false, failure(error)) }
+            }
+
             shellLog("brain check done: \(passed)/\(total) passed, $\(CallLog.spentUSD) in all, \(ms(start) / 1000) s")
         }
     }
@@ -381,5 +398,152 @@ enum BrainSelfCheck {
         CGImageDestinationFinalize(destination)
         return data as Data
     }
+}
+
+// MARK: - The Map in the Brain (P5.4, P5.5, P5.9, P5.11)
+
+extension BrainSelfCheck {
+    /// One live case through the whole Brain. Returns pass or fail and a detail of counts only.
+    struct MapCase {
+        let name: String
+        let run: (any ModelProvider) async throws -> (Bool, String)
+    }
+
+    /// The real provider, counting the Guide's rounds that ended in a search: what calls.log shows as stop "tool_use".
+    final class Rounds: ModelProvider, @unchecked Sendable {
+        let base: any ModelProvider
+        private let lock = NSLock()
+        private var searched = 0
+        init(_ base: any ModelProvider) { self.base = base }
+        var searches: Int { lock.withLock { searched } }
+
+        func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+            let inner = base.stream(request)
+            guard request.agent == "guide" else { return inner }
+            return AsyncThrowingStream { continuation in
+                let task = Task {
+                    do {
+                        for try await event in inner {
+                            if case .stop("tool_use") = event { lock.withLock { searched += 1 } }
+                            continuation.yield(event)
+                        }
+                        continuation.finish()
+                    } catch { continuation.finish(throwing: error) }
+                }
+                continuation.onTermination = { _ in task.cancel() }
+            }
+        }
+    }
+
+    /// A Brain on its own Map, or on none. Never the real Map, never the real Map keys, no purge.
+    static func brain(_ provider: any ModelProvider, _ store: MapStore?) -> ClaudeBrain {
+        ClaudeBrain(provider: provider, map: BrainMap(open: {
+            guard let store else { throw MapError.underTests }
+            return store
+        }, maintenance: false))
+    }
+
+    /// The explanation, kept in memory only. Waits for the Librarian, so its cost is counted in the case.
+    static func ask(_ brain: ClaudeBrain, _ question: String, _ packet: ContextPacket) async throws -> String {
+        var text = ""
+        for try await event in brain.answer(question, packet: packet) { if case .text(let piece) = event { text += piece } }
+        _ = await brain.map.ready()
+        return text
+    }
+
+    private static func has(_ text: String, _ words: String...) -> Bool { words.contains { text.localizedCaseInsensitiveContains($0) } }
+
+    private static func day(_ date: Date) -> String {
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US_POSIX")
+        format.dateFormat = "yyyy-MM-dd"
+        return format.string(from: date)
+    }
+
+    static let bakeryWindow = ContextPacket(
+        appName: "Figma", bundleID: "com.figma.Desktop", windowTitle: "Orchard Bakery website – Home",
+        visibleText: "Home\nMenu\nAbout us\nContact", cursor: nil, windowFrame: CGRect(x: 0, y: 25, width: 1440, height: 875))
+
+    /// Five made-up past questions on one made-up Project, spread over this month, oldest first. Recall gives the
+    /// last 3; the two oldest (the palette, the fonts) can only come from a search.
+    static func monthOfWork() async throws -> MapStore {
+        let store = try MapStore()
+        let project = try await store.add(MapNode(mapClass: .project, kind: "client job", name: "Orchard Bakery website", origin: .told))
+        let now = Date.now
+        let start = Calendar.current.dateInterval(of: .month, for: now)?.start ?? now
+        let summaries = [
+            "Asked how to set up the colour palette for the Orchard Bakery website; Phew explained the swatches panel.",
+            "Asked which fonts to use for the Orchard Bakery menu page; Phew suggested a serif for the headings.",
+            "Asked how to export the Orchard Bakery hero banner; Phew explained PNG export at 2x.",
+            "Asked how to add a contact form to the Orchard Bakery website; Phew pointed to the form component.",
+            "Asked why the Orchard Bakery footer links were misaligned; Phew explained auto layout spacing.",
+        ]
+        for (n, summary) in summaries.enumerated() {
+            let time = start.addingTimeInterval(now.timeIntervalSince(start) * Double(n + 1) / Double(summaries.count + 1))
+            try await store.add(MapEvent(time: MapStore.iso(time), app: "Figma", kind: .ask, summary: summary, project: project))
+        }
+        return store
+    }
+
+    /// A made-up open point (two questions on gradient meshes, not understood) and a told Task due in 3 days.
+    static func openPointAndDueTask() async throws -> MapStore {
+        let store = try MapStore()
+        let now = Date.now
+        let topic = try await store.add(MapNode(mapClass: .topic, kind: "concept", name: "Gradient meshes", origin: .observed))
+        for n in 1...2 {
+            try await store.add(MapEvent(time: MapStore.iso(now.addingTimeInterval(Double(-n) * 86_400)), app: "Figma", kind: .ask,
+                                         summary: "Asked what a gradient mesh is and how to edit its points.", mentions: [topic]))
+            try await store.moveUnderstanding(topic: topic, said: nil, asked: true, now: now)
+        }
+        try await store.add(MapNode(mapClass: .task, kind: "delivery", name: "Send the menu proofs to the printer",
+                                    properties: MapStore.properties(["due": (day(now.addingTimeInterval(3 * 86_400)), Origin.told)]),
+                                    origin: .told))
+        return store
+    }
+
+    static let mapCases: [MapCase] = [
+        // P5.4: more than the last 3 past questions, so the Guide must search the Map, once.
+        MapCase(name: "P5.4 this month needs one search") { provider in
+            let rounds = Rounds(provider)
+            let text = try await ask(brain(rounds, try await monthOfWork()), "What did I do on this project this month?", bakeryWindow)
+            let older = [has(text, "palette", "colour", "color"), has(text, "font", "serif", "typeface")].filter { $0 }.count
+            return (rounds.searches == 1 && older == 2, "\(rounds.searches) searches (calls.log stop tool_use), \(older)/2 older items named")
+        },
+        // P5.9: an open point, by its name.
+        MapCase(name: "P5.9 not understood names the topic") { provider in
+            let text = try await ask(brain(provider, try await openPointAndDueTask()), "What have I still not understood?", studyNotes)
+            let named = has(text, "gradient mesh")
+            return (named, "names it \(named)")
+        },
+        // P5.9: due soon, a told Task due in 3 days.
+        MapCase(name: "P5.9 due this week names the task") { provider in
+            let text = try await ask(brain(provider, try await openPointAndDueTask()), "What is due this week?", studyNotes)
+            let named = has(text, "menu proofs", "printer")
+            return (named, "names it \(named)")
+        },
+        // P5.11 rule 2: the Task due this week is the next step.
+        MapCase(name: "P5.11 next step names the task") { provider in
+            let text = try await ask(brain(provider, try await openPointAndDueTask()), "What should I do next?", studyNotes)
+            let named = has(text, "menu proofs", "printer")
+            return (named, "names it \(named)")
+        },
+        // P5.5: a follow-up on a fresh, unrelated screen is understood from the kept turn alone. No Map.
+        MapCase(name: "P5.5 and the second one") { provider in
+            let brain = brain(provider, nil)
+            let page = ContextPacket(
+                appName: "Safari", bundleID: "com.apple.Safari", windowTitle: "Two famous formulas",
+                visibleText: "Two famous formulas\nEuler's identity: e^(iπ) + 1 = 0\nThe Pythagorean theorem: a² + b² = c²",
+                cursor: nil, windowFrame: CGRect(x: 0, y: 25, width: 1440, height: 875))
+            let first = try await ask(brain, "What are the two formulas on this page?", page)
+            guard let euler = first.range(of: "Euler", options: .caseInsensitive)?.lowerBound,
+                  let pythagoras = first.range(of: "Pythag", options: .caseInsensitive)?.lowerBound else {
+                return (false, "the first answer does not name both")
+            }
+            let second = euler < pythagoras ? "Pythag" : "Euler"
+            let text = try await ask(brain, "And the second one?", studyNotes)
+            let named = has(text, second)
+            return (named, "follow-up names the second one \(named)")
+        },
+    ]
 }
 #endif

@@ -36,7 +36,11 @@ enum Guide {
         back. Each line says where the fact came from (told by the user, observed, or imported) and when. When a \
         line says "may be outdated", treat it with caution, and if your answer depends on it, say that it may be \
         outdated. When two lines with the same origin disagree, for example two different dates for the same \
-        exam, do not pick one: say plainly that they disagree and ask the user which is right. When the lines \
+        exam, do not pick one: say plainly that they disagree and ask the user which is right. A Note of kind \
+        "unconfirmed" is a weaker source kept beside a stronger fact about the same thing: answer with the \
+        stronger fact. Only when the unconfirmed line is observed and newer than that fact, add one short line \
+        saying what you saw, for example "I also saw the 22nd in Mail, but you told me the 20th." Never mention an \
+        imported one. When the lines \
         give a point to start from and a next step, start from that point and name the next step; when the user \
         asks what to do next, the next step is the answer. Search only when these lines and the screen are not \
         enough: at most two searches per answer.

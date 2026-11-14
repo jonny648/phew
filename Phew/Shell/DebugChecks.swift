@@ -16,6 +16,38 @@ extension AppDelegate {
         if arguments.contains("--debug-brain-check") { BrainSelfCheck.run() }  // real API calls, made-up data
         if arguments.contains("--debug-card") { Task { await checkCard() } }
         if arguments.contains("--debug-guide") { Task { await checkGuide() } }
+        if arguments.contains("--debug-deleted-check") { Task { await checkDeleted() } }
+    }
+
+    /// Opens Recently deleted on a stub with two made-up forgets, runs Restore and Delete now as their buttons do,
+    /// then opens About and licences. Logs counts and focus only, never a label. No model calls, no real Map.
+    private func checkDeleted() async {
+        try? await Task.sleep(for: .seconds(1))
+        NSApp.deactivate()
+        let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        let stub = DeletedStubBrain()
+        let list = DeletedList(brain: stub)
+        menuPanel.show(title: "Recently deleted", DeletedView(list: list))
+        await until { list.loaded }
+        func state(_ moment: String) {
+            let panel = menuPanel.panel
+            let frontUnchanged = NSWorkspace.shared.frontmostApplication?.processIdentifier == front
+            shellLog("deleted check \(moment): visible=\(panel?.isVisible ?? false) key=\(panel?.isKeyWindow ?? false) keyOnlyIfNeeded=\(panel?.becomesKeyOnlyIfNeeded ?? false) nonactivating=\(panel?.styleMask.contains(.nonactivatingPanel) ?? false) appActive=\(NSRunningApplication.current.isActive) phewFront=\(phewIsFront) frontUnchanged=\(frontUnchanged) items=\(list.items.count) daysLeft=\(list.items.map { DeletedList.daysLeftText($0.daysLeft) }) problem=\(list.problem != nil)")
+        }
+        state("opened")
+        await list.restore(1)
+        state("after Restore on item 1")
+        await list.deleteNow(2)
+        state("after Delete now on item 2")
+        await list.deleteNow(99)  // an id the stub does not know: the brain says no
+        state("after Delete now on an unknown id")
+        shellLog("deleted check: stub calls \(stub.calls)")
+        menuPanel.show(title: "About Phew", AboutView())
+        try? await Task.sleep(for: .seconds(1))
+        let about = menuPanel.panel
+        shellLog("deleted check about: visible=\(about?.isVisible ?? false) key=\(about?.isKeyWindow ?? false) phewFront=\(phewIsFront) noticeLines=\(AboutView.sqlcipherNotice.split(separator: "\n").count)")
+        menuPanel.close()
+        shellLog("deleted check done: panel closed=\(menuPanel.panel == nil) phewFront=\(phewIsFront) frontUnchanged=\(NSWorkspace.shared.frontmostApplication?.processIdentifier == front)")
     }
 
     /// Opens the panel twice (the second open is the usual case in real use), then closes it as Escape does.
@@ -199,6 +231,35 @@ struct FakeBrain: Brain {
         if let lookFailure { throw lookFailure }
         let next = min(max(current + 1, 0), steps.count)
         return GuideProgress(current: next, target: next < steps.count ? steps[next].target : nil)
+    }
+}
+
+/// A stand-in Brain for Recently deleted: two made-up forgets. Restore and Delete now remove the item and record
+/// the call; an unknown id returns false.
+final class DeletedStubBrain: Brain, @unchecked Sendable {
+    private let lock = NSLock()
+    private var items = [DeletedItem(id: 1, label: "Made-up person: Ada Example", daysLeft: 29),
+                         DeletedItem(id: 2, label: "Made-up note about a test project", daysLeft: 1)]
+    private var log: [String] = []
+    var calls: [String] { lock.withLock { log } }
+
+    func answer(_ question: String, packet: ContextPacket?) -> AsyncThrowingStream<BrainEvent, Error> {
+        FakeBrain().answer(question, packet: packet)
+    }
+    func progress(steps: [GuideStep], current: Int, packet: ContextPacket?) async throws -> GuideProgress {
+        try await FakeBrain().progress(steps: steps, current: current, packet: packet)
+    }
+    func recentlyDeleted() async -> [DeletedItem] { lock.withLock { items } }
+    func restore(_ id: Int64) async -> Bool { remove(id, "restore") }
+    func deleteNow(_ id: Int64) async -> Bool { remove(id, "deleteNow") }
+
+    private func remove(_ id: Int64, _ call: String) -> Bool {
+        lock.withLock {
+            log.append("\(call) \(id)")
+            guard let index = items.firstIndex(where: { $0.id == id }) else { return false }
+            items.remove(at: index)
+            return true
+        }
     }
 }
 #endif

@@ -17,7 +17,8 @@ Not in the MVP: notch and character, backend, dashboard, connections to other to
 | | P2 Senses | Window text, positions, screenshot, secrets filter | senses | Done 12 Nov |
 | | P3 Brain | Claude API, Conductor, Observer, Guide, text card | brain | Done 12 Nov |
 | | P4 Pointer | Phew points and guides step by step, following you | shell | Done 13 Nov |
-| | PR Research and review | Product restated, market and tools researched, MVP re-scoped. No code | lead | 13 Nov |
+| | PR Research and review | Product restated, market and tools researched, MVP re-scoped. No code | lead | Written 13 to 14 Nov. Ticked at the end of PV |
+| | PV Your review | You read everything on one page, understand it, and answer the open decisions. No code | lead, checker | |
 | 1 | P5 Map | Memory of your projects, recall at any time, follow-up questions | map, brain, senses, shell | |
 | 2 | PB Second brain | Memory imported from your other AI tools, by paste and from Claude Code files | map, shell | |
 | 3 | PS Guide speed | The guide stops feeling slow, and costs half | shell, senses, brain | |

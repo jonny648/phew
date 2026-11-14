@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Phew! review</title>
+<style>
+:root{--paper:#fff;--ink:#15171c;--muted:#5a606c;--rule:#d8dbe1;--tint:#f3f5f9;--done:#15171c;box-sizing:border-box;
+padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--paper:#0f1115;--ink:#e7e9ee;--muted:#9aa1ae;--rule:#2a2e37;--tint:#171a20;--done:#e7e9ee}}
+:root[data-theme="dark"]{color-scheme:dark;--paper:#0f1115;--ink:#e7e9ee;--muted:#9aa1ae;--rule:#2a2e37;--tint:#171a20;--done:#e7e9ee}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:4.5rem}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;font-size:14px;line-height:1.55}
+main{max-width:90ch;margin:0 auto;padding:2rem 1.25rem 4rem}
+h1{font-size:1.5rem;margin:0 0 .3rem}
+h2{font-size:1.05rem;margin:.4rem 0 .6rem}
+h3{font-size:1rem;margin:1.6rem 0 .3rem}
+h4{font-size:.95rem;margin:1.2rem 0 .2rem}
+p{margin:.5rem 0}
+ul,ol{margin:.5rem 0;padding-left:1.6rem}
+li{margin:.25rem 0}
+a{color:inherit}
+code{font-family:inherit;background:var(--tint);padding:0 .25rem}
+.meta,.sub,.cmeta{color:var(--muted)}
+.meta{margin:0}
+.sec{border-top:1px solid var(--rule);margin-top:2.2rem;padding-top:.6rem}
+.tag{color:var(--muted);border:1px solid var(--rule);padding:0 .35rem;font-size:.85em;white-space:nowrap;text-decoration:none}
+a.tag:hover{color:var(--ink);border-color:var(--ink)}
+.quote{border-left:3px solid var(--ink);margin:.8rem 0;padding:.2rem 0 .2rem 1rem}
+.box{background:var(--tint);padding:.6rem .9rem;margin:.8rem 0}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;margin:.6rem 0}
+th,td{text-align:left;vertical-align:top;padding:.4rem .7rem .4rem 0;border-bottom:1px solid var(--rule)}
+th{color:var(--muted);font-weight:400}
+td.n,th.n{white-space:nowrap}
+.bar{position:sticky;top:0;z-index:5;background:var(--paper);border-bottom:1px solid var(--rule)}
+.bar div{max-width:90ch;margin:0 auto;padding:.45rem 1.25rem;display:flex;flex-wrap:wrap;gap:.2rem 1.2rem;align-items:center}
+.bar .track{flex:1 1 8rem;height:.45rem;background:var(--tint);padding:0;margin:0;display:block}
+.bar .fill{height:100%;width:0;background:var(--done);padding:0;margin:0;display:block;transition:width .3s}
+.toc{columns:2;column-gap:2rem;list-style:none;padding:0}
+@media (max-width:640px){.toc{columns:1}}
+figure{margin:1rem 0}
+figcaption{color:var(--muted)}
+svg.mapfig{display:block;width:100%;height:auto;font-family:inherit}
+.mapfig .nd{fill:var(--tint);stroke:var(--ink);stroke-width:1.2}
+.mapfig .ln{stroke:var(--muted);stroke-width:1.4;fill:none}
+.mapfig .ahp{fill:var(--muted)}
+.mapfig .lb{fill:var(--paper)}
+.mapfig .lt{fill:var(--ink);font-size:11px}
+.mapfig .ct{fill:var(--muted);font-size:11px}
+.mapfig .nm{fill:var(--ink);font-size:13px;font-weight:700}
+label{display:block}
+textarea{display:block;width:100%;min-height:4.2rem;margin:.25rem 0 0;padding:.45rem .6rem;font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--rule);resize:vertical}
+textarea[readonly]{min-height:18rem;background:var(--tint)}
+input[type=radio]{margin:0 .55rem 0 0;accent-color:var(--done);flex:none;position:relative;top:.3em}
+button{font:inherit;color:var(--ink);background:var(--tint);border:1px solid var(--ink);padding:.3rem .8rem;cursor:pointer}
+button:hover{background:var(--paper)}
+button[aria-pressed="true"]{background:var(--paper);border-color:var(--rule);color:var(--muted)}
+a:focus-visible,button:focus-visible,textarea:focus-visible,input:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.notebox{margin:1.2rem 0 0;padding:.6rem .9rem .8rem;border:1px dashed var(--rule)}
+.notebox label{font-weight:700}
+.group{margin-top:2rem}
+.gbar{display:flex;flex-wrap:wrap;gap:.4rem 1rem;align-items:center;margin:.5rem 0}
+.status{color:var(--muted)}
+fieldset.card{border:1px solid var(--rule);margin:1rem 0 0;padding:.5rem 1rem 1rem;min-width:0;scroll-margin-top:4.5rem}
+fieldset.card.is-done{border-left:3px solid var(--done)}
+legend{font-weight:700;padding:0 .4rem;max-width:100%}
+.cmeta{margin:0 0 .4rem;font-size:.9em}
+.rule{border-left:3px solid var(--ink);padding-left:.7rem;font-weight:700}
+.opts{margin:.7rem 0 .2rem}
+.opt{display:flex;align-items:flex-start;padding:.3rem .4rem;margin:0 -.4rem;cursor:pointer}
+.opt:hover{background:var(--tint)}
+.opt .tag{margin-left:.6rem}
+.other{margin:.2rem 0 .4rem 1.6rem}
+.notel{color:var(--muted);margin-top:.7rem}
+.card textarea{min-height:2.6rem}
+.keep{margin-top:.8rem}
+.warn{border:1px solid var(--ink);padding:.5rem .8rem;font-weight:700}
+[hidden]{display:none!important}
+@media print{
+ .bar{position:static}
+ button,.toc,#copyStatus{display:none!important}
+ fieldset.card,.notebox,figure,tr{break-inside:avoid}
+ main{max-width:none;padding:0}
+ textarea{border:1px solid #999;field-sizing:content;min-height:0;height:auto;overflow:visible}
+ #out,label[for=out]{display:none}
+}
+</style>
+</head>
+<body>
+<div class="bar"><div><span id="progText">Decisions</span><span class="track" aria-hidden="true"><span class="fill" id="progFill"></span></span><a href="#s8">Decisions</a><a href="#s9">Copy my answers</a></div></div>
+<main>
+<h1>Phew! review</h1>
+<p class="meta">Phase PV, your review. Written on 14 November 2026. No code is written before you answer.</p>
+<noscript><p class="warn">This page needs JavaScript for the decision cards in section 8. Please open it in a normal browser window.</p></noscript>
+
+<section class="sec" id="s0">
+<h2>0. How to use this page</h2>
+<ol>
+<li>Read from top to bottom. Sections 1 to 7 explain. Section 8 asks.</li>
+<li>In section 8, choose an answer for each decision. The first proposal is already selected. If you agree, press "Keep this answer", or accept a whole group with one button.</li>
+<li>Where something is unclear or wrong, write a note. Sections 1 to 7 and every decision have a note field.</li>
+<li>At the bottom, press "Copy my answers". Paste the text into Claude Code.</li>
+</ol>
+<p><b>Time.</b> About 1 to 2 hours. Sections 1 to 7 take about 30 minutes to read. Then there are <span id="nDec">33</span> decision cards, 1 to 2 minutes each. You can stop and come back: a good break is before section 8.</p>
+<p><b>Saving.</b> Your answers and notes are saved in this browser while you work. Nothing is sent anywhere. The page works without internet. In a private window, after clearing browser data, or in another browser, the answers are not there.</p>
+<p><b>After you paste.</b> Claude Code writes your answers into the documents, the roadmap and <code>CLAUDE.md</code>. Nothing changes before you paste.</p>
+<p><b>The mark</b> <span class="tag">you decide</span> means: this is not decided. It is a first proposal. Click the mark to jump to its card in section 8.</p>
+<div class="box">
+<p><b>Words used on this page</b></p>
+<ul>
+<li><b>The model:</b> Claude, the AI made by Anthropic. Phew sends it your question and gets an answer back.</li>
+<li><b>API:</b> the paid service Phew uses to reach the model. The API key is its password.</li>
+<li><b>MVP:</b> version 1. The first version that solves the main problem.</li>
+<li><b>Agent:</b> one job given to the model, with its own instructions. Phew has six. <b>Conductor</b>: decides what you asked for. <b>Observer</b>: turns the window text and picture into a short summary. <b>Guide</b>: answers you and points. <b>Follower</b>: checks which step you are on during a guide. <b>Librarian</b>: proposes what to write to the Map. <b>Runner</b>: does a research task alone.</li>
+<li><b>Small model, main model:</b> two versions of Claude. The small one is fast and cheap. The main one is stronger, slower and costs more.</li>
+<li><b>Secrets filter:</b> the step in Phew that removes passwords, keys and card numbers before anything is sent.</li>
+</ul>
+</div>
+<ul class="toc">
+<li><a href="#s1">1. What Phew is now</a></li>
+<li><a href="#s2">2. What gets built, in order</a></li>
+<li><a href="#s3">3. How the Map works</a></li>
+<li><a href="#s4">4. How he works alone</a></li>
+<li><a href="#s5">5. A faster guide</a></li>
+<li><a href="#s6">6. What the research found</a></li>
+<li><a href="#s7">7. Rules that changed</a></li>
+<li><a href="#s8">8. Your decisions</a></li>
+<li><a href="#s9">9. Close the review</a></li>
+</ul>
+</section>
+
+<section class="sec" id="s1">
+<h2>1. What Phew is now</h2>
+<p>The product line, word for word from <code>CLAUDE.md</code>:</p>
+<p class="quote">Phew is a macOS companion that knows your projects. When called, he understands what you are doing, explains it, and guides you step by step by pointing. He can also research a task by himself and report back.</p>
+<h3>Two visible features</h3>
+<ol>
+<li><b>Explain and guide.</b> You call him. He understands what you are doing, explains it, and shows the next step on screen by pointing.</li>
+<li><b>A task he researches alone.</b> You give him a task. He works in the background. The report waits in the menu bar until you open it.</li>
+</ol>
+<p>Everything else serves these two: the memory, the import from other AI tools, the speed, the voice.</p>
+<h3>Who it is for</h3>
+<p>People who work on a Mac and use AI every day: designers, students, founders, developers, writers. The first user is you.</p>
+<h3>What changed since the first plan</h3>
+<ul>
+<li><b>From students to anyone on a Mac.</b> The first plan was a companion for university students. On 13 November you widened it.</li>
+<li><b>From one visible feature to two.</b> Research by himself is new.</li>
+<li><b>The deadline is dropped.</b> The first aim was 24 November. On 13 November you removed it. There is no fixed deadline.</li>
+<li><b>Nothing is skipped.</b> No task of the MVP is skipped or moved later to save time. If a task proves wrong or impossible, it is brought to you. It is not dropped quietly.</li>
+<li><b>The MVP is larger.</b> It now holds a Map with real logic, the second brain, guide speed, agents, speech, then GitHub.</li>
+</ul>
+<div class="notebox"><label for="n1">Unclear or wrong?</label><textarea id="n1" data-sec="Section 1. What Phew is now"></textarea></div>
+</section>
+
+<section class="sec" id="s2">
+<h2>2. What gets built, in order</h2>
+<p>The phases that are left, in build order. The number of tasks is counted in <a href="../roadmap.html">roadmap.html</a>. The size comes from <code>docs/06-sprint.md</code>. It is an estimate, not a promise.</p>
+<div class="tw"><table>
+<thead><tr><th class="n">Phase</th><th>What you get</th><th class="n">Tasks</th><th class="n">Rough size</th></tr></thead>
+<tbody>
+<tr><td class="n"><b>PV</b> Your review</td><td>You read this page and answer. Your answers are written into the documents, the roadmap and <code>CLAUDE.md</code>. Then phase PR is closed. No code.</td><td class="n">4</td><td class="n">not estimated</td></tr>
+<tr><td class="n"><b>P5</b> Map</td><td>He remembers your projects, on the Mac. A second question uses the first, also after you quit and reopen him. You can ask what he remembers, ask a follow-up question, correct him and say "forget that". You can export the Map to one readable file.</td><td class="n">12</td><td class="n">3 days</td></tr>
+<tr><td class="n"><b>PB</b> Second brain</td><td>He learns what your other AI tools already know about you. You paste a memory list, or he reads Claude Code's files. You tick what to keep.</td><td class="n">5</td><td class="n">1.5 days</td></tr>
+<tr><td class="n"><b>PS</b> Guide speed</td><td>The guide stops feeling slow. Targets: the next step in under half a second after a simple click, and about half the cost each time he checks the screen.</td><td class="n">7</td><td class="n">1.5 days</td></tr>
+<tr><td class="n"><b>PA</b> Agents</td><td>You give a research task. He works alone, a mark shows in the menu bar, and the report waits there. Reports can be saved as new files in one folder you choose.</td><td class="n">9</td><td class="n">6 to 10 days</td></tr>
+<tr><td class="n"><b>P6</b> Voice</td><td>Hold a key, speak, release. Your words appear in the input panel. Speech becomes text on the Mac, never in the cloud.</td><td class="n">2</td><td class="n">2 days</td></tr>
+<tr><td class="n"><b>PT</b> Manual testing</td><td>Three checks only you can run: InDesign, Acrobat, Figma Slides.</td><td class="n">3</td><td class="n" rowspan="2">2.5 days<br>for both</td></tr>
+<tr><td class="n"><b>PM</b> MVP test</td><td>You use version 1 on real work for 2 days. You test the memory and 3 research tasks. Then the retro (the look back) is written and the later phases are ordered.</td><td class="n">4</td></tr>
+<tr><td class="n"><b>PG</b> GitHub</td><td>The folder is put in order and copied to one private place on GitHub, an online home for code. The copy is marked as version 0.1.0. This is the first copy of the project outside this Mac.</td><td class="n">5</td><td class="n">1 day</td></tr>
+</tbody>
+</table></div>
+<p>In total: 51 tasks, about 18 to 22 working days. This is an estimate. The agents figure is the most uncertain.</p>
+<p><b>Already built</b> (P0 to P4, 32 tasks, all tested): the menu bar app, the shortcut and the input panel, screen reading with the secrets filter, the calls to the model, the text card, the pointer, and a guide that follows you with no Next button. Phase PR, the research, is written. Its 6 tasks are ticked at the end of this review.</p>
+<p><b>After the MVP</b> (not scheduled, not built now): the character in the notch, a server with user accounts (a backend), agents that run on a schedule or on a server, lecture listening, acting in apps and editing files, a dashboard, a wake word, going public, and connections to tools like Figma and Notion.</p>
+<div class="notebox"><label for="n2">Unclear or wrong?</label><textarea id="n2" data-sec="Section 2. What gets built, in order"></textarea></div>
+</section>
+
+<section class="sec" id="s3">
+<h2>3. How the Map works</h2>
+<p>The Map is Phew's memory of your work: what you are working on, with whom, with what, what was decided, and what you asked him before. It was redesigned on 13 and 14 November for a general user. The first version was built around one student.</p>
+<h3>What it is for</h3>
+<p>The Map exists to answer 13 questions. Nothing is added to its design unless it helps answer one of them. Four of the 13:</p>
+<ul>
+<li>Where did I leave off on this project?</li>
+<li>What did the client ask me to change on the landing page?</li>
+<li>What is due this week, and what does it need?</li>
+<li>What do you know about me, and where did you learn it?</li>
+</ul>
+<h3>The eleven classes</h3>
+<p>Everything in the Map belongs to one of eleven fixed classes. You chose them on 13 November. Each thing also gets one free word that says what sort it is, called its "kind". It is shown in brackets in the table.</p>
+<div class="tw"><table>
+<thead><tr><th class="n">Class</th><th>Meaning</th><th>Example (its kind)</th></tr></thead>
+<tbody>
+<tr><td class="n">Me</td><td>You. One only, never deleted</td><td>You</td></tr>
+<tr><td class="n">Project</td><td>Work with a goal</td><td>Acme rebrand (client job)</td></tr>
+<tr><td class="n">Task</td><td>Something to finish. May have a due date</td><td>Poster brief (assignment)</td></tr>
+<tr><td class="n">Topic</td><td>An idea, a skill or a problem</td><td>Kerning (concept)</td></tr>
+<tr><td class="n">Document</td><td>A named file, page or recording</td><td>logo-v3.fig (design file)</td></tr>
+<tr><td class="n">Person</td><td>Someone you work with</td><td>Marta (client)</td></tr>
+<tr><td class="n">Organization</td><td>A company, school or team</td><td>Acme (client)</td></tr>
+<tr><td class="n">Tool</td><td>An app, site, language or command</td><td>Figma (app)</td></tr>
+<tr><td class="n">Event</td><td>Something that happens at a time</td><td>Review with Marta on 20 Nov (meeting)</td></tr>
+<tr><td class="n">Place</td><td>Where something is or happens</td><td>Milan office (office)</td></tr>
+<tr><td class="n">Note</td><td>One fact, one sentence</td><td>"Client approved logo v3" (decision)</td></tr>
+</tbody>
+</table></div>
+<p>Things are joined by seven fixed links: part of, about, requires, involves, uses, at, understands. There is no loose "related to". A fact that fits no link is kept as a Note. The link "at", and one new direction of "part of", were added by Claude and wait for your yes <a class="tag" href="#d-r3a">you decide</a>.</p>
+<figure>
+<svg class="mapfig" viewBox="0 0 760 330" role="img" aria-labelledby="mapT mapD">
+<title id="mapT">A made-up example of the Map</title>
+<desc id="mapD">Five things and five links. The task Send logo options is part of the project Acme rebrand and requires the document logo-v3.fig. The project involves the person Marta. The document is part of the project. The note Client approved logo v3 is about the document.</desc>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="ahp" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<path class="ln" marker-end="url(#ah)" d="M150,140 L300,66"/>
+<path class="ln" marker-end="url(#ah)" d="M460,66 L610,140"/>
+<path class="ln" marker-end="url(#ah)" d="M355,264 L355,66"/>
+<path class="ln" marker-end="url(#ah)" d="M150,190 L270,264"/>
+<path class="ln" marker-end="url(#ah)" d="M530,289 L430,289"/>
+<rect class="lb" x="196" y="94" width="58" height="18"/><text class="lt" x="225" y="107" text-anchor="middle">part of</text>
+<rect class="lb" x="502" y="94" width="66" height="18"/><text class="lt" x="535" y="107" text-anchor="middle">involves</text>
+<rect class="lb" x="326" y="156" width="58" height="18"/><text class="lt" x="355" y="169" text-anchor="middle">part of</text>
+<rect class="lb" x="177" y="218" width="66" height="18"/><text class="lt" x="210" y="231" text-anchor="middle">requires</text>
+<rect class="lb" x="458" y="280" width="44" height="18"/><text class="lt" x="480" y="293" text-anchor="middle">about</text>
+<rect class="nd" x="280" y="16" width="200" height="50" rx="4"/><text class="ct" x="380" y="35" text-anchor="middle">PROJECT</text><text class="nm" x="380" y="54" text-anchor="middle">Acme rebrand</text>
+<rect class="nd" x="20" y="140" width="200" height="50" rx="4"/><text class="ct" x="120" y="159" text-anchor="middle">TASK</text><text class="nm" x="120" y="178" text-anchor="middle">Send logo options</text>
+<rect class="nd" x="540" y="140" width="200" height="50" rx="4"/><text class="ct" x="640" y="159" text-anchor="middle">PERSON</text><text class="nm" x="640" y="178" text-anchor="middle">Marta</text>
+<rect class="nd" x="230" y="264" width="200" height="50" rx="4"/><text class="ct" x="330" y="283" text-anchor="middle">DOCUMENT</text><text class="nm" x="330" y="302" text-anchor="middle">logo-v3.fig</text>
+<rect class="nd" x="530" y="264" width="220" height="50" rx="4"/><text class="ct" x="640" y="283" text-anchor="middle">NOTE</text><text class="nm" x="640" y="302" text-anchor="middle">Client approved logo v3</text>
+</svg>
+<figcaption>A made-up example. Read each arrow as a sentence: "Send logo options, part of, Acme rebrand".</figcaption>
+</figure>
+<h3>The three ways he recalls</h3>
+<ol>
+<li><b>Always loaded.</b> A short profile of you goes with every question: your name, how you like things done, your active projects and their tasks due soon. The last questions and answers of the conversation go too, as text, so a follow-up question works.</li>
+<li><b>A search before every answer.</b> Phew's own code searches the Map with the words of your question, the app name and the window title. It adds the project, its last past questions, the facts that match, and short lists such as what is due soon. The model is not asked for this search, so it adds no wait you would notice. That is an estimate, not measured.</li>
+<li><b>A search the model can make itself.</b> When the Guide (the agent that answers you) needs more, it can search the Map. Each search adds an estimated 1 to 3 seconds.</li>
+</ol>
+<p>The search is by words, not by meaning. A question in Italian may miss a note written in English. Search by meaning comes after the MVP.</p>
+<h3>What is sent, and what is never stored</h3>
+<ul>
+<li><b>The Map file never leaves the Mac.</b> It is never uploaded or synced. This is a hard rule.</li>
+<li><b>Sent to the model with each question:</b> your question, what is on screen, your short profile, and the few remembered facts that match. All of it passes the secrets filter first. In short: memory on your Mac, thinking in the cloud.</li>
+<li><b>Sent after each answer</b> to the Librarian (the small agent that proposes what to write to the Map): your question, his answer, the app name, the window title, the document's name with its path (where the file sits in your folders) or web address, and the stored facts found for this question. Never the window text. Never the picture.</li>
+<li><b>Never stored:</b> the window text and the picture. Anything the secrets filter removes.</li>
+<li><b>Kept from the screen:</b> only labels. The app name, the window title (kept only as the name of a document), and a file's name and path or a page's address. You approved this on 14 November.</li>
+<li><b>Sensitive things seen on screen</b> (health, money, passwords, other people's private messages): first proposal, they are not written unless you tell him to <a class="tag" href="#d-r3c">you decide</a>.</li>
+<li>The model only proposes. Phew's own code checks each proposal before anything is written.</li>
+</ul>
+<h3>Correcting and "forget that"</h3>
+<ul>
+<li><b>Every fact says where it came from:</b> told (you said it), observed (he learned it while answering) or imported (from another AI tool). Told beats observed. Observed beats imported.</li>
+<li><b>Correcting.</b> You say "No, the deadline is the 20th". The new fact replaces the old one. The old one is kept as history, so he can answer "what was the deadline before?".</li>
+<li><b>When a weaker source disagrees</b> with a stronger one: first proposal, the weaker fact is kept beside it, marked "unconfirmed" <a class="tag" href="#d-r8">you decide</a>.</li>
+<li><b>"Forget that" is a real delete.</b> The thing, its past versions, its links and the notes about it are wiped from the file. It cannot be undone, and the Map has no backup. Only your own words can start it. Text on the screen, on the web or in a file never can.</li>
+<li>In the first proposal he asks before deleting <a class="tag" href="#d-r4">you decide</a>, and past questions that mention the thing are emptied, not deleted whole <a class="tag" href="#d-r5">you decide</a>.</li>
+<li><b>What forgetting cannot reach:</b> exports and reports you already saved, backups of the Mac such as Time Machine, and what was already sent to the model in earlier questions.</li>
+</ul>
+<h3>Where the file lives</h3>
+<p>One file on your Mac: <code>~/Library/Application Support/Phew/map.sqlite</code>. SQLite is a small database that lives in one file and is built into every Mac. Nothing to install, no account, no server. If you use Time Machine, it copies this file like any other. You can export the Map to one readable text file to check what he wrote.</p>
+<h3>The main risk</h3>
+<p>Wrong facts can pile up. No source we found shows a small model filling eleven classes reliably. You chose to build all eleven at once. The protections: Phew's code checks every write, the export lets you look, and "forget that" removes a mistake.</p>
+<p>The numbers in the Map (days, limits, how sure he is of a fact) are all first proposals <a class="tag" href="#d-r25">you decide</a>. The full design is in <a href="05-map.md">docs/05-map.md</a>.</p>
+<div class="notebox"><label for="n3">Unclear or wrong?</label><textarea id="n3" data-sec="Section 3. How the Map works"></textarea></div>
+</section>
+
+<section class="sec" id="s4">
+<h2>4. How he works alone</h2>
+<p>You type or say a task, for example "find five good sources on kerning". The agent that does this work is called the Runner. On 13 November you decided what version 1 may do: read and research, report on the card, and save the report as a new file in one folder you choose.</p>
+<h3>What a research task may read and do</h3>
+<ul>
+<li>Read your screen once, at the moment you give the task. Not again.</li>
+<li>Search the Map.</li>
+<li>Search the web and read web pages. This runs at Anthropic, not on your Mac.</li>
+<li>Write the report text. If you chose a reports folder, Phew's own code, not the Runner, saves it there as a new file.</li>
+</ul>
+<h3>What it can never do</h3>
+<ul>
+<li>Change, overwrite or delete a file. Editing files comes after the MVP.</li>
+<li>Click or type in other apps. That comes after the MVP, as a separate switch that is off by default.</li>
+<li>Open a web address that came from your screen, the Map or a file.</li>
+<li>Save or write any file by itself. The Runner has only three tools: web search, reading a web page, and Map search. None of them writes anything.</li>
+<li>Show a result by itself.</li>
+</ul>
+<h3>How the report waits</h3>
+<p>While he works, a mark shows on the menu bar icon. Stop in the menu ends the task. A finished report waits in the menu bar until you click it. Then it opens on the card. He never appears unasked. Before your first task, one screen tells you in plain words what a task reads and sends <a class="tag" href="#d-r15">you decide</a>.</p>
+<p>Still open: one task at a time or several, what Stop leaves behind, and what happens to a waiting report if Phew quits <a class="tag" href="#d-r17a">you decide</a>. Also how the report file is named and listed <a class="tag" href="#d-r18">you decide</a>.</p>
+<h3>The limits</h3>
+<p>Each task has a limit on searches, on pages and on cost. The first proposal is 5 searches, 8 pages and 50 cents <a class="tag" href="#d-r16">you decide</a>. At a limit he stops, reports what he has, and names the limit he reached.</p>
+<h3>The main risk</h3>
+<p>A web page can contain hidden instructions that try to make the agent send out what it knows: your screen text, your memory. Every vendor says its defence against this is not perfect.</p>
+<p>The protections come from Phew's own code and from settings at Anthropic, not from asking the model to behave:</p>
+<ul>
+<li>What he reads on the screen, in the Map, on the web or in a file is data, never instructions. This is a hard rule.</li>
+<li>He has no tool that writes or changes anything. So a hidden instruction has nothing to act with.</li>
+<li>Two guards against opening a planted address. Phew's code removes every web address from the screen text, the Map facts and file text before sending. And a setting at Anthropic lets him open only addresses he found by his own searches or on pages he already opened.</li>
+<li>The limits per task keep a runaway task small.</li>
+<li>The secrets filter runs on everything Phew sends.</li>
+<li>First proposal: a research report writes no facts to the Map in version 1 <a class="tag" href="#d-r23">you decide</a>.</li>
+</ul>
+<p>One risk stays. A web page can try to steer what he searches for next. Search words can include names from your screen or the Map, so a page could get a client's name sent out in a search <a class="tag" href="#d-r20">you decide</a>.</p>
+<h3>The second brain import</h3>
+<ol>
+<li><b>Paste box.</b> You paste the memory list your other assistant wrote about you. Nothing is sent until you confirm. The secrets filter runs, then the small model sorts the text into single facts. The text is treated as data, never as instructions.</li>
+<li><b>Claude Code's files.</b> You choose a project folder. He reads its <code>CLAUDE.md</code>. First proposal: he finds that project's memory files himself, in a hidden folder, and shows you the list before anything is sent <a class="tag" href="#d-r11">you decide</a>.</li>
+<li><b>You tick what to keep.</b> Only ticked facts are stored, marked as imported, with source and date. An imported fact never replaces what you told him or what he observed. First proposal: a menu entry "Undo last import" removes the whole last import <a class="tag" href="#d-r12">you decide</a>.</li>
+</ol>
+<p>The paste box, the tick list, the file list, the consent screen and the list of saved reports are new small screens. They touch a hard rule <a class="tag" href="#d-r2">you decide</a>. So does picking a folder <a class="tag" href="#d-r1">you decide</a>.</p>
+<div class="notebox"><label for="n4">Unclear or wrong?</label><textarea id="n4" data-sec="Section 4. How he works alone"></textarea></div>
+</section>
+
+<section class="sec" id="s5">
+<h2>5. A faster guide</h2>
+<p>Today the guide works but feels slow. A "look" is one check of the screen by the model, after you act, to see which step you are on. Measured on 29 real looks: 1 second of waiting, then 2.1 seconds on average and up to 6.2 seconds. Each look costs 0.9 cents. Scrolling also triggers looks.</p>
+<p>The changes in phase PS, decided on 13 November:</p>
+<ul>
+<li><b>No look while you drag or scroll.</b> One look when you let go. When you scroll, the pointer moves with its target.</li>
+<li><b>No look when nothing changed.</b> A click on empty space sends nothing to the model.</li>
+<li><b>The next step shows at once after a simple click.</b> The Guide marks the steps that need only a click. When you click the marked target, the next step shows in under half a second. The look then confirms. If the step was not really done, the card goes back. Steps that need typing, dragging or choosing still wait for the look. So does the last step, so the card never closes on a guess.</li>
+<li><b>Less is sent.</b> The picture is cut around the target, fewer screen elements are listed, and the part of the request that never changes is reused at a lower price. Target: under 0.5 cents per look.</li>
+<li><b>Slow answers are cut and tried again.</b> Target: no look above 4 seconds.</li>
+<li><b>A screen watch during a guide.</b> See below.</li>
+</ul>
+<h3>The screen watch, and when it stops</h3>
+<p>During a guide, Phew watches the screen. He does it for one reason: to know when the screen has stopped changing, and whether it changed at all. This widens the rule "he reads the screen only when called" for the length of a guide. You approved that on 13 November.</p>
+<ul>
+<li>The watch alone sends nothing to the model. A look is still made only after you act.</li>
+<li>What he watches stays in memory. It is never written to disk or to a log.</li>
+<li>It starts when the guide's steps are shown.</li>
+<li>It stops as soon as following stops: the last step is done, the card closes, you press Escape, you press Pause, the limit of 40 looks is reached, or a look fails.</li>
+<li>First proposal: it also stops after 2 minutes without an action from you, and starts again when you act <a class="tag" href="#d-r13a">you decide</a>.</li>
+<li>First proposal: Pause also ends a running guide <a class="tag" href="#d-r13b">you decide</a>.</li>
+<li>A list of apps he must never read is not built. In the MVP or later <a class="tag" href="#d-r14">you decide</a>.</li>
+</ul>
+<p>All speed and cost targets are estimates until they are measured in the build.</p>
+<div class="notebox"><label for="n5">Unclear or wrong?</label><textarea id="n5" data-sec="Section 5. A faster guide"></textarea></div>
+</section>
+
+<section class="sec" id="s6">
+<h2>6. What the research found</h2>
+<p>32 products were researched on 13 November.</p>
+<ul>
+<li><b>Pointing is now common.</b> At least six consumer products and one Microsoft feature point at the screen. One of them, Peek, also waits for your click and follows you. So Phew's guide that follows you is not unique.</li>
+<li><b>Agents that work alone and voice are common too.</b></li>
+<li><b>Pointing with project memory is not.</b> The guides remember little or nothing. The memory tools do not point. On the Mac, nobody has both.</li>
+<li><b>Memory kept on the Mac, looking only when called, is not.</b> Local memory exists only in tools that record all the time. Tools that look only when called keep almost nothing.</li>
+<li><b>So: lead with memory, not with pointing.</b> "He knows your projects" is the open space. What protects Phew from copies is the combination, not any single feature.</li>
+</ul>
+<h3>The hard truths</h3>
+<ol>
+<li>"Local" is a weak claim while pictures go to a cloud model. The honest wording is: memory on your Mac, thinking in the cloud.</li>
+<li>People pay little for pointing. A first paid plan costs 5 to 29 dollars a month, with free options.</li>
+<li>Paying for personal memory is unproven. Rewind was sold and shut. Others are moving to teams and meetings. This is a reading of their moves, not a published fact.</li>
+<li>Apple, Microsoft, Google and OpenAI are each one feature away. Expect the gap to narrow within 6 to 12 months. This is a judgement, not a published fact.</li>
+<li>Going general puts Phew directly against HeyClicky (a pointing companion; its site says 25,000+ users) and Peek, with no advantage until the memory works.</li>
+</ol>
+<p>The prices were read through a tool that summarises pages. Check the live page before quoting one.</p>
+<p>The market map in Figma: <a href="https://www.figma.com/design/XDdAxJoezQI2GXmxQBOn0m">figma.com/design/XDdAxJoezQI2GXmxQBOn0m</a>. The full research with sources: <a href="10-research.md">docs/10-research.md</a> (10.1 for the market, 10.6 for the summary).</p>
+<div class="notebox"><label for="n6">Unclear or wrong?</label><textarea id="n6" data-sec="Section 6. What the research found"></textarea></div>
+</section>
+
+<section class="sec" id="s7">
+<h2>7. Rules that changed</h2>
+<p>The hard rules in <code>CLAUDE.md</code> that are new or reworded since 12 November, in plain words. <b>These are already approved.</b> You approved them on 13 and 14 November, and they are listed in <code>docs/07-decisions.md</code> 7.1. The one exception is rule 8, on models: it follows the Follower change you delegated to Claude on 12 November and the design of the Runner. They are here so you can read them once more.</p>
+<ol>
+<li><b>Two visible features</b> (it was one). Explain and guide, and a task he researches alone. Everything else serves them.</li>
+<li><b>He never appears unasked.</b> New part: an agent's result waits in the menu bar.</li>
+<li><b>He reads the screen only when called.</b> New part: during a guide he may watch the screen until the guide ends, to know when it has settled, and look again after you act. What he watches stays in memory.</li>
+<li><b>New. What an agent may do.</b> It may read the screen once when given a task, the Map and the web. It changes nothing, except new files in one folder you chose. It never overwrites or deletes.</li>
+<li><b>New. Data, never instructions.</b> What an agent reads from the web, a file or pasted text is data.</li>
+<li><b>Reworded. What he captures</b> (screen text and screenshots) lives in memory only. It is dropped when the answer is done or stopped. For a guide: when the guide ends. For a task: when the task ends or is stopped. Also when the panel closes without a question. It is never kept for a follow-up question, and never written to disk or to a log. The app name, the window title and a file's path or page address are labels, not the capture. The Map may keep them.</li>
+<li><b>New. The Map lives only on the Mac.</b></li>
+<li><b>Reworded. Which model does what.</b> The small model for the Conductor, the Observer and the Librarian. The main model for the Guide, the Follower and the Runner. Before, only the Guide used the main model.</li>
+<li><b>Reworded. Logs.</b> The file <code>calls.log</code> holds only numbers and names: the time, the agent, the model, token counts (a token is a small piece of text, the unit the model's price is counted in), cost, timings, how the call ended and a task number. No log holds a question, a task's words, search words, web addresses, Map facts or an answer.</li>
+</ol>
+<p>Two hard rules may still change. They are the first two cards of the group for phase PB: picking a folder <a class="tag" href="#d-r1">you decide</a> and new small screens <a class="tag" href="#d-r2">you decide</a>. Nothing is changed in <code>CLAUDE.md</code> until you say yes.</p>
+<div class="notebox"><label for="n7">Do you disagree with one of these rules? Write it here.</label><textarea id="n7" data-sec="Section 7. Rules that changed"></textarea></div>
+</section>
+
+<section class="sec" id="s8">
+<h2>8. Your decisions</h2>
+<p>Every open row of <code>docs/07-decisions.md</code> 7.2 is here: 27 rows, shown as <span id="nDec2">33</span> cards. Three rows hold several separate choices, so they are split: row 3 into four cards, row 13 into two, row 17 into three. The groups follow the phase that needs the answer, in build order.</p>
+<p>On each card the first proposal is already selected. A card counts as answered when you choose an option, press "Keep this answer", or accept its group. Cards you do not touch are sent with their pre-selected answer, under "Left at the first proposal". For the two hard-rule cards of phase PB that answer is "Ask me at phase PB". The last two cards have no first proposal: there it is "Ask me at the retro" and "Ask me after the MVP".</p>
+<p id="selfcheck" class="warn" hidden></p>
+<div id="decisions"></div>
+</section>
+
+<section class="sec" id="s9">
+<h2>9. Close the review</h2>
+<fieldset class="card" id="approveBox">
+<legend>Do you approve the roadmap and the phases?</legend>
+<p class="cmeta">This closes phase PR (roadmap task PV.4). Nothing is selected until you choose.</p>
+<div class="opts">
+<label class="opt"><input type="radio" name="approve" value="Approve"><span>Approve</span></label>
+<label class="opt"><input type="radio" name="approve" value="Approve with the changes I wrote"><span>Approve with the changes I wrote</span></label>
+<label class="opt"><input type="radio" name="approve" value="Not yet"><span>Not yet</span></label>
+</div>
+</fieldset>
+<div class="gbar"><button type="button" id="copyBtn">Copy my answers</button><span class="status" id="copyStatus" role="status" aria-live="polite"></span></div>
+<p>Then paste the text into Claude Code. If the button does not work, click in the box below, select all and copy by hand. The box always shows the same text.</p>
+<label for="out">Your answers as text (read only)</label>
+<textarea id="out" readonly spellcheck="false"></textarea>
+</section>
+</main>
+
+<script>
+(function(){
+'use strict';
+var KEY='phew-review-v1';
+var FP='first proposal';
+var YOURS='your choice of 14 November';
+var LATER='not needed before then';
+/*DATA-START*/
+var GROUPS=[
+ {id:'P5',title:'Needed by phase P5, the Map'},
+ {id:'PB',title:'Needed by phase PB, the second brain',sub:'The first two cards touch a hard rule. On 14 November you chose to decide them at phase PB. For those two, the button below confirms "Ask me at phase PB".',btn:'Accept the selected answers in this group'},
+ {id:'PS',title:'Needed by phase PS, guide speed'},
+ {id:'PA',title:'Needed by phase PA, agents'},
+ {id:'P6',title:'Needed by phase P6, voice'},
+ {id:'PM',title:'Needed by phase PM, the MVP test'},
+ {id:'RETRO',title:'Needed at the retro',sub:'The retro is the look back at the end of the MVP test (roadmap task PM.4).',btn:'Confirm the selected answer'},
+ {id:'LATER',title:'Needed after the MVP',btn:'Confirm the selected answer'}
+];
+var D=[
+ /* P5 */
+ {id:'r3a',row:3,g:'P5',topic:`Four choices made for you in the Map`,part:`1 of 4: a seventh link, "at"`,
+  title:`A new link, "at", for places`,
+  body:[`The Map joins things with a fixed list of links. On 13 November you added the class Place. Without a link, a Place could not be joined to anything.`,
+        `Claude added a seventh link, "at", from an Event or an Organization to a Place. Example: "Review with Marta, at, Milan office".`],
+  opts:[{t:`Yes. Keep the link "at"`,tag:FP},{t:`No. A Place cannot be joined to anything`}]},
+ {id:'r3b',row:3,g:'P5',topic:`Four choices made for you in the Map`,part:`2 of 4: "part of" from a Document to an Event`,
+  title:`"Part of" may also join a document to an event`,
+  body:[`The link "part of" gets one new direction: from a Document to an Event. So slides or a recording can be tied to their lecture or meeting. Example: "Lesson 4 slides, part of, Lesson 4".`,
+        `The number of links stays seven.`],
+  opts:[{t:`Yes. Allow "part of" from a Document to an Event`,tag:FP},{t:`No. Slides and recordings are not tied to their meeting or lecture`}]},
+ {id:'r3c',row:3,g:'P5',topic:`Four choices made for you in the Map`,part:`3 of 4: sensitive things seen on screen`,
+  title:`Sensitive things on screen are not written to the Map`,
+  body:[`Sensitive things he sees on screen are not written to the Map unless you tell him to: health, money, passwords, and other people's private messages.`,
+        `Example: a bank balance is on screen while you ask about a spreadsheet. Nothing about the balance is stored.`,
+        `This rests on the judgement of the small model, so it is tested in roadmap task P5.2. The export is how you check it, and "forget that" removes a mistake.`],
+  opts:[{t:`Yes. Not written unless I say so`,tag:FP},{t:`No. Sensitive things are written like any other fact`}]},
+ {id:'r3d',row:3,g:'P5',topic:`Four choices made for you in the Map`,part:`4 of 4: "weak concept" renamed "open point"`,
+  title:`The name "open point" replaces "weak concept"`,
+  body:[`The first plan called a topic you still do not understand a "weak concept". The new name is "open point". Only the name changes.`],
+  opts:[{t:`Yes. Call it "open point"`,tag:FP},{t:`No`}]},
+ {id:'r4',row:4,g:'P5',topic:`Forget: ask before deleting`,
+  title:`Forget: does he ask before deleting?`,
+  body:[`"Forget that" is a real delete. It cannot be undone and the Map has no backup.`,
+        `In the first proposal the card first names what will go, and he deletes only after you click Forget. Anything else cancels. The proposed card text: "Forget Marta? 1 person, 4 notes, 3 links, 6 past questions. This cannot be undone."`,
+        `If you want other words on the card, write them in the note.`],
+  opts:[{t:`He asks first. He deletes only after I click Forget`,tag:FP},{t:`He deletes at once and names what was deleted`}]},
+ {id:'r5',row:5,g:'P5',topic:`Forget: past questions that mention the forgotten thing`,
+  title:`Forget: what happens to past questions that mention it?`,
+  body:[`He keeps one short line for each past question: what you asked and what he answered. Some of these lines mention the thing you forget.`,
+        `First proposal: the line stays, but its words are wiped and the link to the forgotten thing is removed. The line is deleted only when it mentions nothing else and no fact names it as the place it came from. Other facts point to these lines to show where they came from. "Undo last import" needs those pointers too.`,
+        `Example: one past question mentioned Marta and the Acme rebrand. After "forget Marta" it still counts for the Acme rebrand, but its words are gone.`],
+  opts:[{t:`Wipe its words, keep the empty line for the other things it mentions`,tag:FP},{t:`Delete the whole past question. It is then also gone for the other things it mentioned`}]},
+ {id:'r6',row:6,g:'P5',topic:`How the "understands" strength moves`,
+  title:`How he tracks what you understand`,
+  body:[`For each topic he keeps one number from 0 to 1: how well you understand it. Phew's own code sets it, never the model.`,
+        `It starts at 0.3 the first time you ask about a topic. Each later question on it takes off 0.1, because asking again suggests it is still unclear. It becomes 0.9 when you say you understand it, and 0 when you say you do not.`,
+        `An "open point" is a topic you asked about at least twice, with a number below 0.5. Here you confirm the idea. The numbers can be tuned later.`],
+  opts:[{t:`Yes. As described above`,tag:FP},{t:`No`}]},
+ {id:'r7',row:7,g:'P5',topic:`"Due soon" includes late Tasks`,
+  title:`A late task still counts as "due soon"`,
+  body:[`"Due soon" means an open task with a due date in the next 7 days. First proposal: a task that is past its date and not done still counts, and is marked "late". Otherwise it would drop out of "what is due".`,
+        `Example: a poster was due yesterday and is not done. "What is due this week?" still names it, as late.`],
+  opts:[{t:`Yes. A late task still counts and is marked "late"`,tag:FP},{t:`No`}]},
+ {id:'r8',row:8,g:'P5',topic:`A weaker source that disagrees with a stronger one`,
+  title:`When a weaker source disagrees with a stronger one`,
+  body:[`Every fact has an origin: you told him, he observed it, or it was imported. Told beats observed, observed beats imported. That part is decided.`,
+        `Open: what happens to the weaker fact. First proposal: it is kept beside the stronger one, as a note marked "unconfirmed". Answers use the stronger one. If the weaker one is observed and newer, he adds one line saying so.`,
+        `The rule is applied value by value. Example: you told him a due date. Something he observes cannot change that date. It can still mark the task as done, because nobody had said that.`],
+  opts:[{t:`Yes. As described above`,tag:FP},{t:`No`}]},
+ {id:'r9',row:9,g:'P5',topic:`Check on the Librarian: pass mark`,
+  title:`The pass mark for the check of the Librarian`,
+  body:[`The Librarian is the small agent that proposes what to write to the Map after each answer. Before roadmap task P5.2 is ticked, 10 made-up cases are run through the real model and compared with the expected result.`,
+        `A model is never exact, so the check needs a pass mark. You can raise it.`],
+  hint:`For example: 9 out of 10`,
+  opts:[{t:`At least 8 right out of 10`,tag:FP}]},
+ /* PB */
+ {id:'r1',row:1,g:'PB',topic:`Picking a folder without taking focus (hard rule)`,
+  title:`Picking a folder without taking focus`,
+  rule:`This touches a hard rule: "He never activates the app or takes focus from the front app."`,
+  body:[`A folder is picked in three places: where the Map export is saved (roadmap task P5.10), the project folder for Claude Code's files (PB.4), and the reports folder (PA.7).`,
+        `The normal macOS folder window makes Phew the front app while it is open. The rule forbids that. There are two ways. You drag the folder onto Phew's panel, and the rule stays as it is. Or the rule gets one written exception for the folder window.`,
+        `On 14 November you chose to decide this at phase PB. The Map export comes before that, so it is built at the end of phase P5, and you are asked then how to pick its folder.`],
+  opts:[{t:`Ask me at phase PB`,tag:YOURS},{t:`Try drag and drop first. If it does not work well, allow the one exception`,tag:FP},{t:`Drag and drop only. The rule stays as it is`},{t:`One written exception in the rule for the folder window`}]},
+ {id:'r2',row:2,g:'PB',topic:`New small screens (hard rule)`,
+  title:`New small screens`,
+  rule:`This touches a hard rule: "No main window and no Dock icon. Menu bar, input panel, pointer overlay, text card."`,
+  body:[`The rule lists four surfaces. The API key screen and the permissions screen already exist outside that list. The second brain adds a paste box, a tick list and a file list. Agents add a consent screen and a list of saved reports.`,
+        `First proposal: add this sentence to the rule: "Small panels you open yourself from the menu are allowed. They are non-activating too." (Non-activating means the panel does not take the keyboard from the app you are in.)`,
+        `One problem: the consent screen is not opened from the menu. It shows when you give your first task. So the sentence may need to name it.`,
+        `On 14 November you chose to decide this at phase PB.`],
+  opts:[{t:`Ask me at phase PB`,tag:YOURS},{t:`Add the proposed sentence to the rule`,tag:FP},{t:`Add the proposed sentence, and name the consent screen in it`}]},
+ {id:'r10',row:10,g:'PB',topic:`CLAUDE.md import`,
+  title:`Importing a CLAUDE.md file`,
+  body:[`CLAUDE.md is the file of rules that Claude Code reads in a project folder. Phew can import it.`,
+        `Its facts become notes of kind "instruction" about the project named after the folder. For the personal CLAUDE.md in your home folder, they are about you.`,
+        `They start unticked, because the file is written as rules for a coding agent, not as facts about you. Any pasted fact written as an instruction also starts unticked.`,
+        `The question: is this how a CLAUDE.md file should be imported?`],
+  opts:[{t:`Yes. Import it as described, every fact unticked`,tag:FP},{t:`No`}]},
+ {id:'r11',row:11,g:'PB',topic:`Claude Code memory files: Phew finds them himself`,
+  title:`Claude Code's memory files: may he find them himself?`,
+  body:[`Claude Code keeps memory files in a hidden folder inside your home folder (~/.claude/projects/; ~ means your home folder). In the first proposal you choose a project folder. Phew then looks in that hidden folder himself, lists the projects that have memory files, and you pick.`,
+        `He reads only CLAUDE.md files and the .md files in that memory folder. He never reads transcripts or settings. He shows the list of files before anything is sent.`,
+        `The question: is it fine that he looks in that hidden folder without you choosing it?`],
+  opts:[{t:`Yes. He reads only folder names there until I confirm the file list`,tag:FP},{t:`No. He does not look in that hidden folder unless I choose it myself`}]},
+ {id:'r12',row:12,g:'PB',topic:`Undo last import`,
+  title:`Undo last import`,
+  body:[`A menu entry that deletes every fact from the last import, after one question on the card. A thing the import created is kept if something you told him or he observed now points to it.`,
+        `Example: the import created "Marta". Later you told him Marta is your client. Undo removes the imported facts but keeps Marta.`,
+        `The wording and the place in the menu are yours to choose.`],
+  hint:`For example: other words, or another place in the menu`,
+  opts:[{t:`Menu entry "Undo last import". Last import only in version 1`,tag:FP}]},
+ /* PS */
+ {id:'r13a',row:13,g:'PS',topic:`Screen watch: stop when idle, and Pause`,part:`1 of 2: stop when idle`,
+  title:`Screen watch: should it stop when you do nothing?`,
+  body:[`During a guide Phew watches the screen, only to know when it has settled and whether it changed. You approved this on 13 November for the length of a guide.`,
+        `Open: should the watch also stop when you do nothing for a while and the card stays open? First proposal: it stops after 2 minutes without an action from you and starts again when you act. The guide stays open.`],
+  hint:`For example: another number of minutes`,
+  opts:[{t:`Yes. It stops after 2 minutes without an action and starts again when I act`,tag:FP},{t:`No. It keeps watching while the guide is open`}]},
+ {id:'r13b',row:13,g:'PS',topic:`Screen watch: stop when idle, and Pause`,part:`2 of 2: Pause ends a running guide`,
+  title:`Should Pause end a running guide?`,
+  body:[`Pause is the switch in the menu bar. Today Pause only switches the shortcut off.`,
+        `First proposal: Pause also ends a running guide. The card closes and the watch stops.`],
+  opts:[{t:`Yes. Pause ends a running guide`,tag:FP},{t:`No. Pause does not end a running guide`}]},
+ {id:'r14',row:14,g:'PS',topic:`Per-app exclusion list`,
+  title:`A "never read this app" list`,
+  body:[`A list of apps Phew must never read. It is not built. Pause is the only switch today.`,
+        `Example: your bank app or a private chat. With the list, he would never read them, even when you call him.`,
+        `In the MVP or later? This must be decided before the screen watch is built (roadmap task PS.6).`],
+  opts:[{t:`Later. Pause stays the only switch in the MVP`,tag:FP},{t:`In the MVP`}]},
+ /* PA */
+ {id:'r15',row:15,g:'PA',topic:`Consent screen text`,
+  title:`The text of the consent screen`,
+  body:[`Before your first research task, one screen says in plain words what a task may read and send. It has two buttons: Allow and Not now.`,
+        `After Allow it is not shown again. After Not now the task does not start, agents stay off, and the screen comes back at the next task.`,
+        `The proposed text, from docs/03-experience.md 3.5:`],
+  quote:[`Phew can research a task by himself.`,
+         `He reads your screen once, when you give the task. He looks in his memory of your projects. He searches and reads the web.`,
+         `What leaves your Mac: your task, what he saw on your screen and the facts from his memory that the task needs are sent to Claude, the model made by Anthropic. The web search and the reading of pages run at Anthropic too. The words he searches for can include names from your screen or his memory. Passwords, keys and card numbers are removed before anything is sent.`,
+         `What he changes on your Mac: nothing. If you choose a reports folder, he saves each report there as a new file. He never overwrites or deletes a file.`,
+         `Each task has a limit on searches, pages and cost. A mark in the menu bar shows he is working. Stop ends it. The result waits in the menu bar until you open it.`,
+         `[Allow] [Not now]`],
+  hint:`Write the words you want changed`,
+  opts:[{t:`Approve the text as written`,tag:FP}]},
+ {id:'r16',row:16,g:'PA',topic:`Limits per task`,
+  title:`Limits for one research task`,
+  body:[`How many searches and pages, and how much cost, one research task may use. First proposal: 5 searches, 8 pages, 50 cents. At a limit he stops, reports what he has and names the limit.`,
+        `The safety check of roadmap task PA.5 runs 10 live tasks. At this limit that is up to 5 dollars in all. Write in the note if you want fewer test runs.`],
+  hint:`For example: other numbers`,
+  opts:[{t:`5 searches, 8 pages, 50 cents per task`,tag:FP}]},
+ {id:'r17a',row:17,g:'PA',topic:`Life of a task`,part:`1 of 3: one task at a time or several`,
+  title:`One task at a time, or several?`,
+  body:[`Can he run more than one research task at the same time?`,
+        `First proposal: one at a time. If you give a second task while one is working, it is not started, and the card says so in one line.`],
+  opts:[{t:`One task at a time`,tag:FP},{t:`Several tasks at the same time`}]},
+ {id:'r17b',row:17,g:'PA',topic:`Life of a task`,part:`2 of 3: what Stop leaves behind`,
+  title:`What Stop leaves behind`,
+  body:[`Stop is the menu entry that ends a running task.`,
+        `First proposal: Stop ends the task within 2 seconds. Nothing is reported, and what he read is dropped.`],
+  opts:[{t:`Stop ends the task within 2 seconds, reports nothing and drops what was read`,tag:FP}]},
+ {id:'r17c',row:17,g:'PA',topic:`Life of a task`,part:`3 of 3: where a finished report waits`,
+  title:`Where a finished report waits`,
+  body:[`First proposal: a finished report waits in memory until you open it from the menu bar. So it is lost if Phew quits before you open it, unless it was saved as a file.`],
+  opts:[{t:`It waits in memory. It is lost if Phew quits before I open it, unless it was saved as a file`,tag:FP}]},
+ {id:'r18',row:18,g:'PA',topic:`Reports: how a report is saved`,
+  title:`How a report is saved as a file`,
+  body:[`You choose the reports folder in the app, from the menu entry "Choose reports folder…". So "which folder" is no longer a decision. How you pick it is the hard-rule card in the group for phase PB.`,
+        `To confirm here: the file rules in docs/03-experience.md 3.6.`],
+  list:[`With a folder set, each report is saved by itself when it is ready. With no folder, nothing is saved and the report still shows on the card.`,
+        `The file is plain text in Markdown (plain text with simple marks for titles and lists). Its name is the date and the first words of your task. Example: "2026-11-20 Kerning sources.md".`,
+        `A name that is taken gets " 2", then " 3". No file is ever replaced.`,
+        `The menu has a "Saved reports" list. Each file has Reveal, which shows it in Finder, and Delete.`,
+        `Delete is your own click, never the agent's. It asks once and moves the file to the Trash.`],
+  opts:[{t:`Yes. The file rules as written`,tag:FP}]},
+ {id:'r19',row:19,g:'PA',topic:`Agents: a web address you type in the task`,
+  title:`Should he open a web address you type in the task?`,
+  body:[`Example: you type "read example.com/prices and sum it up".`,
+        `First proposal: no. The setting that blocks addresses from the screen also blocks typed ones. He finds the page by searching.`,
+        `If you say yes, the setting at Anthropic must let typed addresses through. Then only Phew's own code stops a web address hidden in your screen text from being opened. That is more risk, in exchange for a more natural "read this page" task.`],
+  opts:[{t:`No. He finds the page by searching`,tag:FP},{t:`Yes. He opens an address I type. More risk`}]},
+ {id:'r20',row:20,g:'PA',topic:`Agents: what may go into search words`,
+  title:`What may go into his search words`,
+  body:[`When he searches the web, his search words leave your Mac. Should they be limited to the words of your task?`,
+        `A limit keeps the names of clients and other people out of the web searches. But research about what is on your screen gets weaker.`,
+        `First proposal: no limit. Search words may include names from your screen or the Map, and the consent screen says so.`],
+  opts:[{t:`No limit. Search words may include names from my screen or the Map`,tag:FP},{t:`Limit search words to the words of my task`}]},
+ {id:'r21',row:21,g:'PA',topic:`Agents: a public test page for the hidden-instructions check (PA.5)`,
+  title:`A public test page for the safety check`,
+  body:[`The safety check needs one real web page with hidden instructions in it, to see that he does not obey them. Reading pages runs at Anthropic, so the page must be on the internet. A page on this Mac cannot be reached.`,
+        `The page holds only made-up text. It never holds the project's name or yours.`,
+        `First proposal: wait. The live check on a public page runs at the end of the MVP, after phase PG, so that nothing goes on the internet before you choose to publish there. Until then the automatic tests and 10 live runs with a made-up screen cover the case.`],
+  opts:[{t:`Wait. Run the live check on a public page after phase PG`,tag:FP},{t:`Now. Put one page of made-up text on a free website host`}]},
+ {id:'r22',row:22,g:'PA',topic:`Conductor: task or question when unsure`,
+  title:`Task or question, when he is unsure`,
+  body:[`The Conductor is the small agent that decides what you asked for. Sometimes it cannot tell a task from a question.`,
+        `First proposal: when unsure, he answers as a question. An answer is quick. A task runs in the background and costs more.`],
+  opts:[{t:`Yes. When unsure, he answers as a question`,tag:FP},{t:`No`}]},
+ {id:'r23',row:23,g:'PA',topic:`Research reports do not write facts to the Map`,
+  title:`Research reports do not write facts to the Map`,
+  body:[`After a research task only one line is stored in the Map: your task and its project. The report is not sent to the Librarian in version 1. So nothing he read on the web becomes a fact in the Map.`,
+        `This keeps wrong or planted web text out of his memory. Learning facts from a report is listed under Later.`],
+  opts:[{t:`Yes for version 1`,tag:FP},{t:`No`}]},
+ /* P6 */
+ {id:'r24',row:24,g:'P6',topic:`Speech: which languages`,
+  title:`Speech: which languages`,
+  body:[`Which languages must speech input understand in the MVP? Speech is turned into text on the Mac.`],
+  opts:[{t:`Both Italian and English`,tag:FP},{t:`Italian only`},{t:`English only`}]},
+ /* PM */
+ {id:'r25',row:25,g:'PM',topic:`Numbers in the Map are first proposals`,
+  title:`The numbers in the Map`,
+  body:[`The Map uses a set of numbers. All of them are first guesses. First proposal: keep them all as written and tune them after the MVP test, when real use shows which are wrong.`,
+        `To change one now, choose "Something else" and write which number and the value you want.`],
+  list:[`Active project: you asked about it in the last 14 days.`,
+        `Due soon, coming up: within the next 7 days.`,
+        `"May be outdated": a fact not seen for 90 days and not told by you.`,
+        `Open point: a topic with an understanding below 0.5.`,
+        `How sure he is of a fact at the start: 0.9 if told, 0.6 if observed, 0.5 if imported. Plus 0.1 each time it is seen again.`,
+        `Understanding of a topic: 0.3 at the first question, minus 0.1 at each later question, 0.9 when you say you understand, 0 when you say you do not.`,
+        `Follow-up questions: the last 3 turns are kept for 5 minutes.`,
+        `Your profile: at most about 200 lines.`,
+        `Per question: at most 2 Map searches by the model, 10 results per search, 3 lines per list, 30 search words.`,
+        `Import: 20,000 characters per call to the model.`],
+  hint:`Write which number and the value you want`,
+  opts:[{t:`Keep them all as written. Tune after the MVP test`,tag:FP}]},
+ /* RETRO */
+ {id:'r27',row:27,g:'RETRO',topic:`Order of the later phases`,
+  title:`Order of the later phases`,
+  body:[`After the MVP there are nine later phases, not scheduled: L1 Character, L2 Backend, L3 Background agents, L4 Lectures, L5 Hand (acting in apps and editing files), L6 Dashboard, L7 Wake word, L8 Public, L9 Connections.`,
+        `Their order is confirmed at the retro. The documents give no first proposal for the order.`],
+  hint:`Write the order you want`,
+  opts:[{t:`Ask me at the retro`,tag:LATER}]},
+ /* LATER */
+ {id:'r26',row:26,g:'LATER',topic:`Which business target to explore first, if any`,
+  title:`Which business target to explore first, if any`,
+  body:[`Who could pay for Phew. docs/08-b2b-targets.md lists five: 1 small Mac-first companies, 2 schools that teach software, 3 larger companies, 4 universities, 5 software vendors.`,
+        `That file recommends exploring 1 and 2 together after the MVP. It was written when Phew was student-first and has not been revised. The list of open decisions gives no first proposal.`],
+  hint:`For example: another target from the list`,
+  opts:[{t:`Ask me after the MVP`,tag:LATER},{t:`Targets 1 and 2 together: small Mac-first companies and schools that teach software`},{t:`None for now`}]}
+];
+/*DATA-END*/
+
+var S={d:{},n:{},a:''};
+var UI={};
+
+function load(){
+ try{
+  var raw=window.localStorage.getItem(KEY);
+  if(!raw){return;}
+  var o=JSON.parse(raw);
+  if(o&&typeof o==='object'){
+   if(o.d&&typeof o.d==='object'){S.d=o.d;}
+   if(o.n&&typeof o.n==='object'){S.n=o.n;}
+   if(typeof o.a==='string'){S.a=o.a;}
+  }
+ }catch(e){}
+}
+function save(){
+ try{window.localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
+}
+function st(d){
+ var s=S.d[d.id];
+ if(!s||typeof s!=='object'){s=S.d[d.id]={c:0,o:'',n:'',t:false};}
+ if(typeof s.c!=='number'||s.c<0||s.c>d.opts.length||s.c!==Math.floor(s.c)){s.c=0;}
+ if(typeof s.o!=='string'){s.o='';}
+ if(typeof s.n!=='string'){s.n='';}
+ s.t=!!s.t;
+ if(!s.t){s.c=0;} /* old saved state: an untouched card always shows its pre-selected answer */
+ return s;
+}
+/* All text goes in through textContent, so it is escaped. */
+function el(tag,attrs,text){
+ var e=document.createElement(tag),k;
+ if(attrs){for(k in attrs){if(Object.prototype.hasOwnProperty.call(attrs,k)){e.setAttribute(k,attrs[k]);}}}
+ if(text!==undefined){e.textContent=text;}
+ return e;
+}
+function one(s){return String(s).replace(/\s+/g,' ').trim();}
+function topicOf(d){return d.topic+(d.part?' ['+d.part+']':'');}
+function chosen(d){
+ var s=st(d);
+ if(s.c>=d.opts.length){return 'Something else: '+(one(s.o)||'(nothing written yet)');}
+ return d.opts[s.c].t;
+}
+
+function buildCard(d){
+ var s=st(d),n=d.opts.length,name='c-'+d.id,ui={radios:[]};
+ var fs=el('fieldset',{'class':'card',id:'d-'+d.id});
+ fs.appendChild(el('legend',null,d.title));
+ var meta=el('p',{'class':'cmeta'});
+ meta.appendChild(document.createTextNode('Row '+d.row+' of 7.2'+(d.part?', part '+d.part.split(':')[0]:'')+'. '));
+ ui.state=el('span');
+ meta.appendChild(ui.state);
+ fs.appendChild(meta);
+ if(d.rule){fs.appendChild(el('p',{'class':'rule'},d.rule));}
+ d.body.forEach(function(p){fs.appendChild(el('p',null,p));});
+ if(d.list){
+  var ul=el('ul');
+  d.list.forEach(function(t){ul.appendChild(el('li',null,t));});
+  fs.appendChild(ul);
+ }
+ if(d.quote){
+  var q=el('div',{'class':'quote'});
+  d.quote.forEach(function(t){q.appendChild(el('p',null,t));});
+  fs.appendChild(q);
+ }
+ var box=el('div',{'class':'opts'});
+ function addOpt(i,text,tag){
+  var lab=el('label',{'class':'opt'});
+  var r=el('input',{type:'radio',name:name,value:String(i)});
+  r.addEventListener('click',function(){s.c=i;s.t=true;refresh();});
+  lab.appendChild(r);
+  var span=el('span',null,text);
+  if(tag){span.appendChild(document.createTextNode(' '));span.appendChild(el('span',{'class':'tag'},tag));}
+  lab.appendChild(span);
+  box.appendChild(lab);
+  ui.radios.push(r);
+ }
+ d.opts.forEach(function(o,i){addOpt(i,o.t,o.tag);});
+ addOpt(n,'Something else');
+ fs.appendChild(box);
+ ui.otherBox=el('div',{'class':'other'});
+ ui.otherBox.appendChild(el('label',{'for':name+'-o'},'Write your answer'));
+ ui.other=el('textarea',{id:name+'-o'});
+ if(d.hint){ui.other.setAttribute('placeholder',d.hint);}
+ ui.other.value=s.o;
+ ui.other.addEventListener('input',function(){s.o=ui.other.value;s.t=true;refresh();});
+ ui.otherBox.appendChild(ui.other);
+ fs.appendChild(ui.otherBox);
+ fs.appendChild(el('label',{'class':'notel','for':name+'-n'},'Note (optional)'));
+ ui.note=el('textarea',{id:name+'-n'});
+ ui.note.value=s.n;
+ ui.note.addEventListener('input',function(){s.n=ui.note.value;refresh();});
+ fs.appendChild(ui.note);
+ ui.keep=el('button',{type:'button','class':'keep'});
+ /* Undo goes back to the pre-selected answer, so "left at the first proposal" is always true. */
+ ui.keep.addEventListener('click',function(){if(s.t){s.t=false;s.c=0;}else{s.t=true;}refresh();});
+ fs.appendChild(ui.keep);
+ ui.fs=fs;
+ UI[d.id]=ui;
+ return fs;
+}
+
+function syncCard(d){
+ var s=st(d),ui=UI[d.id];
+ ui.radios.forEach(function(r,i){r.checked=(i===s.c);});
+ ui.otherBox.hidden=(s.c<d.opts.length);
+ ui.state.textContent=s.t?'Answered.':'Not answered yet.';
+ ui.keep.textContent=s.t?'Answered. Click to undo':'Keep this answer';
+ ui.keep.setAttribute('aria-pressed',s.t?'true':'false');
+ if(s.t){ui.fs.classList.add('is-done');}else{ui.fs.classList.remove('is-done');}
+}
+
+function today(){
+ var d=new Date();
+ function p(x){return (x<10?'0':'')+x;}
+ return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+}
+function buildText(){
+ var L=['Phew review answers','Date: '+today()],done=[],left=[];
+ D.forEach(function(d){
+  var s=st(d),line=topicOf(d)+' : '+chosen(d);
+  if(one(s.n)){line+=' | note: '+one(s.n);}
+  (s.t?done:left).push(line);
+ });
+ L.push('','Answered: '+done.length+' of '+D.length);
+ L=L.concat(done.length?done:['(none yet)']);
+ L.push('','Left at the first proposal: '+left.length+' of '+D.length);
+ L=L.concat(left.length?left:['(none)']);
+ L.push('','Notes on sections 1 to 7');
+ var any=false;
+ document.querySelectorAll('textarea[data-sec]').forEach(function(t){
+  var v=one(S.n[t.id]||'');
+  if(v){any=true;L.push(t.getAttribute('data-sec')+' : '+v);}
+ });
+ if(!any){L.push('(no notes)');}
+ L.push('','Final approval','Do you approve the roadmap and the phases? : '+(S.a||'(not answered yet)'));
+ return L.join('\n');
+}
+
+function refresh(){
+ var done=0;
+ D.forEach(function(d){syncCard(d);if(st(d).t){done++;}});
+ document.getElementById('progText').textContent=done+' of '+D.length+' answered';
+ document.getElementById('progFill').style.width=(D.length?Math.round(done/D.length*100):0)+'%';
+ document.getElementById('out').value=buildText();
+ save();
+}
+
+function buildGroups(){
+ var host=document.getElementById('decisions');
+ GROUPS.forEach(function(g){
+  var items=D.filter(function(d){return d.g===g.id;});
+  if(!items.length){return;}
+  var sec=el('div',{'class':'group',id:'g-'+g.id});
+  sec.appendChild(el('h3',null,g.title+' ('+items.length+(items.length===1?' card)':' cards)')));
+  if(g.sub){sec.appendChild(el('p',{'class':'sub'},g.sub));}
+  var bar=el('div',{'class':'gbar'});
+  var btn=el('button',{type:'button'},g.btn||'Accept all first proposals in this group');
+  var msg=el('span',{'class':'status',role:'status','aria-live':'polite'});
+  btn.addEventListener('click',function(){
+   var made=0,kept=0;
+   items.forEach(function(d){var s=st(d);if(s.t){kept++;}else{s.c=0;s.t=true;made++;}});
+   msg.textContent=made+' confirmed.'+(kept?' '+kept+' you had already answered: not changed.':'');
+   refresh();
+  });
+  bar.appendChild(btn);bar.appendChild(msg);
+  sec.appendChild(bar);
+  items.forEach(function(d){sec.appendChild(buildCard(d));});
+  host.appendChild(sec);
+ });
+}
+
+function wireNotes(){
+ document.querySelectorAll('textarea[data-sec]').forEach(function(t){
+  if(typeof S.n[t.id]==='string'){t.value=S.n[t.id];}
+  t.addEventListener('input',function(){S.n[t.id]=t.value;refresh();});
+ });
+ document.querySelectorAll('input[name="approve"]').forEach(function(r){
+  r.checked=(r.value===S.a);
+  r.addEventListener('click',function(){S.a=r.value;refresh();});
+ });
+}
+
+function wireCopy(){
+ var out=document.getElementById('out'),status=document.getElementById('copyStatus'),timer;
+ function say(t){
+  status.textContent=t;
+  clearTimeout(timer);
+  timer=setTimeout(function(){status.textContent='';},6000);
+ }
+ function byHand(){
+  var ok=false;
+  out.focus();out.select();
+  try{ok=document.execCommand('copy');}catch(e){}
+  say(ok?'Copied':'The text is selected. Press Command and C to copy it.');
+ }
+ document.getElementById('copyBtn').addEventListener('click',function(){
+  var text=buildText();
+  out.value=text;
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+   navigator.clipboard.writeText(text).then(function(){say('Copied');},byHand);
+  }else{byHand();}
+ });
+}
+
+/* Self-check: every row 1 to 27 of 7.2 has at least one card, and ids are unique. */
+function selfCheck(){
+ var rows={},ids={},bad=[],i;
+ D.forEach(function(d){rows[d.row]=true;if(ids[d.id]){bad.push('double id '+d.id);}ids[d.id]=true;});
+ for(i=1;i<=27;i++){if(!rows[i]){bad.push('row '+i+' has no card');}}
+ if(bad.length){
+  var w=document.getElementById('selfcheck');
+  w.textContent='This page has a fault: '+bad.join(', ')+'. Tell Claude Code.';
+  w.hidden=false;
+ }
+}
+
+load();
+buildGroups();
+wireNotes();
+wireCopy();
+selfCheck();
+document.getElementById('nDec').textContent=D.length;
+document.getElementById('nDec2').textContent=D.length;
+refresh();
+})();
+</script>
+</body>
+</html>

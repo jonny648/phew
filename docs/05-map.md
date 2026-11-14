@@ -295,7 +295,7 @@ Phew's own code writes one past question of kind "task": your task cut to one li
 - Anything the secrets filter removes.
 - Sensitive things seen on screen that you did not ask him to remember: health, money, passwords, and other people's private messages. He writes these only when you tell him to. This rests on the Librarian's judgement, so it is tested in P5.2. The export in 5.13 is how you check it, and "forget that" removes a mistake.
 
-Keeping these labels is a first proposal and waits for your decision, because the hard rule says what Phew captures is never written to disk: see Open in `07-decisions.md`. If you say no, the Librarian is not shown the window title, a Document has no path, and Phew can only tell the Project from the app name and your words.
+You approved keeping these labels on 14 November. The capture rule in `CLAUDE.md` now says so.
 
 ## 5.10 The second brain: imported memory
 

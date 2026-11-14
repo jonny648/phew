@@ -24,3 +24,4 @@ Progress: `roadmap.html`.
 | `docs/09-claude-code.md` | How to start and run the build |
 | `docs/10-research.md` | Research of 13 November: market, similar tools, memory, guide speed |
 | `docs/github-guide.html` | What GitHub is, how projects are structured and shipped |
+| `docs/review.html` | Your review: what Phew will be, and the open decisions to answer (phase PV) |

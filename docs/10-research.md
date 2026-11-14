@@ -175,9 +175,9 @@ Rules to build in from the first day:
 
 **What was decided.** On 13 November you approved the rules for agents; they are hard rules in `CLAUDE.md`. How each one is kept is written in `03-experience.md` 3.6 and `04-architecture.md` 4.4. Where this part and those two differ, those two count. Three points go further than the research:
 
-- Rule 2: the limits are on searches, pages and cost, not tokens. First proposals: 5 searches, 8 pages, 50 cents (see Open in `07-decisions.md`, limits per task). Searches and pages are capped in the request itself, with `max_uses` on each tool (W15, W16). `max_uses` counts inside one request, so Phew's code lowers it by what the earlier requests of the same task used. Phew's own code adds up the cost after each reply.
-- Rule 3 is kept by two guards, not by asking the model. First, Phew's own code removes every web address from the screen text, the Map facts, each Map search result and file text before sending. Second, the fetch tool's `url_sources` setting has `user_input` and `client_tool_results` both set to `{"type": "none"}` (W16). The agent can then open only addresses from its own web searches and from pages it already opened. Anthropic's server refuses the rest. Side effect: an address you type in the task is not opened directly. He finds that page by searching. This is a first proposal (see Open in `07-decisions.md`, a web address you type in the task). Re-read W16 before building.
-- Rule 5: the agent has exactly three tools: web search, web fetch and Map search. None writes or changes anything. The report file (level B1 below) is written by Phew's own code when the report is ready, never by the model.
+- Rule 2: the limits are on searches, pages and cost, not tokens. 5 searches, 8 pages, 50 cents, approved 14 November. Searches and pages are capped in the request itself, with `max_uses` on each tool (W15, W16). `max_uses` counts inside one request, so Phew's code lowers it by what the earlier requests of the same task used. Phew's own code adds up the cost after each reply.
+- Rule 3 is kept by two guards, not by asking the model. First, Phew's own code removes every web address from the screen text, the Map facts, each Map search result and file text before sending. Second, the fetch tool's `url_sources` setting has `client_tool_results` set to `{"type": "none"}` (W16), so Anthropic's server never opens an address that came back from Phew's own tools. `user_input` is allowed, because on 14 November you chose that an address you type in the task is opened; Phew's own removal of addresses is then the only guard for the screen text and the Map facts in the first message (`04-architecture.md` 4.4). Re-read W16 before building.
+- Rule 5: the agent has four tools: web search, web fetch, Map search and `read_project_memory`, which only reads the project's Claude Code files (added 14 November). None writes or changes anything. The report file (level B1 below) is written by Phew's own code when the report is ready, never by the model.
 
 One risk stays that no rule removes: a web page can still try to steer what he searches for next. The limits, and the absence of any tool that changes things, keep the damage small.
 
@@ -388,8 +388,8 @@ Left out of the five: the small model as a first pass (it already failed once on
 The screen watch (task PS.6). You approved it for the length of a guide. Its limits are in `04-architecture.md` 4.6, and that text counts. In short:
 
 - It is used only to know when the screen has settled and whether it changed. The watch alone sends nothing to the model. A look is still made only after you act.
-- It starts when the guide's steps are shown. It stops as soon as following stops: the last step is done, the card closes, you press Escape, you pause Phew, the limit of 40 looks is reached, or a look fails.
-- First proposal: it also stops after 2 minutes without an action from you, and starts again when you act. Pause ends a running guide. See Open in `07-decisions.md`, screen watch.
+- It starts when the guide's steps are shown. It stops as soon as following stops: the last step is done, the card closes, you press Escape, the limit of 40 looks is reached, or a look fails.
+- It also stops after 2 minutes without an action from you, and starts again when you act. Decided 14 November, when Pause was also removed from Phew (see `07-decisions.md` 7.1).
 - Frames stay in memory. They are never written to disk or to a log.
 
 Change 3, the direct hit (task PS.3). The rule is in `04-architecture.md` 4.4. The Guide marks each step that needs only a click, with one yes or no field per step. Only on such a step does a direct hit advance at once. The look then confirms, and a wrong advance steps back. A direct hit is a press and release without a drag, inside the marked element, or inside the ring (22 points radius) around a marked point. Steps that need typing, dragging or choosing wait for the look. The last step always waits for the look, so the card never closes on a guess.
@@ -441,7 +441,7 @@ Two levels: a few fixed classes, each with a free one-word "kind" (a course is a
 
 It also proposed building in two stages on the same tables: first Me, Project, Note and Tool with two links, to measure how reliably the small model writes; then the rest.
 
-**What was decided.** On 13 November you chose differently on two points: eleven classes, with Event and Place added, and all of them built at once, not in two stages. A seventh link, "at", was then added so that a Place can be connected. That choice was delegated to Claude and waits for your confirmation (see `07-decisions.md`). The design that is built is in `05-map.md`. Where this part and `05-map.md` differ, `05-map.md` counts.
+**What was decided.** On 13 November you chose differently on two points: eleven classes, with Event and Place added, and all of them built at once, not in two stages. A seventh link, "at", was then added so that a Place can be connected. That choice was delegated to Claude and you confirmed it on 14 November. The design that is built is in `05-map.md`. Where this part and `05-map.md` differ, `05-map.md` counts.
 
 ### Sources
 

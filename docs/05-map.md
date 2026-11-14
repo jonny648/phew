@@ -13,7 +13,7 @@ Rewritten on 13 November 2026 for a general user. The first version was built ar
 | Fixed links only. No "related to" | A test with free links produced 966 link names out of 981 |
 | A fact that fits nowhere is kept as one sentence, a Note | Reference memory server, Graphiti |
 | Every fact says where it came from and since when it is true | Zep, PROV-O |
-| Nothing is silently overwritten. Forgetting is a real delete | Your decision of 13 November |
+| Nothing is silently overwritten. Forgetting acts at once, waits 30 days in Recently deleted, then is a real delete | Your decisions of 13 and 14 November |
 | Define each term exactly once | Your ontology study |
 | The model proposes. Phew's own code checks, counts and writes | Review of 14 November |
 
@@ -106,7 +106,7 @@ Seven fixed links. A link goes one way, from the first thing to the second.
 
 There is no "related to". When no link fits, the fact is written as a Note about the things it mentions.
 
-The seventh link, "at", was added with the Event and Place classes so that a Place can be connected. "Document to Event" was added to "part of" on 14 November, so that slides can be tied to their lecture. It is a first proposal and waits for your decision: see Open in `07-decisions.md`.
+The seventh link, "at", was added with the Event and Place classes so that a Place can be connected. "Document to Event" was added to "part of" on 14 November, so that slides can be tied to their lecture. Both approved on 14 November. Links whose meaning changes with the matter or the setting are an idea for after the MVP (5.14).
 
 Phew's own code checks both ends of every link against this table before writing. A link whose ends are not listed here is dropped.
 
@@ -137,7 +137,7 @@ Every thing and every link stores:
 
 Rules:
 
-- **Starting confidence.** Told 0.9, observed 0.6, imported 0.5. Seeing the same fact again raises it by 0.1, up to 0.9. You confirming it sets it to 1. Confidence is always set by code from the origin, never by the model. It is used for one thing: between two results that match equally well, the more confident one comes first, in recall and in the profile. It is also shown in the export. All these numbers are first proposals and will be tuned in use.
+- **Starting confidence.** Told 0.9, observed 0.6, imported 0.5. Seeing the same fact again raises it by 0.1, up to 0.9. You confirming it sets it to 1. Confidence is always set by code from the origin, never by the model. It is used for one thing: between two results that match equally well, the more confident one comes first, in recall and in the profile. It is also shown in the export. All these numbers were kept on 14 November and are tuned after the MVP test.
 - **Replacing a thing.** A thing keeps one row and one id for its whole life, so its links, the Notes about it and the past questions that mention it stay attached. When one of its values changes (its name, its kind, a due date, done or not, a start time, a path), the old values are first copied into a history row, with "true until" set and "replaced by" pointing at the living row. The living row then takes the new value, with the "true from" of the new fact.
 - **Replacing a Note or a link.** The other way round: the old row gets "true until" and "replaced by", and a new row is added. The links of an old Note end with it.
 - Either way the old version is kept as history, so he can answer "what was the deadline before?". No link ever points at a history row.
@@ -148,20 +148,21 @@ Rules:
 
 ### Forgetting
 
-"Forget that" is a real delete. It cannot be undone, and the Map has no backup.
+"Forget that" acts at once. The forgotten thing waits 30 days in Recently deleted, where you can restore it. After 30 days it is wiped for real. Your decision of 14 November.
 
 - **Who can start it.** Only your own words to him. Text on the screen, on the web, in a file or in an import never can.
 - **What "that" is.** The thing or the Note you name ("forget Marta", "forget that I like short answers"). If you name nothing, it is what the last answer was about, while that answer is still in working memory. If more than one fits, or he is not sure, he asks which. He never guesses.
-- **He asks first.** The card names what will go, for example: "Forget Marta? 1 person, 4 notes, 3 links, 6 past questions. This cannot be undone." Nothing is deleted until you click Forget. Anything else cancels.
-- **What is deleted.** The thing, every past version of it, its links, and the Notes about it with their past versions.
-- **Past questions.** Every past question that mentions it loses that mention and its summary, because the summary could still hold what you asked him to forget. The emptied row is deleted too, unless it still mentions something else or another fact has it as its source. So other facts keep their source, and an import can still be undone.
+- **He does not ask first.** He forgets at once and the card names what went, for example: "Forgot Marta: 1 person, 4 notes, 3 links, 6 past questions. In Recently deleted for 30 days."
+- **What goes.** The thing, every past version of it, its links, and the Notes about it with their past versions.
+- **Recently deleted.** From the moment of the forget, all of that is hidden from answers, from recall and from the export, and taken out of both text-search indexes. Past questions that mention it are hidden the same way. A menu entry "Recently deleted" lists each forget with the days left, and a Restore button that puts everything back as it was, indexes included. It also has "Delete now", for something you want gone at once (first proposal).
+- **After 30 days**, or on Delete now, the real delete runs. Every past question that mentions it loses that mention and its summary, because the summary could still hold what you asked him to forget. The emptied row is deleted too, unless it still mentions something else or another fact has it as its source. So other facts keep their source, and an import can still be undone. The check for items past 30 days runs when Phew starts and once a day while he runs.
 - **What stays.** Things that were only linked to it stay, without the link. Me is never deleted: you forget single facts about you.
 - **No trace of the request.** The forget writes no past question and no fact. The profile is rebuilt and the working turns are cleared at once.
-- **Wiped, not only hidden.** The deleted words are overwritten in the Map's file and taken out of the search indexes. See 5.12.
-- **The name used elsewhere.** After the delete he searches the Map for the name. If another sentence still contains it, the card says how many, and you can forget those too.
+- **Wiped, not only hidden.** At the real delete the words are overwritten in the Map's file and taken out of the search indexes. See 5.12.
+- **The name used elsewhere.** After the forget he searches the Map for the name. If another sentence still contains it, the card says how many, and you can forget those too.
 - **What it cannot reach.** Exports and reports you already saved, backups of the Mac such as Time Machine, and what was already sent to the model in earlier questions.
 
-Asking first, and emptying a past question instead of deleting it whole, are first proposals. So is the wording on the card. They wait for your decision: see Open in `07-decisions.md`.
+The card's wording, the hiding of past questions during the 30 days, and "Delete now" are first proposals.
 
 ## 5.6 Defined terms
 
@@ -182,7 +183,7 @@ Who computes them: Phew's own code, each time the Map is read. No model is asked
 
 The open points of one Project are the open points mentioned in a past question on that Project, or required by one of its Tasks.
 
-The numbers (14 days, 7 days, 90 days, 0.5, and the strength values 0.3, 0.1, 0.9 and 0) are first proposals.
+The numbers (14 days, 7 days, 90 days, 0.5, and the strength values 0.3, 0.1, 0.9 and 0) are first proposals. You kept them all on 14 November; they are tuned after the MVP test.
 
 ## 5.7 Rules, not reasoning
 
@@ -199,12 +200,12 @@ How each rule reaches the Guide: the first three are computed by code and arrive
 
 | Memory | Holds | Lives |
 |---|---|---|
-| Working | The last 3 questions and answers of the current conversation, as text only, for follow-up questions. Never the screen text or the picture of an earlier turn: a follow-up takes a fresh look | In memory only. Dropped 5 minutes after the last answer, and on Pause or Quit |
+| Working | The last 3 questions and answers of the current conversation, as text only, for follow-up questions. Never the screen text or the picture of an earlier turn: a follow-up takes a fresh look | In memory only. Dropped 5 minutes after the last answer, and on Quit |
 | Profile | A short summary of you: your name, current Notes about Me (told first, then observed, then imported), then active Projects with their Tasks due soon. Each line says where it came from | Built by Phew's own code when a question arrives, with no model call. The same facts always give the same text, in the same order. At most about 200 lines |
 | Episodic | Past questions: what you asked, what he answered in one or two lines, when, in which app, on which project | Events table |
 | Semantic | The Map: things and links | Nodes and edges tables |
 
-3 turns, 5 minutes and 200 lines are first proposals.
+3 turns, 5 minutes and 200 lines were kept on 14 November; they are tuned after the MVP test.
 
 ## 5.9 How it is filled
 
@@ -280,7 +281,7 @@ Limit: two different people stored under the very same name are still treated as
 These go through the Conductor's "remember" route, and the Guide does not answer.
 
 - **Telling or correcting.** The same steps run, without an answer. The stored facts sent to the Librarian come from a search with your words. The card then shows one line that names what was stored or replaced. If nothing passed the checks, the line says nothing was stored.
-- **Forgetting.** The Librarian only points at the stored facts you mean. If you named nothing, it is also sent what the last answer was about. Phew's own code then shows the card that asks, and deletes after your click, as written in 5.5.
+- **Forgetting.** The Librarian only points at the stored facts you mean. If you named nothing, it is also sent what the last answer was about. Phew's own code then forgets at once and the card names what went, as written in 5.5.
 - **Asking what he remembers** ("what do you know about me?") is a normal question. The Guide answers it with recall (5.11).
 
 A question that also states a fact ("the deadline is the 20th, what do I do first?") is a question. The Librarian picks up the fact after the answer, as told.
@@ -293,7 +294,9 @@ Phew's own code writes one past question of kind "task": your task cut to one li
 
 - The window text and the picture. From what he sees, the Map keeps only labels: the app name, and a file's name and path or a page's address. The window title is shown to the Librarian and is kept only when it becomes the name of a Document. Everything else the Map keeps is what Phew learned, in his own words.
 - Anything the secrets filter removes.
-- Sensitive things seen on screen that you did not ask him to remember: health, money, passwords, and other people's private messages. He writes these only when you tell him to. This rests on the Librarian's judgement, so it is tested in P5.2. The export in 5.13 is how you check it, and "forget that" removes a mistake.
+- Passwords and other secrets: the secrets filter removes them before anything is sent, so the Librarian never sees them.
+
+Sensitive things seen on screen (health, money, other people's private messages) are written like any other fact, and marked sensitive by the Librarian. Your decision of 14 November. A sensitive fact gets a second lock on top of the encryption of the whole Map (5.12), and is left out of the export unless you tick it. Marking rests on the Librarian's judgement, so it is tested in P5.2. How the lock works is decided after the P5 research task.
 
 You approved keeping these labels on 14 November. The capture rule in `CLAUDE.md` now says so.
 
@@ -305,7 +308,7 @@ What your other AI tools already know about you, brought into the Map. There are
 
 1. You paste the memory list your assistant wrote. Nothing is sent until you confirm.
 2. The secrets filter runs first.
-3. The small model is told that the text is data and not instructions. It answers in a fixed form: a plain list of facts. For each fact: one sentence, a kind, the things it names (class, kind, name), a date if the text gives one, and whether the sentence is written as an instruction for an assistant. A long text is cut at paragraph breaks into several calls, about 20,000 characters each (first proposal).
+3. The small model is told that the text is data and not instructions. It answers in a fixed form: a plain list of facts. For each fact: one sentence, a kind, the things it names (class, kind, name), a date if the text gives one, and whether the sentence is written as an instruction for an assistant. A long text is cut at paragraph breaks into several calls, about 20,000 characters each (kept 14 November, tuned after the MVP test).
 4. You see the list and tick what to keep. Nothing is written to the Map before you tick. Unticked facts are dropped, and so is the pasted text.
 5. Each ticked fact becomes a Note with origin "imported", about Me or about the things it names. New things are created when needed, through the name matching in 5.9, also with origin "imported".
 6. One import is one row in the events table, of kind "import". Its summary says only where it came from and how many facts, never their words.
@@ -337,17 +340,19 @@ What each file becomes:
 
 "True from" is the date in the file's header when it has one. Otherwise it is the date the file was last changed on disk.
 
+**When an answer needs them.** Besides an import, the Guide and the Runner can read the current project's `CLAUDE.md` and memory files with a read-only tool, `read_project_memory`, when a question or a task needs them. Only the files named in step 3, only for the Project the call is about, and only after you have pointed Phew at that project's folder once. The text passes the secrets filter and is data, never instructions. Nothing is read in the background, and nothing read this way is written to the Map. Your decision of 14 November.
+
 Not checked yet, so the builder must look at real files on a Mac when building PB.4: the name Claude Code gives the hidden project folder, and the exact header lines of a memory file (the `type` line above). Neither is documented as fixed. Tests use made-up copies.
 
 ### Undoing an import
 
-"Undo last import" in the menu deletes every fact that came from the last import, after the same kind of question on the card as a forget. A thing the import created is kept if something you told him or he observed now points to it. The delete is wiped from the file like a forget (5.12). The wording of the menu entry is a first proposal.
+"Undo last import" in the menu removes every fact that came from the last import, at once, like a forget: the card names what went, and it waits 30 days in Recently deleted. A thing the import created is kept if something you told him or he observed now points to it. The real delete is wiped from the file like a forget (5.12). Last import only in version 1. Approved 14 November.
 
 ### Not in version 1
 
 Reading the export files of ChatGPT, Claude or Gemini: no export has a documented format.
 
-The paste box, the tick list and the folder choice are new small screens. Where they appear, and how you pick a folder without Phew taking focus from the front app, touch two hard rules and wait for your decision: see Open in `07-decisions.md`.
+The paste box, the tick list and the file list are small panels you open from the menu. The folder is picked in the system folder window, the one written exception to the focus rule. Both approved 14 November.
 
 ## 5.11 Recall: when called or needed
 
@@ -355,7 +360,7 @@ The paste box, the tick list and the folder choice are new small screens. Where 
 |---|---|---|
 | 1. Always loaded | The profile, and the last turns of the conversation (5.8) | No wait. An estimated 500 to 1,500 tokens for a usual profile, more near the 200-line limit. Cheaper once caching is built, see below |
 | 2. Before every answer, by Phew's own code | The Project this is about, its last 3 past questions, and up to about 6 Notes or things found by a text search with your question, the app name and the window title. Also, with no search, the lists from the defined terms in 5.6: the Tasks due soon, the Events coming up, the next step, and the open points of that Project. At most 3 lines each. An empty list adds nothing | A few milliseconds, estimated. No model call. An estimated 400 to 1,500 tokens |
-| 3. By the model, when it needs more | One search tool, `search_map`. Given to the Guide and the Runner, never to the Follower | One more request each time it is used: an estimated 1 to 3 seconds more before the first word, and the question, the picture and the screen text are sent a second time |
+| 3. By the model, when it needs more | One search tool, `search_map`. Given to the Guide and the Runner, never to the Follower. They also get `read_project_memory` (5.10) | One more request each time it is used: an estimated 1 to 3 seconds more before the first word, and the question, the picture and the screen text are sent a second time |
 
 - **When needed** is layer 2: memory appears without you asking.
 - **When called** is layer 3 and plain questions: "what do you know about me?", "what did we decide about pricing?".
@@ -393,7 +398,7 @@ Never internal ids. For the Runner, web addresses are left out of every line.
 | `list` | Optional, in place of a query. One named list: `due_soon`, `coming_up`, `open_points`, `next_step`, `stale`, `about_me` |
 | `past` | Optional, yes or no. Yes also returns old versions, each with the dates it was true |
 
-It returns at most 10 results (first proposal). The lists are fixed, and the tool's definition is identical on every call. List and class names are compared ignoring capitals. An unknown name returns nothing.
+It returns at most 10 results (kept 14 November, tuned after the MVP test). The lists are fixed, and the tool's definition is identical on every call. List and class names are compared ignoring capitals. An unknown name returns nothing.
 
 ### Project detection
 
@@ -412,7 +417,7 @@ Correcting him: "this is the Acme project" is a told fact. The Librarian links t
 Today the Brain sends one question and gets one answer: no tools, no earlier turns, no caching. Recall needs the changes below inside the Brain. The `Brain` interface that Shell and Senses use does not change.
 
 - **Request.** A request can carry several messages and a list of tools, not one question only.
-- **Loop.** The Guide answers, or calls `search_map` and then answers. At most 2 searches per question, then it must answer (first proposal). While it searches no words arrive, so the card stays in its waiting state.
+- **Loop.** The Guide answers, or calls `search_map` or `read_project_memory` and then answers. At most 2 such calls per question, then it must answer (kept 14 November, tuned after the MVP test). While it searches no words arrive, so the card stays in its waiting state.
 - **Sending back.** When the model calls the tool, its whole reply goes back unchanged together with the search result, including the model's hidden "thinking" blocks. The Claude API requires this: check its documentation when building. The first message, with the picture, is sent again unchanged. All of it is dropped when the answer is done.
 - **Caching.** The system prompt, the tool definition and the profile are marked for caching. They are identical from call to call, and the profile text changes only when a fact in it changes. By the price table in the code, a cached part costs about a twentieth of the normal price. It lasts 5 minutes from the last call, the first call pays a quarter more on that part, and a part that is too short is not cached at all (about 512 tokens today: check the Claude API documentation for the current figure). Until caching is built (roadmap PS.4 at the latest) nothing is cached: layer 1 is paid in full on every call and a search pays for the picture twice.
 - **Kept turns.** As in 5.8: text only, never an earlier look.
@@ -422,14 +427,17 @@ All figures in 5.11 are estimates. None was measured.
 
 ## 5.12 Storage
 
-One SQLite file on the Mac: `~/Library/Application Support/Phew/map.sqlite`, beside `calls.log`. Unit tests open a database in memory or in a temporary folder, never this file. Four tables, as before, with new columns. The same shape can move to Postgres when the backend arrives. That move would change the hard rule "The Map lives only on the Mac" and needs your decision first. Your own Time Machine backup, if you use one, copies this file like any other.
+One SQLite file on the Mac: `~/Library/Application Support/Phew/map.sqlite`, beside `calls.log`. Unit tests open a database in memory or in a temporary folder, never this file. Four tables, as before, with new columns, and a fifth, `forgets`, for Recently deleted. The same shape can move to Postgres when the backend arrives. That move would change the rule "The Map lives only on the Mac" and needs your decision first. Your own Time Machine backup, if you use one, copies this file like any other.
+
+**Encryption.** The whole file is encrypted, and sensitive facts get a second, separate lock. Your decision of 14 November. How, with which tools and keys, and what it does to text search and secure delete, is decided after the P5 research task and approved by you before P5.1 is built. The rest of this section describes the tables, which stay the same.
 
 | Table | Columns |
 |---|---|
-| `nodes` | id, owner, class, kind, name, aliases, text, properties, origin, source_event, confidence, valid_from, valid_to, superseded_by, embedding, created, updated |
-| `edges` | id, owner, from_node, to_node, link, strength, confidence, origin, source_event, valid_from, valid_to, superseded_by, created, updated |
-| `events` | id, owner, time, app, kind, summary, project, mentions, embedding |
+| `nodes` | id, owner, class, kind, name, aliases, text, properties, origin, source_event, confidence, sensitive, valid_from, valid_to, superseded_by, deleted, embedding, created, updated |
+| `edges` | id, owner, from_node, to_node, link, strength, confidence, origin, source_event, valid_from, valid_to, superseded_by, deleted, created, updated |
+| `events` | id, owner, time, app, kind, summary, project, mentions, sensitive, deleted, embedding |
 | `terms` | name, query |
+| `forgets` | id, time, label (the line the card showed, for the Recently deleted list) |
 
 - `owner`, `from_node` and `to_node` are named this way because `user`, `from` and `to` are reserved words in SQLite or Postgres and cannot be plain column names. In the MVP `owner` holds the same value on every row. It is there for the day accounts exist.
 - Ids are whole numbers. Dates are text in the ISO 8601 form.
@@ -442,6 +450,9 @@ One SQLite file on the Mac: `~/Library/Application Support/Phew/map.sqlite`, bes
 - Event kinds: ask, guide, tell, correction, task, import. A forget writes none.
 - `mentions` is the list of ids of the things and Notes the past question mentions, stored as a JSON list. `project` is the id of its Project, or empty.
 - `terms` holds each defined term of 5.6 once: its name and the query that computes it, with its numbers. It is filled when the Map is created. Tuning a number is one row changed. "Next step" is the exception: code runs the other queries in the order 5.6 gives.
+- `deleted` is the list of ids of the forgets that put the row in Recently deleted, as a JSON list, or empty. Every read skips rows where it is not empty. Restore removes only its own id, so a row still hidden by another forget stays hidden.
+- At the real delete (after 30 days, or on Delete now) the `forgets` row is deleted too, with the same secure delete, so its label leaves the file.
+- `sensitive` (nodes and events) is yes or no, set by the Librarian's mark and by you. A past question is sensitive when it mentions a sensitive thing.
 - The `embedding` columns stay empty in version 1.
 
 ### Text search
@@ -450,7 +461,7 @@ One SQLite file on the Mac: `~/Library/Application Support/Phew/map.sqlite`, bes
 - The search ignores capitals and accents (the `unicode61` word splitter with `remove_diacritics 2`). No English-only word stemming, because you work in Italian and English.
 - Phew's code never hands your sentence to the search as it is. SQLite would then demand that every word matches, and would stop with an error on a dot, a colon, a dash or an apostrophe. Instead the code:
   1. splits the question, the app name and the window title into words at every character that is not a letter or a digit, so `logo-v3.fig` becomes `logo`, `v3`, `fig`;
-  2. drops single letters, and keeps at most 30 words (first proposal);
+  2. drops single letters, and keeps at most 30 words (kept 14 November, tuned after the MVP test);
   3. puts each word in double quotes with a star after the closing quote, which is what makes it match the start of words;
   4. joins the words with OR: `"logo"* OR "v3"* OR "approved"*`.
 - Results come back best match first (SQLite's own ranking), and a match in a name counts more than a match in a sentence. They are cut to the numbers in 5.11. Only current facts are returned, unless the past is asked for.
@@ -460,7 +471,7 @@ One SQLite file on the Mac: `~/Library/Application Support/Phew/map.sqlite`, bes
 
 ### Deleting for real
 
-After a forget or an undone import, the deleted words leave the file, not only the tables:
+At the real delete after a forget or an undone import (after 30 days, or on Delete now), the deleted words leave the file, not only the tables:
 
 - the database runs with `PRAGMA secure_delete = ON`;
 - both text-search indexes have the FTS5 `secure-delete` option set to 1;
@@ -470,7 +481,7 @@ This needs SQLite 3.42 or later, and P5.1 checks the version. Tried on 14 Novemb
 
 ## 5.13 Seeing and exporting it
 
-The Map can be exported to one readable Markdown file: you, your projects with their tasks, people, documents and notes, then past questions by date. Each fact shows its origin. That is the Transparent value in the MVP, and the way to check what the Librarian wrote. The export is saved only where you choose. How you pick the folder waits for your decision: see Open in `07-decisions.md`. It is a copy outside the Map, so a later "forget that" does not reach it.
+The Map can be exported to one readable Markdown file: you, your projects with their tasks, people, documents and notes, then past questions by date. Each fact shows its origin. That is the Transparent value in the MVP, and the way to check what the Librarian wrote. The export is saved only where you choose, in the system folder window. Sensitive facts are left out unless you tick them. It is a copy outside the Map, so a later "forget that" does not reach it.
 
 ## 5.14 Later, and risks
 
@@ -481,7 +492,9 @@ Later versions:
 - Reading export files of other assistants.
 - A screen to manage kinds, and a view of the graph.
 - Calendar access for Events.
-- Facts learned from a research report.
+- Facts learned from a research report, connected to the rest, with web findings added after an internal review.
+- Links whose meaning changes with the matter or the setting. Research first.
+- The Map kept on the Mac and in the cloud, on a personal page, divided by matter. This changes the rule "The Map lives only on the Mac".
 
 Three biggest risks:
 

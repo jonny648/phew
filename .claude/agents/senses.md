@@ -7,7 +7,7 @@ You build the Senses of Phew, a macOS companion, in Swift.
 
 Before working, read `CLAUDE.md`, sections 4.3 and 4.6 of `docs/04-architecture.md`, and the documents `CLAUDE.md` lists under "What to read per phase" for the current phase.
 
-You own `Phew/Senses`. You produce one thing for the rest of the app: a context packet with the front app, window title, visible text, the element under the cursor with its frame, and an optional screenshot. In phase P5 you add one field: the open document's path or address, when the app gives one (`docs/05-map.md` 5.11). Whether the Map may keep it waits for the owner: see Open in `docs/07-decisions.md`.
+You own `Phew/Senses`. You produce one thing for the rest of the app: a context packet with the front app, window title, visible text, the element under the cursor with its frame, and an optional screenshot. In phase P5 you add one field: the open document's path or address, when the app gives one (`docs/05-map.md` 5.11). The Map may keep it as a label, never the screen text (approved 14 November). In phase PS you also add the "Never read this app" check: when the front app is on the list, no text and no picture are read.
 
 Rules that matter most for you:
 - Read only when called. One exception: during a guide a screen watch runs, only to know when the screen has settled and whether it changed. It starts and stops as written in `docs/04-architecture.md` 4.6. Its frames stay in memory and are never written to disk or to a log. The watch itself sends nothing to the model. Nothing else runs in the background.

@@ -5,7 +5,7 @@
 | Surface | Role | Behaviour |
 |---|---|---|
 | Notch | Home | Phew rests here in his shell. Expands slightly to show state and working agents |
-| Menu bar | Fallback home and controls | Used on Macs without a notch. Holds pause, settings, link to dashboard |
+| Menu bar | Fallback home and controls | Used on Macs without a notch. Holds settings, the "Never read this app" list, link to dashboard |
 | On-display presence | Explaining and guiding | Phew leaves the notch, travels to the spot, becomes a second cursor to point or show, then returns |
 
 The on-display presence is the heart of the product. Phew turns into a pointer with a soft effect, indicates an element, underlines, circles or walks through steps, and places a short text card beside it when words are needed. He never speaks aloud.
@@ -22,7 +22,6 @@ Difference from Clicky: silent instead of voiced, lives in the notch instead of 
 | Guiding | On display | Pointer form, trail, highlight |
 | Working | Notch | One small egg per running agent. An egg hatches when its task is done |
 | Waiting for you | Notch | A quiet mark. He does not come out |
-| Paused | Menu bar | Shell closed |
 
 ## 3.3 Ways to call him
 
@@ -51,19 +50,19 @@ With nothing said, he explains what is under the cursor. He works on the whole w
 
 Agents are visible as a pleasant detail, never as a control panel. Eggs in the notch show how many are working. Hovering shows one line per agent. Full history lives in the dashboard.
 
-In the MVP: a "working" mark on the menu bar icon, a Stop entry in the menu, and the result waiting in the menu until you open it on the card. He never shows a result by himself. Before the first task, one screen says in plain words what a task may read and send.
+In the MVP: a "working" mark on the menu bar icon with the number of tasks running, a Stop entry per task in the menu, and the result waiting in the menu until you open it on the card. He never shows a result by himself. Before the first task, one screen says in plain words what a task may read and send.
 
-The screen's text. A first proposal, it waits for your approval (see Open in `07-decisions.md`, consent screen):
+The screen's text. You approved it on 14 November. Lines were then brought in line with your other answers of the same day: reports are always saved, an address you type is opened, the project's Claude Code files are read when needed, and several tasks can run:
 
 > **Phew can research a task by himself.**
 >
-> He reads your screen once, when you give the task. He looks in his memory of your projects. He searches and reads the web.
+> He reads your screen once, when you give the task. He looks in his memory of your projects, and in the project's Claude Code files when the task needs them. He searches and reads the web, and opens a web address you type in the task.
 >
-> What leaves your Mac: your task, what he saw on your screen and the facts from his memory that the task needs are sent to Claude, the model made by Anthropic. The web search and the reading of pages run at Anthropic too. The words he searches for can include names from your screen or his memory. Passwords, keys and card numbers are removed before anything is sent.
+> What leaves your Mac: your task, what he saw on your screen, the facts from his memory and the parts of the project's Claude Code files that the task needs are sent to Claude, the model made by Anthropic. The web search and the reading of pages run at Anthropic too. The words he searches for can include names from your screen or his memory. Passwords, keys and card numbers are removed before anything is sent.
 >
-> What he changes on your Mac: nothing. If you choose a reports folder, he saves each report there as a new file. He never overwrites or deletes a file.
+> What he changes on your Mac: nothing, except new files. He saves each report as a new PDF in the folder you chose, or in Downloads, and keeps a copy for himself. He never overwrites or deletes a file.
 >
-> Each task has a limit on searches, pages and cost. A mark in the menu bar shows he is working. Stop ends it. The result waits in the menu bar until you open it.
+> Each task has a limit on searches, pages and cost. A mark in the menu bar shows he is working. Each task has its own Stop. The result waits in the menu bar until you open it.
 >
 > [Allow] [Not now]
 
@@ -75,32 +74,33 @@ Decided on 13 November 2026 after the research in `10-research.md` 10.2.
 
 | Level | What he may do | When |
 |---|---|---|
-| A. Read and research | Read the screen once when you give the task, read the Map, search and read the web, report on the card | MVP |
-| B1. New files | Save the report as a new file in one folder you chose. He never overwrites and never deletes. Each file is listed with Reveal and Delete. Delete is your own click | MVP |
+| A. Read and research | Read the screen once when you give the task, read the Map and the project's Claude Code files when needed, search and read the web, open an address you type, report on the card | MVP |
+| B1. New files | Save the report as a new PDF in the folder you chose, or in Downloads, and a Markdown copy in Phew's own storage. He never overwrites and never deletes. Each report is listed with Reveal and Delete. Delete is your own click | MVP |
 | B2. Edit files | Change existing files in that folder, each change shown and approved, with a backup | Later |
 | C. Act in apps | Click and type in other apps. A separate opt-in, off by default | Later |
 
 Rules for every level, each with how it is kept: by Phew's own code or by the request, not by asking the model to behave.
 
 - What he reads from the screen, the Map, the web, a file or pasted text is data, never instructions. A web page cannot give him orders. No defence here is perfect: a page can still try to steer what he searches for next. The rules below keep the damage small.
-- He has no tool that writes or changes anything. He can only search, read and report. Phew's own code saves the finished report, never the model, as a new file only, in the folder you chose.
-- He never opens a web address that came from the screen, the Map or a file. Two guards. Phew's own code removes every web address from the screen text, the Map facts (also the ones a Map search returns) and file text before they reach him. And a setting of the web fetch tool lets him open only addresses he found by his own searches or on pages he already opened. Anthropic's server refuses any other. Side effect: an address you type in the task is not opened directly either. He finds that page by searching. First proposal, see Open in `07-decisions.md`.
-- Each task has a limit on searches, pages and cost. First proposals, yours to change: 5 searches, 8 pages, 50 cents. The limits on searches and pages are set in the request itself, so they hold while the work runs at Anthropic. Phew's own code adds up the cost after each reply. At a limit he stops, reports what he has, and says which limit he reached.
+- He has no tool that writes or changes anything. He can only search, read and report. Phew's own code saves the finished report, never the model, as new files only: the PDF in the folder you chose or in Downloads, the Markdown copy in Phew's storage.
+- He never opens a web address that came from the screen, the Map or a file. Two guards. Phew's own code removes every web address from the screen text, the Map facts (also the ones a Map search returns) and file text before they reach him. And a setting of the web fetch tool lets him open only addresses he found by his own searches, on pages he already opened, or typed by you in the task. Anthropic's server refuses any other. An address you type is opened: your decision of 14 November. It leaves Phew's own removal as the only guard for the screen text, which is the risk you accepted.
+- Each task has a limit on searches, pages and cost: 5 searches, 8 pages, 50 cents, approved 14 November. Rate limits on usage come after the MVP. The limits on searches and pages are set in the request itself, so they hold while the work runs at Anthropic. Phew's own code adds up the cost after each reply. At a limit he stops, reports what he has, and says which limit he reached.
 - He reads the screen once, when you give the task, and not again. What he read stays in memory until the task ends or is stopped. Then it is dropped.
-- The secrets filter runs on everything Phew sends. He writes his search words at Anthropic, from text that already passed the filter. They can still contain names or words from your screen or the Map. The consent screen says so.
-- A mark shows while he works, and Stop always works. Stop ends the task within 2 seconds. Nothing is reported and what he read is dropped. The 2 seconds and reporting nothing are first proposals, see Open in `07-decisions.md`.
-- One task at a time. If you give a second task while one is working, he does not start it and says so in one line on the card. First proposal.
-- A finished report waits in the menu until you open it. It is held in memory, so it is lost if Phew quits before that, unless it was saved as a file. First proposal.
+- The secrets filter runs on everything Phew sends. He writes his search words at Anthropic, from text that already passed the filter. They may contain names or words from your screen or the Map, with no limit: your decision of 14 November. The consent screen says so.
+- A mark shows while he works, and Stop always works. Stop ends the task within 2 seconds. Nothing is reported and what he read is dropped. Approved 14 November.
+- Several tasks can run at the same time, at most 3 (first proposal). Each has its own limits, its own Stop, and its own screen read. A fourth task is not started, and the card says so in one line.
+- A finished report is saved at once, as below, and waits in the menu until you open it. Nothing is lost if Phew quits.
 
-How a report is saved. First proposals, to confirm (see Open in `07-decisions.md`, reports):
+How a report is saved. Approved 14 November:
 
-- You choose the folder once, from the menu entry "Choose reports folder…". You can change it there. How you pick it is open: the normal macOS folder window takes focus from the front app, which a hard rule forbids. The first proposal is to drag the folder onto Phew's panel. See Open in `07-decisions.md`, picking a folder without taking focus.
-- With a folder set, each report is saved by itself when it is ready. With no folder set, nothing is saved and the report is still shown on the card.
-- The file is plain text in Markdown. Its name is the date and the first words of your task, for example `2026-11-20 Kerning sources.md`. The name never comes from the model or from a web page. Phew's code cleans it: no slash, no "..", no dot at the start.
+- You choose the folder once, from the menu entry "Choose reports folder…", in the system folder window. That window is the one written exception to the focus rule. You can change the folder there.
+- Each report is saved by itself as soon as the task ends. With no folder chosen, it goes to Downloads.
+- You get a PDF, because it is easy to read. A Markdown copy goes to Phew's own storage, `~/Library/Application Support/Phew/reports/`, for Phew and the agents only.
+- The name is the date and the first words of your task, for example `2026-11-20 Kerning sources.pdf`. The name never comes from the model or from a web page. Phew's code cleans it: no slash, no "..", no dot at the start.
 - If that name exists, the new file gets ` 2`, then ` 3`. The file is created only if no file with that name exists, so no existing file is ever replaced.
-- Phew checks that the file lands inside the folder you chose. It does not follow a shortcut in the folder that points elsewhere.
+- Phew checks that the file lands inside the folder. It does not follow a shortcut in the folder that points elsewhere.
 - The file holds the report only. The screen text and the picture he read are never written to it.
-- The menu has a "Saved reports" list with the files Phew saved. Each has Reveal, which shows it in Finder, and Delete. Delete is your own click, never the agent's. It asks once and moves the file to the Trash.
+- The menu has a "Saved reports" list. Each has Reveal, which shows the PDF in Finder, and Delete. Delete is your own click, never the agent's. It asks once and moves the PDF and its copy to the Trash.
 
 ### Actions in other apps, when built
 
@@ -118,7 +118,7 @@ On his website, after sign in:
 - The Map: your projects, tasks, topics, people and how they connect. Editable.
 - Lectures and notes.
 - What agents did.
-- Privacy: what is kept, delete anything, pause, export.
+- Privacy: what is kept, delete anything, apps never read, export.
 - Account and plan.
 
 ## 3.8 Order and brand

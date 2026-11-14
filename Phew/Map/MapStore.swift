@@ -141,7 +141,8 @@ actor MapStore {
         try self.init(database: Database(folder: nil, key: nil, sensitiveKey: nil))
     }
 
-    private init(database: Database) throws {
+    /// Also used by the real-delete test, on plain files in a temporary folder.
+    init(database: Database) throws {
         db = database
         // Me: one row, made when the Map is created (5.3).
         if try db.scalar("SELECT count(*) FROM all_nodes WHERE class = 'Me'") == .int(0) {
@@ -192,9 +193,14 @@ actor MapStore {
     /// Marks a thing sensitive or not, and moves it, its history rows, its links and its past questions to the
     /// other file in one transaction. Links and past questions stay sensitive while they touch another sensitive thing.
     func setSensitive(_ id: Int64, _ sensitive: Bool) throws {
+        try db.transaction { try moveSensitive(id, sensitive) }
+    }
+
+    /// The move of `setSensitive`, inside a transaction the caller holds.
+    func moveSensitive(_ id: Int64, _ sensitive: Bool) throws {
         let (from, to) = sensitive ? ("main", "s") : ("s", "main")
         let flag: SQLValue = .int(sensitive ? 1 : 0)
-        try db.transaction {
+        do {
             let rows = "id = ?1 OR superseded_by = ?1"
             try db.query("INSERT INTO \(to).nodes SELECT * FROM \(from).nodes WHERE \(rows)", [.int(id)])
             try db.query("UPDATE \(to).nodes SET sensitive = ?2 WHERE \(rows)", [.int(id), flag])

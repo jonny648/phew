@@ -124,12 +124,26 @@ extension MapStore {
            let project = projectOf(document.id) {
             return project
         }
-        for hit in search([appName, windowTitle, question], classes: [.project, .document], namesOnly: true) {
+        for hit in search([Self.detectionWords([appName, windowTitle, question])], classes: [.project, .document], namesOnly: true) {
             if hit.mapClass == .project { return hit }
             if let project = projectOf(hit.id) { return project }
         }
         return nil
     }
+
+    /// The words project detection may match on: at least 3 letters and not a common English or Italian word, so
+    /// "the", "di" or "la" in a title never names a Project by themselves.
+    static func detectionWords(_ parts: [String]) -> String {
+        parts.flatMap { $0.split { !$0.isLetter && !$0.isNumber } }
+            .filter { $0.count >= 3 && !stopwords.contains($0.lowercased()) }.joined(separator: " ")
+    }
+
+    static let stopwords: Set<String> = [
+        "the", "and", "for", "with", "from", "this", "that", "what", "how", "why", "who", "are", "was", "you", "your",
+        "not", "but", "can", "all", "has", "have", "does", "into", "about", "una", "uno", "gli", "che", "per", "con",
+        "del", "della", "dei", "delle", "nel", "nella", "sul", "sulla", "come", "cosa", "non", "sono", "questo",
+        "questa", "quello", "quella", "anche", "più", "mio", "mia", "tuo", "tua", "suo", "sua",
+    ]
 
     /// "This is the X project": a told fact. Links the open document to Project X with "part of", so the next call
     /// from the same file names X at step 1. With no path, the window title becomes the Document's name instead.
@@ -470,13 +484,13 @@ extension MapStore {
 
     private func nodes(_ ids: ArraySlice<Int64>) -> [MapNode] { ids.compactMap { try? node($0) } }
 
-    private func currentNodes(_ mapClass: MapClass) throws -> [MapNode] {
+    func currentNodes(_ mapClass: MapClass) throws -> [MapNode] {
         try db.query("SELECT * FROM all_nodes WHERE class = ? AND valid_to IS NULL AND deleted = '' ORDER BY updated DESC, id DESC",
                      [.text(mapClass.rawValue)]).compactMap(Self.node)
     }
 
     /// The current Document whose path or address is `label`, the most recently seen first.
-    private func documentWithLabel(_ label: String) -> MapNode? {
+    func documentWithLabel(_ label: String) -> MapNode? {
         ((try? db.query("""
             SELECT * FROM all_nodes WHERE class = 'Document' AND valid_to IS NULL AND deleted = ''
               AND (json_extract(properties, '$.path.value') = ?1 OR json_extract(properties, '$.address.value') = ?1)
@@ -485,7 +499,7 @@ extension MapStore {
     }
 
     /// The current Project a thing is part of, the newest link first.
-    private func projectOf(_ id: Int64) -> MapNode? {
+    func projectOf(_ id: Int64) -> MapNode? {
         ((try? db.query("""
             SELECT p.* FROM all_edges e JOIN all_nodes p ON p.id = e.to_node
             WHERE e.from_node = ? AND e.link = 'part_of' AND e.valid_to IS NULL AND e.deleted = ''

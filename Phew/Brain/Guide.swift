@@ -43,7 +43,10 @@ enum Guide {
         imported one. When the lines \
         give a point to start from and a next step, start from that point and name the next step; when the user \
         asks what to do next, the next step is the answer. Search only when these lines and the screen are not \
-        enough: at most two searches per answer.
+        enough: at most two searches per answer. For a question about a period, such as "this month" or "last \
+        week", search once, with since set to the first day of that period and no class: it returns the past \
+        questions of that period. Then answer from what it returns. When a result ends with "These are all the \
+        matches.", nothing more is there: do not search again.
         """
 
     static let schema = #"""

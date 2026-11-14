@@ -229,4 +229,21 @@ final class BrainMapTests: XCTestCase {
         XCTAssertEqual(wiped, 0)
         _ = map
     }
+
+    /// Fewer than 10 lines: the search ends with the fixed "all the matches" line. 10 lines: no such line. None: empty.
+    func testMapSearchSaysWhenTheResultIsComplete() async throws {
+        let store = try MapStore()
+        let search = MapSearch(store: store)
+        let input = Data(#"{"query":"","since":"2026-01-01"}"#.utf8)
+        let empty = try await search.run("search_map", input: input)
+        XCTAssertEqual(empty, "")
+        for n in 1...3 { try await store.add(MapEvent(app: "Figma", kind: .ask, summary: "Asked made-up question \(n).")) }
+        let few = try await search.run("search_map", input: input)
+        XCTAssertEqual(few.split(separator: "\n").count, 4)
+        XCTAssertTrue(few.hasSuffix(MapSearch.complete))
+        for n in 4...12 { try await store.add(MapEvent(app: "Figma", kind: .ask, summary: "Asked made-up question \(n).")) }
+        let full = try await search.run("search_map", input: input)
+        XCTAssertEqual(full.split(separator: "\n").count, 10)
+        XCTAssertFalse(full.contains(MapSearch.complete))
+    }
 }

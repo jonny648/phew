@@ -76,11 +76,16 @@ actor BrainMap {
 }
 
 /// `search_map` for the Guide, run on the Map by `MapStore.searchMap`. Logs nothing.
+/// Fewer than the 10 lines a search may return means nothing was cut: a fixed line says so, so the model does
+/// not search again for the same period.
 struct MapSearch: ToolRunner {
+    static let complete = "These are all the matches."
     let store: MapStore
     var tools: [ToolSpec] { [.searchMap] }
 
     func run(_ name: String, input: Data) async throws -> String {
-        name == ToolSpec.searchMap.name ? await store.searchMap(input: input) : ""
+        var out = name == ToolSpec.searchMap.name ? await store.searchMap(input: input) : ""
+        if !out.isEmpty, out.split(separator: "\n").count < 10 { out += "\n" + Self.complete }
+        return out
     }
 }

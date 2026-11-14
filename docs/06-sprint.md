@@ -72,3 +72,4 @@ Order to confirm at the retro. Unscheduled.
 | L13 Getting to know you | A short interview at install, and asking you when he cannot understand. Research first |
 | L14 Reports that teach the Map | Research findings become connected facts, web findings after an internal review |
 | L15 Touch ID on sensitive facts | Sensitive facts open only after Touch ID or your password; needs a provisioning profile |
+| L16 Cost research and reduction | Large analysis and research to cut cost per question and per task without losing capabilities: remove calls that are not needed, cheaper models where they do as well, caching, shorter inputs, fewer rounds |

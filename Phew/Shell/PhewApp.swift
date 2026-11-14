@@ -12,6 +12,7 @@ struct PhewApp: App {
             Button(shell.paused ? "Resume" : "Pause") { shell.paused.toggle() }
             Button("API Key…") { delegate.keyWindow.show() }
             Button("Recently deleted…") { delegate.showRecentlyDeleted() }
+            Button("Export the Map…") { delegate.showExport() }
             Divider()
             Button("About and licences") { delegate.menuPanel.show(title: "About Phew", AboutView()) }
             Button("Quit Phew") { NSApp.terminate(nil) }
@@ -35,7 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let panel = InputPanel()
     let card = TextCard()
     let keyWindow = KeyWindow()
-    /// Recently deleted or About: one small panel at a time.
+    /// Recently deleted, Export the Map or About: one small panel at a time.
     let menuPanel = MenuPanel()
     private let permissions = PermissionsWindow()
     /// The context read at the shortcut, kept only until the question is asked or the panel closes without one.
@@ -61,6 +62,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func showRecentlyDeleted() {
         menuPanel.show(title: "Recently deleted", DeletedView(list: DeletedList(brain: brain)))
+    }
+
+    func showExport() {
+        menuPanel.show(title: "Export the Map", ExportView(exporter: MapExporter(brain: brain)))
     }
 
     private func shortcut() {

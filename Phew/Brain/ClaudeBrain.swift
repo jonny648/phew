@@ -56,6 +56,11 @@ struct ClaudeBrain: Brain {
         return (try? await store.deleteNow(id)) ?? false
     }
 
+    /// After every Librarian run started before, like every other read.
+    func exportMap(includeSensitive: Bool) async -> String? {
+        await map.ready()?.export(includeSensitive: includeSensitive)
+    }
+
     // MARK: One request
 
     private func run(_ question: String, packet: ContextPacket?, emit: (BrainEvent) -> Void) async throws {

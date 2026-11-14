@@ -1,7 +1,8 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
-/// A small panel opened from the menu bar menu: Recently deleted, About and licences. Non-activating like the
+/// A small panel opened from the menu bar menu: Recently deleted, Export the Map, About and licences. Non-activating like the
 /// other panels, and it becomes key only if a click needs it (selecting text), so the front app keeps the focus.
 @MainActor
 final class MenuPanel {
@@ -158,4 +159,84 @@ struct AboutView: View {
 
     /// Verbatim from the Open Source Legal Notices on https://www.zetetic.net/sqlcipher/license/
     static let sqliteNotice = "SQLite (http://sqlite.org/); Released to the Public Domain (http://sqlite.org/copyright.html); The author disclaims copyright to this source code.; This product includes software developed by the SQLite Project"
+}
+
+// MARK: - Export the Map (P5.10)
+
+/// What the Export panel does: asks the Brain for the Map as Markdown, with sensitive facts only when ticked, then
+/// hands it to `save`, which writes it only where the user chooses. Logs no path and no word of the Map.
+@MainActor
+final class MapExporter: ObservableObject {
+    @Published var includeSensitive = false
+    @Published private(set) var busy = false
+    @Published private(set) var status: String?
+    let brain: any Brain
+    /// Asks where to save and writes the text there. The file's name when saved, nil when cancelled.
+    let save: @MainActor (String) async throws -> String?
+
+    init(brain: any Brain, save: @escaping @MainActor (String) async throws -> String? = MapExporter.saveInFolderWindow) {
+        self.brain = brain
+        self.save = save
+    }
+
+    /// One export at a time, so a double click cannot open two save windows.
+    func export() async {
+        guard !busy else { return }
+        busy = true
+        defer { busy = false }
+        guard let text = await brain.exportMap(includeSensitive: includeSensitive) else {
+            status = "The Map isn't available right now, so nothing was saved."
+            return shellLog("map export: no map")
+        }
+        do {
+            let saved = try await save(text)
+            status = saved.map { "Saved as \($0)." }
+            shellLog("map export: saved \(saved != nil), sensitive \(includeSensitive), lines \(text.split(separator: "\n").count)")
+        } catch {
+            status = "Could not save the file. Please try again."
+            shellLog("map export: write failed")
+        }
+    }
+
+    /// The system folder window. Phew becomes active only while it is open: the one exception to never taking the
+    /// focus (CLAUDE.md). When it closes, saved or cancelled, the app that was in front before is made active again.
+    /// Cancel writes nothing.
+    static func saveInFolderWindow(_ text: String) async throws -> String? {
+        let front = NSWorkspace.shared.frontmostApplication
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "Phew Map.md"
+        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
+        panel.canCreateDirectories = true
+        NSApp.activate()
+        let response = await withCheckedContinuation { done in panel.begin { done.resume(returning: $0) } }
+        defer {
+            let back = front.map { $0 != .current && $0.activate(from: .current, options: []) } ?? false
+            shellLog("map export: folder window closed, front app active again \(back), phew front \(phewIsFront)")
+        }
+        guard response == .OK, let url = panel.url else { return nil }
+        try text.write(to: url, atomically: true, encoding: .utf8)
+        return url.lastPathComponent
+    }
+}
+
+struct ExportView: View {
+    @ObservedObject var exporter: MapExporter
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Save the Map as one Markdown file you can read. The file is not encrypted, and forgetting something later does not change it.")
+                .fixedSize(horizontal: false, vertical: true)
+            Toggle("Include sensitive facts", isOn: $exporter.includeSensitive)
+            HStack {
+                Spacer()
+                Button("Export…") { Task { await exporter.export() } }
+                    .disabled(exporter.busy)
+            }
+            Text(exporter.status ?? "It is saved only where you choose.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .padding(20)
+        .frame(width: 400, alignment: .leading)
+    }
 }

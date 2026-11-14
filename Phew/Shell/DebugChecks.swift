@@ -17,6 +17,37 @@ extension AppDelegate {
         if arguments.contains("--debug-card") { Task { await checkCard() } }
         if arguments.contains("--debug-guide") { Task { await checkGuide() } }
         if arguments.contains("--debug-deleted-check") { Task { await checkDeleted() } }
+        if arguments.contains("--debug-export-check") { Task { await checkExport() } }
+    }
+
+    /// P5.10 without the save window: a made-up Map in memory, exported through the real Export panel and its model,
+    /// with sensitive facts off then on. `save` writes to a file in the app's temporary folder (never the real Map,
+    /// never a user folder), which is read back, compared, and deleted. Logs counts and focus only, never a word of
+    /// the Map or a path. The system folder window itself needs a hand test. No model calls.
+    private func checkExport() async {
+        try? await Task.sleep(for: .seconds(1))
+        NSApp.deactivate()
+        let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        guard let store = try? await MadeUpMap.build() else { return shellLog("export check: made-up map failed") }
+        let stub = ExportStubBrain(store: store)
+        let file = FileManager.default.temporaryDirectory.appending(path: "phew-export-check-\(UUID().uuidString).md")
+        for sensitive in [false, true] {
+            let exporter = MapExporter(brain: stub) { text in
+                try text.write(to: file, atomically: true, encoding: .utf8)
+                return file.lastPathComponent
+            }
+            menuPanel.show(title: "Export the Map", ExportView(exporter: exporter))
+            exporter.includeSensitive = sensitive
+            await exporter.export()
+            let written = stub.lastText ?? ""
+            let read = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
+            let lines = read.split(separator: "\n")
+            let panel = menuPanel.panel
+            shellLog("export check sensitive=\(sensitive): asked=\(stub.asked) roundTrip=\(!read.isEmpty && read == written) bytes=\(read.utf8.count) lines=\(lines.count) sections=\(lines.filter { $0.hasPrefix("## ") }.count) facts=\(lines.filter { $0.hasPrefix("- ") }.count) sensitiveMarks=\(read.components(separatedBy: "Sensitive.").count - 1) forgottenAbsent=\(!read.contains(MadeUpMap.forgottenName)) sensitiveNamePresent=\(read.contains(MadeUpMap.sensitiveName)) saved=\(exporter.status != nil) panel visible=\(panel?.isVisible ?? false) key=\(panel?.isKeyWindow ?? false) nonactivating=\(panel?.styleMask.contains(.nonactivatingPanel) ?? false) phewFront=\(phewIsFront) frontUnchanged=\(NSWorkspace.shared.frontmostApplication?.processIdentifier == front)")
+        }
+        try? FileManager.default.removeItem(at: file)
+        menuPanel.close()
+        shellLog("export check done: file deleted=\(!FileManager.default.fileExists(atPath: file.path)) panel closed=\(menuPanel.panel == nil) phewFront=\(phewIsFront)")
     }
 
     /// Opens Recently deleted on a stub with two made-up forgets, runs Restore and Delete now as their buttons do,
@@ -260,6 +291,88 @@ final class DeletedStubBrain: Brain, @unchecked Sendable {
             items.remove(at: index)
             return true
         }
+    }
+}
+
+/// A stand-in Brain for the export check: exports a Map it was given (nil: no Map) and records what it was asked.
+final class ExportStubBrain: Brain, @unchecked Sendable {
+    private let lock = NSLock()
+    private let store: MapStore?
+    private var calls: [Bool] = []
+    private var text: String?
+    /// The `includeSensitive` of each call, in order.
+    var asked: [Bool] { lock.withLock { calls } }
+    var lastText: String? { lock.withLock { text } }
+
+    init(store: MapStore?) { self.store = store }
+
+    func answer(_ question: String, packet: ContextPacket?) -> AsyncThrowingStream<BrainEvent, Error> {
+        FakeBrain().answer(question, packet: packet)
+    }
+    func progress(steps: [GuideStep], current: Int, packet: ContextPacket?) async throws -> GuideProgress {
+        try await FakeBrain().progress(steps: steps, current: current, packet: packet)
+    }
+    func exportMap(includeSensitive: Bool) async -> String? {
+        lock.withLock { calls.append(includeSensitive) }
+        let out = await store?.export(includeSensitive: includeSensitive)
+        lock.withLock { text = out }
+        return out
+    }
+}
+
+/// A made-up Map in memory, for the export check and its tests: a Project with a Task (and one old due date), a
+/// Person, a Tool, a Topic, Notes, links, past questions, one sensitive Person with a sensitive Note and past
+/// question, and one forgotten Person with a Note.
+enum MadeUpMap {
+    static let sensitiveName = "Bruno Hiddenname"
+    static let forgottenName = "Carla Forgotten"
+
+    static func build() async throws -> MapStore {
+        let store = try MapStore()
+        let me = try await store.count("SELECT id FROM all_nodes WHERE class = 'Me'")
+        func node(_ mapClass: MapClass, _ name: String = "", kind: String = "", text: String = "", properties: String = "{}",
+                  origin: Origin = .told, sensitive: Bool = false) async throws -> Int64 {
+            try await store.add(MapNode(mapClass: mapClass, kind: kind, name: name, text: text, properties: properties, origin: origin,
+                                        sensitive: sensitive, validFrom: "2026-11-10T09:00:00Z", created: "2026-11-10T09:00:00Z",
+                                        updated: "2026-11-10T09:00:00Z"))
+        }
+        func link(_ from: Int64, _ link: MapLink, _ to: Int64, origin: Origin = .told, strength: Double? = nil) async throws {
+            try await store.add(MapEdge(from: from, to: to, link: link, strength: strength, origin: origin, validFrom: "2026-11-10T09:00:00Z",
+                                        created: "2026-11-10T09:00:00Z", updated: "2026-11-10T09:00:00Z"))
+        }
+        let project = try await node(.project, "Example rebrand", kind: "client job")
+        let task = try await node(.task, "Example poster", kind: "assignment",
+                                  properties: MapStore.properties(["due": ("2026-11-20", Origin.told)]))
+        try await store.add(MapNode(mapClass: .task, kind: "assignment", name: "Example poster",
+                                    properties: MapStore.properties(["due": ("2026-11-18", Origin.told)]), origin: .told,
+                                    validFrom: "2026-11-09T09:00:00Z", validTo: "2026-11-10T09:00:00Z", supersededBy: task,
+                                    created: "2026-11-09T09:00:00Z", updated: "2026-11-09T09:00:00Z"))
+        let ada = try await node(.person, "Ada Example", kind: "client", origin: .observed)
+        let tool = try await node(.tool, "Sketchpad", kind: "app", origin: .observed)
+        let topic = try await node(.topic, "Kerning", kind: "concept", origin: .observed)
+        let decision = try await node(.note, kind: "decision", text: "Client approved logo v3", origin: .observed)
+        let preference = try await node(.note, kind: "preference", text: "I prefer short answers")
+        try await link(task, .partOf, project)
+        try await link(project, .involves, ada, origin: .observed)
+        try await link(project, .uses, tool, origin: .observed)
+        try await link(task, .requires, topic, origin: .observed)
+        try await link(me, .understands, topic, origin: .observed, strength: 0.3)
+        try await link(decision, .about, project, origin: .observed)
+        try await link(preference, .about, me)
+        try await store.add(MapEvent(time: "2026-11-11T10:00:00Z", app: "Sketchpad", kind: .ask,
+                                     summary: "Asked how to set kerning on the poster.", project: project, mentions: [project, task, topic]))
+
+        let bruno = try await node(.person, sensitiveName, kind: "friend", sensitive: true)
+        let matter = try await node(.note, kind: "reference", text: "Bruno has a made-up private matter", sensitive: true)
+        try await link(matter, .about, bruno)
+        try await store.add(MapEvent(time: "2026-11-12T10:00:00Z", kind: .tell, summary: "Told about Bruno's made-up matter.",
+                                     mentions: [bruno, matter]))
+
+        let carla = try await node(.person, forgottenName, kind: "teammate")
+        let gone = try await node(.note, kind: "reference", text: "Carla Forgotten likes made-up tea")
+        try await link(gone, .about, carla)
+        try await store.forget([carla])
+        return store
     }
 }
 #endif

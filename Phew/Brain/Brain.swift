@@ -20,6 +20,9 @@ protocol Brain: Sendable {
     func restore(_ id: Int64) async -> Bool
     /// Wipes a forget for real at once. False if it could not.
     func deleteNow(_ id: Int64) async -> Bool
+
+    /// The Map as one Markdown document (P5.10), sensitive facts only when asked. Nil when there is no Map to read.
+    func exportMap(includeSensitive: Bool) async -> String?
 }
 
 extension Brain {
@@ -27,6 +30,7 @@ extension Brain {
     func recentlyDeleted() async -> [DeletedItem] { [] }
     func restore(_ id: Int64) async -> Bool { false }
     func deleteNow(_ id: Int64) async -> Bool { false }
+    func exportMap(includeSensitive: Bool) async -> String? { nil }
 }
 
 struct DeletedItem: Sendable, Identifiable { let id: Int64; let label: String; let daysLeft: Int }

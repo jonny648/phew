@@ -51,12 +51,13 @@ enum BrainSelfCheck {
                        "\(page.count) to \(cleaned.count) chars, \(kept.count)/3 key words kept, total \(ms(t0)) ms, $\(CallLog.spentUSD - usd0)")
             } catch { report("observer", false, failure(error)) }
 
-            // (b) The Guide on 6 made-up cases.
+            // (b) The Guide on 6 made-up cases, then 2 on recall rules (P5.11) with a lower token cap.
             for item in guideCases {
                 let t0 = Date(), usd0 = CallLog.spentUSD
                 var first: Int?, text = "", steps: [GuideStep]?
                 do {
-                    try await Guide.answer(item.question, packet: item.packet, route: item.route, provider: provider) { event in
+                    let capped = item.maxTokens.map { Capped(base: provider, maxTokens: $0) as any ModelProvider } ?? provider
+                    try await Guide.answer(item.question, packet: item.packet, route: item.route, recall: item.recall, provider: capped) { event in
                         switch event {
                         case .text(let piece): first = first ?? ms(t0); text += piece
                         case .steps(let s): steps = s
@@ -67,9 +68,10 @@ enum BrainSelfCheck {
                     let onPoints = steps?.filter { if case .point = $0.target { true } else { false } }.count ?? 0
                     // The explanation stays in memory: only whether it names the expected thing is logged.
                     let named = item.mentions.isEmpty || item.mentions.contains { text.localizedCaseInsensitiveContains($0) }
-                    let valid = !text.isEmpty && named && (item.route == .guide) == (steps != nil) && item.check(steps ?? [])
+                    let says = item.says(text)
+                    let valid = !text.isEmpty && named && says && (item.route == .guide) == (steps != nil) && item.check(steps ?? [])
                     report("guide \(item.name)", valid,
-                           "explanation \(text.count) chars\(item.mentions.isEmpty ? "" : ", names it \(named)"), \(steps?.count ?? 0) steps (\(onElements) on elements, \(onPoints) on points), first word \(first ?? -1) ms, total \(ms(t0)) ms, $\(CallLog.spentUSD - usd0)")
+                           "explanation \(text.count) chars\(item.mentions.isEmpty ? "" : ", names it \(named)"), says what it must \(says), \(steps?.count ?? 0) steps (\(onElements) on elements, \(onPoints) on points), first word \(first ?? -1) ms, total \(ms(t0)) ms, $\(CallLog.spentUSD - usd0)")
                 } catch { report("guide \(item.name)", false, failure(error)) }
             }
 
@@ -109,7 +111,30 @@ enum BrainSelfCheck {
         let packet: ContextPacket
         /// The explanation must contain one of these words, when any are given.
         var mentions: [String] = []
+        /// Made-up Map lines for the request.
+        var recall: String? = nil
+        /// What the explanation must say. Checked in memory; only true or false is logged.
+        var says: (String) -> Bool = { _ in true }
+        /// A lower cap than the Guide's, for the cheap recall cases.
+        var maxTokens: Int? = nil
         let check: ([GuideStep]) -> Bool
+    }
+
+    /// The real provider with a lower token cap, so a case stays cheap.
+    struct Capped: ModelProvider {
+        let base: any ModelProvider
+        let maxTokens: Int
+        func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+            var request = request
+            request.maxTokens = maxTokens
+            return base.stream(request)
+        }
+    }
+
+    /// "3 December", "December 3", "3 Dec", "Dec 3", "3rd Dec"…
+    private static func names(day: Int, in text: String) -> Bool {
+        ["\(day) Dec", "Dec \(day)", "December \(day)", "\(day)rd Dec", "\(day)th Dec", "\(day). Dec"]
+            .contains { text.localizedCaseInsensitiveContains($0) }
     }
 
     static let guideCases = [
@@ -128,7 +153,27 @@ enum BrainSelfCheck {
         GuideCase(name: "how do I guide request", question: "How do I submit my homework?", route: .guide, packet: coursePage) { steps in
             !steps.isEmpty && steps.contains { if case .element = $0.target { true } else { false } }
         },
+        // Rule 4: two told facts disagree. He names both dates and asks which is right.
+        GuideCase(name: "rule 4: same origin disagrees", question: "When is my exam?", route: .explain, packet: studyNotes,
+                  recall: """
+                      Calculus exam date (Note). The calculus exam is on 3 December. Told on 1 Nov. About Calculus II.
+                      Calculus exam date (Note). The calculus exam is on 5 December. Told on 10 Nov. About Calculus II.
+                      """,
+                  says: { names(day: 3, in: $0) && names(day: 5, in: $0) && $0.contains("?") }, maxTokens: 2048) { _ in true },
+        // Rule 3: a stale fact is used, and said to be possibly outdated.
+        GuideCase(name: "rule 3: may be outdated", question: "Which room is my lab session in?", route: .explain, packet: studyNotes,
+                  recall: "Physics lab (Place, room). Lab sessions are in room B12. Observed on 3 Jun in Mail. May be outdated. Part of Physics I.",
+                  says: { text in
+                      text.contains("B12") && ["outdated", "out of date", "may have changed", "might have changed", "no longer"]
+                          .contains { text.localizedCaseInsensitiveContains($0) }
+                  }, maxTokens: 2048) { _ in true },
     ]
+
+    /// A plain notes window with nothing about the exam or the lab, so the answer must come from the recall.
+    static let studyNotes = ContextPacket(
+        appName: "Notes", bundleID: "com.apple.Notes", windowTitle: "Study plan",
+        visibleText: "Study plan\nRead chapter 7\nPractice series problems", cursor: nil,
+        windowFrame: CGRect(x: 0, y: 25, width: 1200, height: 800))
 
     static let conductorCases: [(String, Route)] = [
         ("What does this error mean?", .explain),

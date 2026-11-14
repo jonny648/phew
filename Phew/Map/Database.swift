@@ -36,7 +36,6 @@ final class Database {
     }
 
     private var handle: OpaquePointer?
-    private var lastID: Int64 = 0
 
     /// `folder` nil: both databases in memory with no key (unit tests). Keys nil with a folder: plain files, used only
     /// by the secure-delete test, which must see plain pages. The app always passes both keys (MapStore).
@@ -74,13 +73,15 @@ final class Database {
             try check("PRAGMA s.secure_delete = ON", step: "settings")
             try check("PRAGMA s.journal_mode = DELETE", step: "settings")
             try createSchema()
-            lastID = try scalar("""
-                SELECT max(m) FROM (
+            // The high-water mark is stored, and raised to the highest id found, so an id is never handed out twice.
+            try check("""
+                INSERT INTO main.counter (one, last) SELECT 1, coalesce(max(m), 0) FROM (
                   SELECT max(id) m FROM main.nodes UNION ALL SELECT max(id) FROM s.nodes
                   UNION ALL SELECT max(id) FROM main.edges UNION ALL SELECT max(id) FROM s.edges
                   UNION ALL SELECT max(id) FROM main.events UNION ALL SELECT max(id) FROM s.events
-                  UNION ALL SELECT max(id) FROM main.forgets UNION ALL SELECT max(id) FROM s.forgets)
-                """).intValue ?? 0
+                  UNION ALL SELECT max(id) FROM main.forgets UNION ALL SELECT max(id) FROM s.forgets) WHERE true
+                ON CONFLICT (one) DO UPDATE SET last = max(last, excluded.last)
+                """, step: "counter")
         } catch {
             close()
             throw error
@@ -95,11 +96,12 @@ final class Database {
     }
 
     /// One id counter across both files and all tables, so a sensitive row and a normal row never share an id.
-    /// shortcut: kept in memory from the highest stored id, so an id can come back after the top row is wiped for
-    /// real; references to a wiped row are removed by the real delete. Upgrade to a stored counter if that changes.
-    func nextID() -> Int64 {
-        lastID += 1
-        return lastID
+    /// Stored in `main.counter`, so an id is never reused, even after the top row is wiped for real.
+    func nextID() throws -> Int64 {
+        guard let id = try scalar("UPDATE main.counter SET last = last + 1 RETURNING last").intValue else {
+            throw Failure(code: SQLITE_ERROR, step: "counter")
+        }
+        return id
     }
 
     /// Runs one statement and returns its rows.
@@ -173,7 +175,10 @@ final class Database {
     }
 
     private func createSchema() throws {
-        var sql = "CREATE TABLE IF NOT EXISTS main.terms (name TEXT PRIMARY KEY, query TEXT NOT NULL);"
+        var sql = """
+            CREATE TABLE IF NOT EXISTS main.terms (name TEXT PRIMARY KEY, query TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS main.counter (one INTEGER PRIMARY KEY CHECK (one = 1), last INTEGER NOT NULL);
+            """
         for schema in ["main", "s"] { sql += Self.tables(in: schema) }
         sql += """
             CREATE TEMP VIEW IF NOT EXISTS all_nodes AS SELECT * FROM main.nodes UNION ALL SELECT * FROM s.nodes;

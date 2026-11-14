@@ -28,7 +28,7 @@ final class MapStoreTests: XCTestCase {
         try db.query("INSERT INTO main.terms (name, query) VALUES ('due_soon', 'SELECT 1')")
         XCTAssertEqual(try db.scalar("SELECT query FROM main.terms WHERE name = 'due_soon'"), .text("SELECT 1"))
         for file in ["main", "s"] {
-            let id = db.nextID()
+            let id = try db.nextID()
             try db.query("INSERT INTO \(file).forgets (id, time, label) VALUES (?, '2026-11-14T10:00:00Z', 'Forgot Zeppa')", [.int(id)])
             XCTAssertEqual(try db.scalar("SELECT label FROM \(file).forgets WHERE id = ?", [.int(id)]), .text("Forgot Zeppa"))
         }

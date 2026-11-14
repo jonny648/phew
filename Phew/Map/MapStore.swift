@@ -96,7 +96,7 @@ enum MapError: Error, Equatable {
 /// The Map: two encrypted SQLite files, one connection (docs/05-map.md 5.12). Writes name their file (`main` or `s`);
 /// reads go through the `all_*` views. Nothing opens it at launch: `openOnMac()` is called when it is first needed.
 actor MapStore {
-    private let db: Database
+    let db: Database
 
     /// The real Map, in ~/Library/Application Support/Phew/, with its keys from the login Keychain. Refused under tests,
     /// so a test never reads `map-key` or creates a real file or Keychain item.
@@ -151,6 +151,10 @@ actor MapStore {
                 VALUES (?, 'Me', 'told', 1.0, ?, ?, ?)
                 """, [.int(db.nextID()), .text(now), .text(now), .text(now)])
         }
+        // The defined terms of 5.6, once. A row already there is kept, so a tuned number stays.
+        for (name, query) in Self.termQueries {
+            try db.query("INSERT OR IGNORE INTO main.terms (name, query) VALUES (?, ?)", [.text(name), .text(query)])
+        }
     }
 
     func close() { db.close() }
@@ -167,7 +171,7 @@ actor MapStore {
     /// Writes a thing or a Note to the file its sensitive mark names. Returns the new id.
     @discardableResult
     func add(_ node: MapNode) throws -> Int64 {
-        let id = db.nextID()
+        let id = try db.nextID()
         let now = Self.now()
         try db.query("""
             INSERT INTO \(node.sensitive ? "s" : "main").nodes (id, class, kind, name, aliases, text, properties, origin,
@@ -177,7 +181,7 @@ actor MapStore {
                   .text(node.text), .text(node.properties), .text(node.origin.rawValue), SQLValue(node.sourceEvent),
                   .real(node.origin.startingConfidence), .int(node.sensitive ? 1 : 0),
                   .text(node.validFrom.isEmpty ? now : node.validFrom), SQLValue(node.validTo), SQLValue(node.supersededBy),
-                  .text(now), .text(now)])
+                  .text(node.created.isEmpty ? now : node.created), .text(node.updated.isEmpty ? now : node.updated)])
         return id
     }
 
@@ -223,7 +227,7 @@ actor MapStore {
               let fromClass = from.text("class").flatMap(MapClass.init), let toClass = to.text("class").flatMap(MapClass.init),
               edge.link.allows(fromClass, toClass) else { return nil }
         let sensitive = from.int("sensitive") == 1 || to.int("sensitive") == 1
-        let id = db.nextID()
+        let id = try db.nextID()
         let now = Self.now()
         try db.query("""
             INSERT INTO \(sensitive ? "s" : "main").edges (id, from_node, to_node, link, strength, confidence, origin,
@@ -233,7 +237,7 @@ actor MapStore {
                   edge.link == .understands ? edge.strength.map { .real($0) } ?? .null : .null,
                   .real(edge.origin.startingConfidence), .text(edge.origin.rawValue), SQLValue(edge.sourceEvent),
                   .text(edge.validFrom.isEmpty ? now : edge.validFrom), SQLValue(edge.validTo), SQLValue(edge.supersededBy),
-                  .text(now), .text(now)])
+                  .text(edge.created.isEmpty ? now : edge.created), .text(edge.updated.isEmpty ? now : edge.updated)])
         return id
     }
 
@@ -248,7 +252,7 @@ actor MapStore {
         let mentionsSensitive = try db.scalar(
             "SELECT count(*) FROM s.nodes WHERE id IN (SELECT value FROM json_each(?))", [.text(Self.json(event.mentions))])
         let sensitive = event.sensitive || mentionsSensitive != .int(0)
-        let id = db.nextID()
+        let id = try db.nextID()
         try db.query("""
             INSERT INTO \(sensitive ? "s" : "main").events (id, time, app, kind, summary, project, mentions, sensitive)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -266,25 +270,35 @@ actor MapStore {
     /// Current things and Notes matching any word of `parts` (the question, the app name, the window title), best
     /// first, from both files' indexes merged. A match in a name counts more than one in a sentence. Never throws:
     /// a failed search returns nothing and the answer goes on without it (5.12).
-    func search(_ parts: [String], limit: Int = 10) -> [MapNode] {
-        guard let match = Self.matchQuery(parts) else { return [] }
+    /// `classes` empty means every class. `since`: only facts true from that day (an unreadable date is ignored).
+    /// `past`: old versions too. `namesOnly`: match names and aliases only (project detection, 5.11).
+    func search(_ parts: [String], classes: [MapClass] = [], since: String? = nil, past: Bool = false,
+                namesOnly: Bool = false, limit: Int = 10) -> [MapNode] {
+        guard let words = Self.matchQuery(parts) else { return [] }
+        let match = namesOnly ? "{name aliases} : (\(words))" : words
+        let classList = classes.isEmpty ? "" : "," + classes.map(\.rawValue).joined(separator: ",") + ","
         let rows = (try? ["main", "s"].flatMap { file in
             try db.query("""
                 SELECT n.*, bm25(nodes_fts, 10.0, 5.0, 2.0, 1.0) AS score FROM \(file).nodes_fts JOIN \(file).nodes n ON n.id = nodes_fts.rowid
-                WHERE nodes_fts MATCH ? AND n.valid_to IS NULL AND n.deleted = '' ORDER BY score LIMIT ?
-                """, [.text(match), .int(Int64(limit))])
+                WHERE nodes_fts MATCH ?1 AND n.deleted = '' AND (?2 OR n.valid_to IS NULL)
+                  AND (?3 = '' OR instr(?3, ',' || n.class || ',') > 0)
+                  AND (julianday(?4) IS NULL OR julianday(n.valid_from) >= julianday(?4))
+                ORDER BY score LIMIT ?5
+                """, [.text(match), .int(past ? 1 : 0), .text(classList), SQLValue(since), .int(Int64(limit))])
         }) ?? []
         return Self.merged(rows, limit).compactMap(Self.node)
     }
 
-    /// Past questions whose summary matches, best first, from both files.
-    func searchEvents(_ parts: [String], limit: Int = 10) -> [MapEvent] {
+    /// Past questions whose summary matches, best first, from both files. An emptied summary is never found.
+    func searchEvents(_ parts: [String], since: String? = nil, limit: Int = 10) -> [MapEvent] {
         guard let match = Self.matchQuery(parts) else { return [] }
         let rows = (try? ["main", "s"].flatMap { file in
             try db.query("""
                 SELECT e.*, bm25(events_fts) AS score FROM \(file).events_fts JOIN \(file).events e ON e.id = events_fts.rowid
-                WHERE events_fts MATCH ? AND e.deleted = '' ORDER BY score LIMIT ?
-                """, [.text(match), .int(Int64(limit))])
+                WHERE events_fts MATCH ?1 AND e.deleted = '' AND e.summary != ''
+                  AND (julianday(?2) IS NULL OR julianday(e.time) >= julianday(?2))
+                ORDER BY score LIMIT ?3
+                """, [.text(match), SQLValue(since), .int(Int64(limit))])
         }) ?? []
         return Self.merged(rows, limit).compactMap(Self.event)
     }
@@ -296,28 +310,28 @@ actor MapStore {
         return words.isEmpty ? nil : words.map { "\"\($0)\"*" }.joined(separator: " OR ")
     }
 
-    // MARK: - Private
+    // MARK: - Helpers (shared with MapRecall.swift)
 
     /// The two indexes rank with their own statistics, so the merged order is approximate (5.12). Equal scores: the
     /// more confident first.
-    private static func merged(_ rows: [SQLRow], _ limit: Int) -> [SQLRow] {
+    static func merged(_ rows: [SQLRow], _ limit: Int) -> [SQLRow] {
         Array(rows.sorted {
             let a = $0.real("score") ?? 0, b = $1.real("score") ?? 0
             return a != b ? a < b : ($0.real("confidence") ?? 0) > ($1.real("confidence") ?? 0)
         }.prefix(limit))
     }
 
-    private static func now() -> String { Date.now.formatted(.iso8601) }
+    static func now() -> String { Date.now.formatted(.iso8601) }
 
-    private static func json<T: Encodable>(_ value: T) -> String {
+    static func json<T: Encodable>(_ value: T) -> String {
         (try? String(decoding: JSONEncoder().encode(value), as: UTF8.self)) ?? "[]"
     }
 
-    private static func list<T: Decodable>(_ text: String?) -> [T] {
+    static func list<T: Decodable>(_ text: String?) -> [T] {
         (try? JSONDecoder().decode([T].self, from: Data((text ?? "[]").utf8))) ?? []
     }
 
-    private static func node(_ row: SQLRow) -> MapNode? {
+    static func node(_ row: SQLRow) -> MapNode? {
         guard let id = row.int("id"), let mapClass = row.text("class").flatMap(MapClass.init),
               let origin = row.text("origin").flatMap(Origin.init) else { return nil }
         return MapNode(id: id, mapClass: mapClass, kind: row.text("kind") ?? "", name: row.text("name") ?? "",
@@ -327,7 +341,7 @@ actor MapStore {
                        supersededBy: row.int("superseded_by"), created: row.text("created") ?? "", updated: row.text("updated") ?? "")
     }
 
-    private static func edge(_ row: SQLRow) -> MapEdge? {
+    static func edge(_ row: SQLRow) -> MapEdge? {
         guard let id = row.int("id"), let from = row.int("from_node"), let to = row.int("to_node"),
               let link = row.text("link").flatMap(MapLink.init), let origin = row.text("origin").flatMap(Origin.init) else { return nil }
         return MapEdge(id: id, from: from, to: to, link: link, strength: row.real("strength"), confidence: row.real("confidence") ?? 0,
@@ -336,7 +350,7 @@ actor MapStore {
                        created: row.text("created") ?? "", updated: row.text("updated") ?? "")
     }
 
-    private static func event(_ row: SQLRow) -> MapEvent? {
+    static func event(_ row: SQLRow) -> MapEvent? {
         guard let id = row.int("id"), let kind = row.text("kind").flatMap(EventKind.init) else { return nil }
         return MapEvent(id: id, time: row.text("time") ?? "", app: row.text("app") ?? "", kind: kind,
                         summary: row.text("summary") ?? "", project: row.int("project"), mentions: list(row.text("mentions")),

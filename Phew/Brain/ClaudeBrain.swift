@@ -90,6 +90,7 @@ struct ClaudeBrain: Brain {
         }
         emit(.route(route))
         if route == .remember { return try await remember(question, packet: packet, emit: emit) }
+        if route == .task { return }  // PA.2: the Shell starts the task through `runTask`
         // PH.4: the Shell runs an act job through `nextAction`. With acting off it is shown as a guide.
         if route == .act && state.acting { return }
         if route == .act { route = .guide }
@@ -137,11 +138,15 @@ struct ClaudeBrain: Brain {
 
 extension ClaudeBrain {
     /// The Runner with the Map search when the Map is open (addresses left out of its lines), and the web.
-    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?) -> AsyncThrowingStream<TaskEvent, Error> {
+    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, add: AddItem?) -> AsyncThrowingStream<TaskEvent, Error> {
         let injected = tools, map = map
         return Runner.stream(words, packet: packet, number: number, folder: folder, tools: {
             let search: (any ToolRunner)? = if let injected { injected } else { await map.now().map { MapSearch(store: $0, forRunner: true) } }
             return search.map(RunnerTools.init)
-        }, provider: provider)
+        }, add: add, provider: provider)
+    }
+
+    func keepTurn(_ question: String, answer: String) {
+        memory.add(Guide.turn(question, explanation: answer, steps: []))
     }
 }

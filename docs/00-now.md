@@ -29,11 +29,15 @@ Not built yet: acting in your apps (being built now, PH), agents that research a
 
 Phew is a collaboration companion for people who create projects. He works with you and does the jobs you ask for, acting on the Mac by himself. He also explains and guides, remembers your projects, and researches. Business software training is a separate product, later. See `02-vision.md` and `07-decisions.md` 7.1.
 
-## Current phase: PH Hand and look
+## Where the build is
 
-One phase since 15 November: acting and the finished look, joined. Phew acts on the Mac: asked to do something, he does the whole job in your apps, with no confirm; asked how, he shows. Every surface gets its final look, so the new acting surfaces are built once. Design in `13-hand.md` and `15-design.md`. In your app nothing acts until you press Allow on the consent screen.
+**PH Hand and look** and **PA Agents** are built, on 15 November. He acts in your apps from your words, with nothing to allow; several apps in one job; the new look on every surface. He researches a task alone, up to three at once, saves a PDF report, and can add notes, reminders, events and sheets in the background.
 
-By your word of 15 November, no review or test is asked of you in this phase.
+Part of it is proven live (acting in a practice window and in Notes, the scripting of Notes, Reminders, Calendar and Excel, the routing of "do" and "how"). The rest is checked by automatic tests only, by your word of 15 November: nothing on your screen and no live call for now.
+
+## Next: PL Live checks
+
+One sitting, about 30 to 40 minutes of your Mac and about $3, when you say so. It runs what could not be run: several apps, Dia, Figma and Fusion, the trick test, the first run, the agents, the self-questions. Then the checker ticks and your app is relaunched. Until then the app you run is the build of 17:44 on 15 November.
 
 ## Decisions waiting for you
 

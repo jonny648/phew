@@ -245,9 +245,24 @@ enum BrainSpeedCheck {
         ("Mi mostri come si inserisce una tabella?", .guide),
     ]
 
+    /// PA.2: work handed over to be done alone is task; a question about the screen stays explain or guide, "do X
+    /// here" stays act, unsure between task and explain is explain. Made-up requests.
+    static let taskCases: [(String, Route)] = [
+        ("Research kerning tools for students and report back", .task),
+        ("Find out which free fonts suit a poster and write me a report", .task),
+        ("Look into the deadlines for the typography contest and write me a report", .task),
+        ("Ricerca i migliori tutorial di Figma e fammi un report", .task),
+        ("Scopri quanto costa stampare 50 poster A2 e fammi sapere", .task),
+        ("What does this error on screen mean?", .explain),
+        ("What is kerning?", .explain),
+        ("How do I export this as a PDF?", .guide),
+        ("Add a reminder for Friday to print the poster", .act),
+        ("Cosa vuol dire questo messaggio?", .explain),
+    ]
+
     static func routes() async {
         let provider = ClaudeProvider(), usd0 = CallLog.spentUSD
-        for (set, cases) in [("act", actCases), ("conductor", BrainSelfCheck.conductorCases)] {
+        for (set, cases) in [("act", actCases), ("task", taskCases), ("conductor", BrainSelfCheck.conductorCases)] {
             var passed = 0
             for (n, (question, expected)) in cases.enumerated() {
                 let route = try? await Conductor.route(question, packet: BrainSelfCheck.coursePage, provider: provider)

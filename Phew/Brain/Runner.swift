@@ -64,6 +64,9 @@ enum Runner {
         Searches and page reads are limited. Plan a few searches, then read the best two or three pages, and stop \
         as soon as you can answer.
 
+        When you have add_item, use it only for what the task asks to add on the Mac: a note, a reminder, an event \
+        or a sheet. It answers in one word. When it answers off, acting is off: add nothing more.
+
         Then write the report in Markdown, in the language of the task, for anyone who works on a Mac: plain words, \
         no preamble.
         # A short title
@@ -113,15 +116,20 @@ enum Runner {
     /// The task's events. `tools`: the Map search, asked for when the task starts; nil, none. `folder`: where the
     /// PDF goes; nil, Downloads. Cancelling the consumer stops the task: the request in flight is cancelled at once,
     /// nothing is saved and no event follows.
+    /// `add`: the Shell's door for `add_item` (PA.4); nil, no such tool. What it added is listed at the end, by title.
     static func stream(_ words: String, packet: ContextPacket?, number: Int, folder: URL?,
-                       tools: @escaping @Sendable () async -> (any ToolRunner)?, provider: any ModelProvider,
+                       tools: @escaping @Sendable () async -> (any ToolRunner)?, add: AddItem? = nil, provider: any ModelProvider,
                        limits: TaskLimits = TaskLimits()) -> AsyncThrowingStream<TaskEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let (markdown, limit) = try await research(words, packet: packet, number: number, tools: await tools(),
-                                                               provider: provider, limits: limits) { continuation.yield($0) }
+                    let added = AddedItems()
+                    let parts = [await tools(), add.map { AddItemTool(add: $0, added: added) }].compactMap { $0 }
+                    let (body, limit) = try await research(words, packet: packet, number: number,
+                                                           tools: parts.isEmpty ? nil : TaskTools(parts: parts),
+                                                           provider: provider, limits: limits) { continuation.yield($0) }
                     try Task.checkCancellation()
+                    let markdown = body + added.section
                     var saved: Report.Saved?
                     do {
                         saved = try Report.save(markdown, task: words, folder: folder)
@@ -279,4 +287,125 @@ struct RunnerTools: ToolRunner {
         let out = try await base.run(name, input: input)
         return out.isEmpty ? "" : Guide.mapBlock(Runner.withoutAddresses(out))
     }
+}
+
+// MARK: add_item (PA.4)
+
+/// The Shell's door for `add_item`: the item, then how it ended in one fixed word, a `HandEnd` raw value or
+/// `refused`. The Brain never acts: the Shell runs it through the Hand, in the background, adding only.
+typealias AddItem = @Sendable (HandScript) async -> String
+
+/// A task's tools, each call to the one that has that name; any other name is refused.
+struct TaskTools: ToolRunner {
+    let parts: [any ToolRunner]
+    var tools: [ToolSpec] { parts.flatMap(\.tools) }
+
+    func run(_ name: String, input: Data) async throws -> String {
+        guard let part = parts.first(where: { $0.tools.contains { $0.name == name } }) else { return AddItemTool.refused }
+        return try await part.run(name, input: input)
+    }
+}
+
+/// `add_item`: the model's input checked by code into one of the four scripted kinds, else refused, then handed to
+/// the Shell. The fixed word goes back as the tool result.
+struct AddItemTool: ToolRunner {
+    let add: AddItem
+    let added: AddedItems
+    var tools: [ToolSpec] { [.addItem] }
+
+    static let refused = "refused"
+
+    func run(_ name: String, input: Data) async throws -> String {
+        guard name == ToolSpec.addItem.name, let (kind, title, script) = Self.item(input) else { return Self.refused }
+        let word = await add(script)
+        added.note(kind, title, word)
+        return word
+    }
+
+    /// The kind's name for the report, the title, and the script. Nil for anything but the four kinds well formed.
+    static func item(_ input: Data) -> (String, String, HandScript)? {
+        struct Input: Decodable {
+            var kind: String, title: String
+            var body: String?, due: String?, start: String?, end: String?, topLeft: String?, rows: [[String]]?
+        }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        guard let item = try? decoder.decode(Input.self, from: input) else { return nil }
+        let title = item.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, title.count <= 200 else { return nil }
+        switch item.kind {
+        case "note":
+            return ("Note", title, .note(title: title, body: item.body ?? ""))
+        case "reminder":
+            let due = day(item.due)
+            guard item.due == nil || due != nil else { return nil }
+            return ("Reminder", title, .reminder(title: title, due: due))
+        case "event":
+            guard let start = day(item.start).flatMap(time), let end = day(item.end).flatMap(time), end > start else { return nil }
+            return ("Event", title, .event(title: title, start: start, end: end))
+        case "sheet":
+            let top = (item.topLeft ?? "A1").uppercased(), rows = item.rows ?? []
+            guard top.wholeMatch(of: #/[A-Z]{1,3}[1-9][0-9]{0,6}/#) != nil, !rows.isEmpty, !rows.contains(where: \.isEmpty),
+                  rows.joined().count <= 1000 else { return nil }
+            return ("Sheet", title, .cells(top: top, rows: rows))
+        default:
+            return nil  // never a click, a key or any other action
+        }
+    }
+
+    /// "2026-11-20" or "2026-11-20T09:30", the user's local time. Nil when not a real day and time.
+    static func day(_ text: String?) -> DateComponents? {
+        guard let parts = text?.split(separator: "T", omittingEmptySubsequences: false), parts.count <= 2 else { return nil }
+        let date = parts[0].split(separator: "-").compactMap { Int($0) }
+        guard date.count == 3 else { return nil }
+        var day = DateComponents(calendar: .current, year: date[0], month: date[1], day: date[2])
+        if parts.count == 2 {
+            let clock = parts[1].split(separator: ":").compactMap { Int($0) }
+            guard (2...3).contains(clock.count) else { return nil }
+            (day.hour, day.minute) = (clock[0], clock[1])
+        }
+        return day.isValidDate ? day : nil
+    }
+
+    /// A day with a time, as a date; nil without a time.
+    static func time(_ day: DateComponents) -> Date? { day.hour == nil ? nil : day.date }
+}
+
+/// What a task added, by title, for the end of its report. Memory only.
+final class AddedItems: @unchecked Sendable {  // state under `lock`
+    private let lock = NSLock()
+    private var lines: [(String, String, String)] = []
+
+    func note(_ kind: String, _ title: String, _ word: String) { lock.withLock { lines.append((kind, title, word)) } }
+
+    /// Empty when nothing was asked for.
+    var section: String {
+        let lines = lock.withLock { self.lines }
+        guard !lines.isEmpty else { return "" }
+        let done = lines.filter { $0.2 == HandEnd.done.rawValue }.map { "- \($0.0) “\($0.1)”" }
+        let notDone = lines.filter { $0.2 != HandEnd.done.rawValue && $0.2 != HandEnd.off.rawValue }.map { "- \($0.0) “\($0.1)”" }
+        var out = ""
+        if !done.isEmpty { out += "\n\n## Added on your Mac\n\n" + done.joined(separator: "\n") }
+        if !notDone.isEmpty { out += "\n\n## Not added\n\n" + notDone.joined(separator: "\n") }
+        if lines.contains(where: { $0.2 == HandEnd.off.rawValue }) { out += "\n\n" + Self.off }
+        return out
+    }
+
+    static let off = "Nothing was added on your Mac: acting is off. Turn on “Let Phew act” in Phew's menu to let a task add notes, reminders, events and sheets."
+}
+
+extension ToolSpec {
+    /// The one way a task acts (PA.4): four kinds that only add, behind the apps. Identical on every call.
+    static let addItem = ToolSpec(
+        name: "add_item",
+        description: """
+            Adds one new item on the user's Mac, in the background, without taking their screen: a note in Notes, a \
+            reminder in Reminders, an event in Calendar, or a new Excel workbook filled with rows from a top-left \
+            cell. Use it only when the task asks you to add such an item. It only adds; it never changes or deletes \
+            anything. Times are the user's local time. It answers one word: done, or why the item was not added \
+            (off: the user turned acting off). Do not add the same item again after a word other than done.
+            """,
+        schema: #"""
+            {"type":"object","properties":{"kind":{"type":"string","enum":["note","reminder","event","sheet"]},"title":{"type":"string","description":"The note's first line, the reminder's or event's title, or a short name for the sheet."},"body":{"type":"string","description":"note: the text under the title."},"due":{"type":"string","description":"reminder: YYYY-MM-DD, or YYYY-MM-DDTHH:MM with a time. Leave it out for no due date."},"start":{"type":"string","description":"event: YYYY-MM-DDTHH:MM."},"end":{"type":"string","description":"event: YYYY-MM-DDTHH:MM, after start."},"top_left":{"type":"string","description":"sheet: the first cell, such as A1."},"rows":{"type":"array","items":{"type":"array","items":{"type":"string"}},"description":"sheet: the rows, each a list of cell values from left to right."}},"required":["kind","title"],"additionalProperties":false}
+            """#)
 }

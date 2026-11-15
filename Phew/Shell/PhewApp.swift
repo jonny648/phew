@@ -10,12 +10,13 @@ struct PhewApp: App {
     // No main window (hard rule): the menu bar item is the only scene.
     var body: some Scene {
         MenuBarExtra {
-            // 15.5 D, as far as built: no Working, Ready or Reports yet.
+            // 15.5 D, as far as built: no "Saved reports…" yet.
             Button { delegate.shortcut() } label: {
                 Text("Ask Phew")
                 Text("right ⌥ + right ⌘")  // shown as the entry's second line: the shortcut has no key equivalent
             }
             Divider()
+            TaskEntries(tasks: delegate.tasks) { delegate.openTask($0) }
             // Off: he guides instead.
             Toggle("Let Phew act", isOn: $allowed)
             NeverReadEntry(front: delegate.front) { delegate.neverReadFrontApp() }
@@ -25,13 +26,42 @@ struct PhewApp: App {
                 Button("Export the Map…") { delegate.showExport() }
                 Button("Never-read apps…") { delegate.showNeverRead() }
             }
+            Menu("Reports") {
+                Button("Choose reports folder…") { delegate.chooseReportsFolder() }
+            }
             Divider()
             Button("API Key…") { delegate.setup.showKey() }
             Button("About Phew") { delegate.menuPanel.show(title: "About Phew", AboutView()) }
             Button("Quit Phew") { NSApp.terminate(nil) }
         } label: {
-            MenuIcon(model: delegate.card.model)
+            MenuIcon(model: delegate.card.model, tasks: delegate.tasks)
         }
+    }
+}
+
+/// Working (each task's Stop, with its progress as the entry's second line) and Ready (a click opens the report on
+/// the card), 15.5 D. Each heading only while it has entries.
+private struct TaskEntries: View {
+    @ObservedObject var tasks: TaskList
+    let open: (Int) -> Void
+
+    var body: some View {
+        if !tasks.running.isEmpty {
+            Section("Working") {
+                ForEach(tasks.running) { item in
+                    Button { tasks.stop(item.id) } label: {
+                        Text("Stop “\(item.title)”")
+                        Text(item.progress)
+                    }
+                }
+            }
+        }
+        if !tasks.waiting.isEmpty {
+            Section("Ready") {
+                ForEach(tasks.waiting) { item in Button(item.title) { open(item.id) } }
+            }
+        }
+        if !tasks.running.isEmpty || !tasks.waiting.isEmpty { Divider() }
     }
 }
 
@@ -66,14 +96,23 @@ final class FrontApp: ObservableObject {
     }
 }
 
-/// The menu bar icon (15.5 D), a template symbol: resting, or acting for the whole job. It never animates.
-/// The research count and the waiting result arrive with phase PA.
+/// The menu bar icon (15.5 D), a template symbol: resting, or acting for the whole job; then the number of tasks
+/// running, and a dot while a result waits. It never animates.
+// shortcut: the label draws as template text beside the symbol, so the dot follows it in the menu bar's colour, not
+// at its top right in accent; draw one image if the look matters.
 private struct MenuIcon: View {
     @ObservedObject var model: CardModel
+    @ObservedObject var tasks: TaskList
 
     var body: some View {
-        Image(systemName: model.acting ? "cursorarrow.motionlines" : "cursorarrow.rays")
-            .accessibilityLabel(model.acting ? "Phew, acting" : "Phew")
+        let running = tasks.running.count, waiting = !tasks.waiting.isEmpty
+        HStack(spacing: 2) {
+            Image(systemName: model.acting ? "cursorarrow.motionlines" : "cursorarrow.rays")
+            if running > 0 { Text(verbatim: "\(running)") }
+            if waiting { Text(verbatim: "•") }
+        }
+        .accessibilityLabel(["Phew", model.acting ? "acting" : nil, running > 0 ? "\(running) working" : nil,
+                             waiting ? "a result waits" : nil].compactMap { $0 }.joined(separator: ", "))
     }
 }
 
@@ -88,6 +127,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Recently deleted, Export the Map, Never-read apps or About: one small panel at a time.
     let menuPanel = MenuPanel()
     let front = FrontApp()
+    /// The research tasks of this run (PA.2).
+    lazy var tasks = TaskList(brain: brain)
     /// The context read at the shortcut, kept only until the question is asked or the panel closes without one.
     var capture: Task<ContextPacket?, Never>?
     /// The ask panel's top-left corner: the card opens there, in its place.
@@ -98,6 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotKey.install()
         // Re-install once Accessibility is granted, so the shortcut works without a relaunch.
         setup.onAccessibilityGranted = { [unowned self] in hotKey.install() }
+        card.onTask = { [unowned self] in tasks.start($0, packet: $1) }
         #if DEBUG
         runDebugChecks()
         // Made-up states only: no look at the Keychain or the permissions.
@@ -109,7 +151,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The conversation's turns do not outlive the app (closing the card also forgets them).
     func applicationWillTerminate(_ notification: Notification) {
         brain.forgetTurns()
+        tasks.stopAll()
         shellLog("quit: turns dropped")
+    }
+
+    /// A waiting result, opened from the menu: on the card near the menu bar, as a finished answer.
+    func openTask(_ number: Int) {
+        guard let item = tasks.open(number) else { return }
+        let mouse = NSEvent.mouseLocation
+        let visible = (NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.screens[0]).visibleFrame
+        let failure: BrainError? = if case .failed(let error) = item.state { error } else { nil }
+        card.showResult(item.words, text: item.report?.markdown ?? "", problem: failure.map(TextCard.sentence(for:)),
+                        saved: item.report?.saved?.pdf, at: NSPoint(x: visible.maxX - Design.Size.width - 16, y: visible.maxY - 8),
+                        brain: brain) { [unowned self] error in setup.showKey(rejected: error == .badKey) }
+    }
+
+    /// The system folder window, the one focus exception (CLAUDE.md): Phew is active only while it is open, then the
+    /// app that was in front is made active again. Cancel changes nothing.
+    func chooseReportsFolder() {
+        let front = NSWorkspace.shared.frontmostApplication
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.prompt = "Choose"
+        panel.message = "Phew saves each report as a new PDF in this folder."
+        panel.directoryURL = TaskList.chosenFolder() ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        NSApp.activate()
+        panel.begin { response in
+            if response == .OK, let url = panel.url { UserDefaults.standard.set(url.path, forKey: TaskList.folderKey) }
+            let back = front.map { $0 != .current && $0.activate(from: .current, options: []) } ?? false
+            shellLog("reports folder: window closed, \(response == .OK ? "chosen" : "unchanged"), front app active again \(back)")
+        }
     }
 
     func showRecentlyDeleted() {
@@ -163,9 +236,15 @@ var phewIsFront: Bool {
     NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier
 }
 
+#if DEBUG
+/// Unit tests read the log lines here, to check no words go into them.
+nonisolated(unsafe) var shellLogTap: (@Sendable (String) -> Void)?
+#endif
+
 /// Counts, timings, route names and error classes only: never the question, the answer or captured context.
 func shellLog(_ message: String) {
     #if DEBUG
+    shellLogTap?(message)
     Logger(subsystem: "com.gianlucatroietto.Phew", category: "shell").info("\(message, privacy: .public)")
     #endif
 }

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Understands the request and chooses who works: explain, guide, remember or act. Small model, a few lines of
+/// Understands the request and chooses who works: explain, guide, remember, act or task. Small model, a few lines of
 /// context (not the whole packet), an answer bound to a schema.
 enum Conductor {
     /// act against guide (PH.4, docs/13-hand.md 13.4): asked to do, he does; asked how, he shows; unsure, he shows.
@@ -18,9 +18,13 @@ enum Conductor {
         Adding a reminder, a calendar event, a note in Notes or a spreadsheet in Excel ("add a reminder…", "make a \
         note in Notes…", "aggiungi un promemoria…", "metti in calendario…") is act: it goes into that app, not into \
         Phew's memory.
+        task: they hand Phew work to do on his own and report back later, usually research: "research X and report", \
+        "find out…", "look into … and write me a report", "ricerca … e fammi un report", "scopri…". A question about \
+        what is on screen stays explain or guide; asking Phew to do something in the app now stays act. When you are \
+        unsure between task and explain, choose explain.
         """
 
-    static let schema = #"{"type":"object","properties":{"route":{"type":"string","enum":["explain","guide","remember","act"]}},"required":["route"],"additionalProperties":false}"#
+    static let schema = #"{"type":"object","properties":{"route":{"type":"string","enum":["explain","guide","remember","act","task"]}},"required":["route"],"additionalProperties":false}"#
 
     /// An empty question means "explain what is under the cursor": no call is needed.
     static func route(_ question: String, packet: ContextPacket?, provider: any ModelProvider) async throws -> Route {

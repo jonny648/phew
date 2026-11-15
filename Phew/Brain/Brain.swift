@@ -40,7 +40,11 @@ protocol Brain: Sendable {
     /// new PDF in `folder` (nil: Downloads) with a Markdown copy in Phew's storage. Events: `.searching` and
     /// `.reading` counts and `.writing` while it works, then `.done` with the report. Cancelling the stream is Stop:
     /// within 2 seconds, nothing saved, no event after. `number` names the task in calls.log. Errors are `BrainError`.
-    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?) -> AsyncThrowingStream<TaskEvent, Error>
+    /// `add` (PA.4): the Shell's door for the Runner's `add_item`; the Brain never acts. Nil: no `add_item` tool.
+    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, add: AddItem?) -> AsyncThrowingStream<TaskEvent, Error>
+
+    /// A turn the Shell showed without asking (a task's report opened from the menu), so a reply can follow it.
+    func keepTurn(_ question: String, answer: String)
 }
 
 extension Brain {
@@ -72,6 +76,9 @@ enum Route: String, Sendable, CaseIterable {
     /// `act` (PH.4): the user's words ask Phew to do it. The answer stream then ends after `.route`, and the Shell runs
     /// the job; with acting off (`ShellState.acting` false) the Brain answers it as a guide instead.
     case explain, guide, remember, act
+    /// `task` (PA.2): work handed over to be done alone and reported back. The answer stream ends after `.route`;
+    /// the Shell starts the task with `runTask`.
+    case task
 }
 
 /// The next step of a job on the act route, as the Brain chose it from a fresh look (PH.5).
@@ -153,7 +160,11 @@ extension BrainError {
 
 extension Brain {
     /// A Brain without agents runs no task.
-    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?) -> AsyncThrowingStream<TaskEvent, Error> {
+    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, add: AddItem?) -> AsyncThrowingStream<TaskEvent, Error> {
         AsyncThrowingStream { $0.finish(throwing: BrainError.failed(status: 0)) }
     }
+    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?) -> AsyncThrowingStream<TaskEvent, Error> {
+        runTask(words, packet: packet, number: number, folder: folder, add: nil)
+    }
+    func keepTurn(_ question: String, answer: String) {}
 }

@@ -44,6 +44,8 @@ final class TextCard: EditPanel {
     var handJob: HandJob?
     /// The "Let Phew act" switch; the debug check gives it a throwaway defaults suite.
     var consent = ActConsent()
+    /// The task route (PA.2): starts the task with the words and this turn's capture; returns the card's one line.
+    var onTask: ((String, ContextPacket?) -> String)?
     var lookPending: Bool { waitTask != nil || lookTask != nil }
     /// True while an answer streams in.
     var answering: Bool { task != nil }
@@ -76,6 +78,25 @@ final class TextCard: EditPanel {
     /// `point` is the ask panel's top-left corner: the card takes its place with no fade, so it reads as the same box.
     func show(at point: NSPoint, question: String, capture: Task<ContextPacket?, Never>?, brain: any Brain,
               onKeyProblem: @escaping (BrainError) -> Void) {
+        open(at: point, brain: brain, onKeyProblem: onKeyProblem)
+        answer(question, capture: capture)
+    }
+
+    /// A task's result, opened by the user from the menu (PA.2): shown as a finished answer they can reply to, with
+    /// where the PDF is. Never called by a task itself.
+    func showResult(_ question: String, text: String, problem: String?, saved: URL?, at point: NSPoint, brain: any Brain,
+                    onKeyProblem: @escaping (BrainError) -> Void) {
+        open(at: point, brain: brain, onKeyProblem: onKeyProblem)
+        model.begin(question)
+        model.thinking = false
+        model.text = text
+        model.problem = problem
+        model.saved = saved
+        if problem == nil { brain.keepTurn(question, answer: text) }
+        restartIdle()
+    }
+
+    private func open(at point: NSPoint, brain: any Brain, onKeyProblem: @escaping (BrainError) -> Void) {
         dismiss()
         model.reset()
         self.brain = brain
@@ -88,7 +109,6 @@ final class TextCard: EditPanel {
             if event.keyCode == 53 { self?.dismiss() }
         }
         shellLog("card shown, phew front \(phewIsFront), key \(isKeyWindow), escape monitor \(escapeMonitor != nil)")
-        answer(question, capture: capture)
     }
 
     /// One turn: the question on the card, the capture awaited, the Brain's answer played in. The packet goes when
@@ -120,6 +140,7 @@ final class TextCard: EditPanel {
                             acts = true
                             if !state.acting { self?.model.note = Self.actingOff }  // with acting off, a guide
                         }
+                        if case .route(.task) = event { self?.model.text = self?.onTask?(question, packet) ?? "" }
                         if case .steps(let steps) = event, !steps.isEmpty {
                             self?.startGuide(steps, targets: steps.map { Self.rect(for: $0.target, in: packet) })
                         }
@@ -350,6 +371,8 @@ final class CardModel: ObservableObject {
     @Published var actingApp = ""
     /// The user stopped the job: one plain line in `ink2`, no symbol.
     @Published var ended: String?
+    /// A task's PDF, when the card shows its report (PA.2).
+    @Published var saved: URL?
     private(set) var pieces = 0
     private var started = false
 
@@ -372,7 +395,7 @@ final class CardModel: ObservableObject {
         started = true
         self.question = question
         thinking = true; text = ""; steps = []; current = 0; problem = nil; note = nil; pieces = 0
-        acting = false; actions = []; actingApp = ""; ended = nil
+        acting = false; actions = []; actingApp = ""; ended = nil; saved = nil
     }
 
     func startActing(in app: String) {
@@ -386,7 +409,7 @@ final class CardModel: ObservableObject {
     func reset() {
         question = ""; thinking = true; text = ""; steps = []; current = 0; problem = nil; note = nil; pieces = 0
         history = []; open = false; draft = ""; queued = false; started = false
-        acting = false; actions = []; actingApp = ""; ended = nil
+        acting = false; actions = []; actingApp = ""; ended = nil; saved = nil
     }
 }
 
@@ -627,6 +650,17 @@ private struct CardView: View {
             }
         }
         if !model.text.isEmpty { answerText(model.text) }
+        // A task's report: where the PDF is. Show in Finder is the user's own click, not an action of Phew's.
+        if let saved = model.saved {
+            HStack(alignment: .firstTextBaseline, spacing: Design.Space.s8) {
+                Text(verbatim: "Saved as \(saved.lastPathComponent) in \(saved.deletingLastPathComponent().lastPathComponent).")
+                    .font(Design.Text.small)
+                    .foregroundStyle(Design.Ink.secondary)
+                Spacer(minLength: 0)
+                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([saved]) }
+                    .buttonStyle(QuietButton())
+            }
+        }
         // No Next button: the guide follows the student. A step line jumps to that step.
         ForEach(Array(model.steps.enumerated()), id: \.offset) { index, step in
             Button { onStep(index) } label: { stepRow(index, step) }

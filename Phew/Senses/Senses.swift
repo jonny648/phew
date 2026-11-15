@@ -1,6 +1,7 @@
 import AppKit
 
-/// Senses' one entry point. Reads only when called: nothing here runs in the background.
+/// Senses' one entry point. Reads only when called: nothing here runs in the background. The one exception is the
+/// screen watch during a guide (`ScreenWatch`), which never reads text and never calls the model.
 enum Senses {
     /// Call the moment the shortcut fires, before any Phew panel appears: the panel opens under the
     /// cursor and would hide the user's element. The cursor read happens now, on the main thread;

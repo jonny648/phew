@@ -17,10 +17,7 @@ extension TextCard {
         model.current = 0
         let screen = NSScreen.screens.first { $0.frame.contains(frame.origin) } ?? NSScreen.screens[0]
         overlay = PointerOverlay(on: screen)
-        // Observe only: the event still reaches the app, and Phew never makes one.
-        actionMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp, .keyUp, .scrollWheel]) { [weak self] _ in
-            self?.userActed()
-        }
+        startFollowing()
         shellLog("guide started: \(targets.count) steps, \(targets.compactMap { $0 }.count) with a target, following \(actionMonitor != nil)")
         pointAtCurrentStep()
     }
@@ -28,6 +25,7 @@ extension TextCard {
     func pointAtCurrentStep() {
         let step = model.current, count = targets.count, target = targets[step]
         moveAside(from: target)  // 3.10: the card never covers the spot it marks
+        anchorTarget()
         overlay?.point(at: target, beside: frame) {
             shellLog("guide: pointer arrived, step \(step + 1) of \(count), \(target == nil ? "beside the card" : target!.isEmpty ? "point ring" : "element ring")")
         }

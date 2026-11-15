@@ -114,6 +114,26 @@ enum WindowReader {
         return f.width >= 4 && f.height >= 4 ? f.integral : nil
     }
 
+    /// During a guide: the element of app `pid` at `point` (Accessibility coordinates), so the pointer can follow it
+    /// when the content scrolls. Nothing of it is read here; `frame(of:)` reads its frame only, never its text.
+    static func element(at point: CGPoint, pid: pid_t) -> AXUIElement? {
+        var hit: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(AXUIElementCreateApplication(pid), Float(point.x), Float(point.y), &hit) == .success,
+              let hit else { return nil }
+        var owner: pid_t = 0
+        AXUIElementGetPid(hit, &owner)
+        return owner == pid ? hit : nil
+    }
+
+    /// Position and size only: safe on a secure field too.
+    static func frame(of element: AXUIElement) -> CGRect? {
+        var raw: CFArray?
+        guard AXUIElementCopyMultipleAttributeValues(element, [kAXPositionAttribute, kAXSizeAttribute] as CFArray, [], &raw) == .success,
+              let v = raw as? [AnyObject], v.count == 2 else { return nil }
+        var origin = CGPoint.zero, size = CGSize.zero
+        return axValue(v[0], .cgPoint, &origin) && axValue(v[1], .cgSize, &size) ? CGRect(origin: origin, size: size) : nil
+    }
+
     /// Visible text under `root`, skipping secure fields and anything outside `clip` (scrolled out of sight).
     /// Reading order, or nearest `point` first when given, so a big container gives the text by the mouse.
     /// With `pointables`, also the named controls on screen (`pointableRoles`), and secure fields without a name.

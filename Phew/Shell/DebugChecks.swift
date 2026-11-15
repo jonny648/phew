@@ -132,11 +132,15 @@ extension AppDelegate {
     /// moves one step per look, until the last look finds every step done. Then it starts again, picks a step line
     /// and closes the card with a look waiting, as Escape, the close control and the shortcut do. Last, a look that
     /// fails: overloaded keeps the guide without following, no key closes it and opens the key window. No model calls.
+    /// In those four the screen watch runs but counts every look as a change. In the last, "watch", it judges for real:
+    /// Phew's own windows are left out of it, so on a still screen an action makes no look; with a short idle limit
+    /// the watch stops by itself; an action starts it again and, with nothing to compare with, the look goes ahead.
     /// The action monitor is real: the user's own clicks, keys and scrolls during the check also make looks.
     private func checkGuide() async {
         try? await Task.sleep(for: .seconds(1))
         NSApp.deactivate()
         let realBrain = brain
+        let watch = ScreenWatch.shared
         let main = NSScreen.screens[0].frame
         let display = CGDisplayBounds(CGMainDisplayID())  // top-left origin, as Senses measures
         var packet = ContextPacket(appName: "Made Up", bundleID: "com.example.madeup", windowTitle: "Made up",
@@ -145,7 +149,9 @@ extension AppDelegate {
                                        frame: CGRect(x: display.midX - 160, y: display.midY - 60, width: 120, height: 28))]
         packet.screenshotFrame = display
         let targets: [StepTarget?] = [.element("e1"), .point(x: Int(display.width / 2) + 60, y: Int(display.height / 2) + 40), nil, .element("e1")]
-        for (ending, failure) in [("follow", nil), ("cancel", nil), ("overloaded", BrainError.overloaded), ("noKey", .noKey)] {
+        for (ending, failure) in [("follow", nil), ("cancel", nil), ("overloaded", BrainError.overloaded), ("noKey", .noKey), ("watch", nil)] {
+            watch.seesEveryChange = ending != "watch"
+            ScreenWatch.idleLimit = ending == "watch" ? 6 : 120
             brain = FakeBrain(targets: targets, lookFailure: failure)
             capture = Task<ContextPacket?, Never> { packet }
             anchor = NSPoint(x: main.midX - 600, y: main.midY + 160)  // a made-up cursor, left of the targets
@@ -155,7 +161,7 @@ extension AppDelegate {
             shellLog("guide check \(ending): menu bar icon found=\(NSApp.windows.contains { $0.className == "NSStatusBarWindow" }) following=\(card.actionMonitor != nil)")
             try? await Task.sleep(for: .seconds(3))  // step 1's glide and ring
             func state(_ moment: String) {
-                shellLog("guide check \(ending) \(moment): step=\(card.model.current + 1) looks=\(card.rule.looks) lookPending=\(card.lookPending) overlay ignoresMouse=\(overlay?.ignoresMouseEvents ?? false) visible=\(overlay?.isVisible ?? false) key=\(overlay?.isKeyWindow ?? false) canBecomeKey=\(overlay?.canBecomeKey ?? true) cardKey=\(card.isKeyWindow) phewFront=\(phewIsFront) appActive=\(NSRunningApplication.current.isActive)")
+                shellLog("guide check \(ending) \(moment): step=\(card.model.current + 1) looks=\(card.rule.looks) lookPending=\(card.lookPending) overlay ignoresMouse=\(overlay?.ignoresMouseEvents ?? false) visible=\(overlay?.isVisible ?? false) key=\(overlay?.isKeyWindow ?? false) canBecomeKey=\(overlay?.canBecomeKey ?? true) cardKey=\(card.isKeyWindow) phewFront=\(phewIsFront) appActive=\(NSRunningApplication.current.isActive) watch=\(watch.running)")
             }
             state("step 1")
             if ending == "follow" {
@@ -175,6 +181,16 @@ extension AppDelegate {
                 state("after an action and two during its look, then 3 s")
                 card.userActed()  // the last look finds every step done
                 await until { !self.card.lookPending }
+            } else if ending == "watch" {
+                card.userActed()
+                await until { !self.card.lookPending }
+                state("after an action on a still screen")
+                await until { !watch.running }
+                state("after \(Int(ScreenWatch.idleLimit)) s without an action")
+                card.userActed()
+                await until { !self.card.lookPending }
+                state("after an action that started the watch again")
+                card.dismiss()
             } else if failure != nil {
                 card.userActed()
                 await until { !self.card.lookPending }
@@ -193,8 +209,10 @@ extension AppDelegate {
             try? await Task.sleep(for: .seconds(1))  // the glide home
             card.userActed()  // after the end nothing may follow
             let left = NSApp.windows.filter { $0 is PointerOverlay }.count
-            shellLog("guide check \(ending) end: card visible=\(card.isVisible) overlay released=\(overlay == nil) overlay windows left=\(left) phewFront=\(phewIsFront) cardKey=\(card.isKeyWindow) monitor removed=\(card.actionMonitor == nil) lookPending=\(card.lookPending) looks=\(card.rule.looks)")
+            shellLog("guide check \(ending) end: card visible=\(card.isVisible) overlay released=\(overlay == nil) overlay windows left=\(left) phewFront=\(phewIsFront) cardKey=\(card.isKeyWindow) monitor removed=\(card.actionMonitor == nil) lookPending=\(card.lookPending) looks=\(card.rule.looks) watch running=\(watch.running) frames held=\(watch.holdsFrames)")
         }
+        watch.seesEveryChange = false
+        ScreenWatch.idleLimit = 120
         brain = realBrain
     }
 

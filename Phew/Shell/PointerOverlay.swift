@@ -60,13 +60,7 @@ final class PointerOverlay: NSPanel {
         let move = moves
         fadeRing(in: false)
         var from = pointer.presentation()?.position  // where it shows now, also mid-glide
-        var goal = NSPoint(x: card.maxX + 6, y: card.maxY - 6)  // beside the card's top-right corner
-        var corner: CGFloat = 0
-        if let target {
-            let rect = Self.ringRect(around: target)
-            corner = target.isEmpty ? Self.pointRadius : min(8, rect.height / 2)  // a point gets a circle
-            goal = NSPoint(x: rect.maxX - corner * 0.29, y: rect.minY + corner * 0.29)  // on the ring, bottom right
-        }
+        var goal = target.map { Self.spot(on: $0) } ?? NSPoint(x: card.maxX + 6, y: card.maxY - 6)  // or beside the card's top-right corner
         // A target on another display: the overlay moves there and the pointer sets off from that menu bar.
         if let screen = NSScreen.screens.first(where: { $0.frame.contains(goal) }), screen.frame != frame {
             setFrame(screen.frame, display: false)
@@ -75,23 +69,32 @@ final class PointerOverlay: NSPanel {
             from = nil
         }
         orderFrontRegardless()
-        // Keep the whole arrow on screen when the target sits at an edge.
-        goal.x = min(max(goal.x, frame.minX), frame.maxX - 14)
-        goal.y = min(max(goal.y, frame.minY + 22), frame.maxY)
-        let ringPath = target.map {
-            CGPath(roundedRect: local(Self.ringRect(around: $0)), cornerWidth: corner, cornerHeight: corner, transform: nil)
-        }
+        goal = onScreen(goal)
+        let path = target.map { ringPath(around: $0) }
         glide(from: from, to: goal) { [weak self] in
             guard let self, moves == move else { return }
-            if let ringPath {
+            if let path {
                 CATransaction.begin()
                 CATransaction.setDisableActions(true)
-                ring.path = ringPath
+                ring.path = path
                 CATransaction.commit()
                 fadeRing(in: true)
             }
             arrived()
         }
+    }
+
+    /// Moves the pointer and its ring with the target at once, without a glide: the content scrolled under them.
+    func follow(_ target: NSRect) {
+        moves += 1  // a glide still under way must not put the ring back at the old place
+        pointer.removeAnimation(forKey: "glide")
+        tip = onScreen(Self.spot(on: target))
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        pointer.position = local(tip)
+        ring.path = ringPath(around: target)
+        CATransaction.commit()
+        fadeRing(in: true)
     }
 
     /// Back to the menu bar, then off screen. The glide holds the overlay until it is over; then it is let go.
@@ -109,6 +112,27 @@ final class PointerOverlay: NSPanel {
         target.isEmpty
             ? NSRect(x: target.midX - pointRadius, y: target.midY - pointRadius, width: pointRadius * 2, height: pointRadius * 2)
             : target.insetBy(dx: -4, dy: -4)
+    }
+
+    /// A point gets a circle, a frame softly rounded corners.
+    private static func corner(for target: NSRect) -> CGFloat {
+        target.isEmpty ? pointRadius : min(8, ringRect(around: target).height / 2)
+    }
+
+    /// Where the tip rests for `target`: on the ring, bottom right.
+    private static func spot(on target: NSRect) -> NSPoint {
+        let rect = ringRect(around: target), corner = corner(for: target)
+        return NSPoint(x: rect.maxX - corner * 0.29, y: rect.minY + corner * 0.29)
+    }
+
+    private func ringPath(around target: NSRect) -> CGPath {
+        let corner = Self.corner(for: target)
+        return CGPath(roundedRect: local(Self.ringRect(around: target)), cornerWidth: corner, cornerHeight: corner, transform: nil)
+    }
+
+    /// Keeps the whole arrow on screen when the target sits at an edge.
+    private func onScreen(_ point: NSPoint) -> NSPoint {
+        NSPoint(x: min(max(point.x, frame.minX), frame.maxX - 14), y: min(max(point.y, frame.minY + 22), frame.maxY))
     }
 
     /// The menu bar icon on `screen`, or the top right of that screen's menu bar when the icon is not there.

@@ -599,7 +599,7 @@ private struct CardView: View {
     }
 
     private func answerText(_ text: String) -> some View {
-        Text(verbatim: text)
+        Text(CardMarkdown.attributed(text))
             .font(Design.Text.body)
             .lineSpacing(Design.Text.bodySpacing)
             .foregroundStyle(Design.Ink.primary)

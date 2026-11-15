@@ -161,7 +161,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let mouse = NSEvent.mouseLocation
         let visible = (NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.screens[0]).visibleFrame
         let failure: BrainError? = if case .failed(let error) = item.state { error } else { nil }
-        card.showResult(item.words, text: item.report?.markdown ?? "", problem: failure.map(TextCard.sentence(for:)),
+        // A report whose files could not be written still shows, with one line saying so.
+        let unsaved = item.report != nil && item.report?.saved == nil ? "\n\nThis report could not be saved as a file." : ""
+        card.showResult(item.words, text: (item.report?.markdown ?? "") + unsaved, problem: failure.map(TextCard.sentence(for:)),
                         saved: item.report?.saved?.pdf, at: NSPoint(x: visible.maxX - Design.Size.width - 16, y: visible.maxY - 8),
                         brain: brain) { [unowned self] error in setup.showKey(rejected: error == .badKey) }
     }

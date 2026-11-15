@@ -1,0 +1,155 @@
+<title>Phew! acting design</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one reading column. What you see, what he may do, how he is held back, what can go wrong, the apps, your decisions. */
+:root{--paper:#fff;--ink:#15171c;--muted:#5a606c;--rule:#d8dbe1;--tint:#f3f5f9;--good:#1f5f4a;--warn:#8a4b12;--bad:#9a2a2a;box-sizing:border-box}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--paper:#0f1115;--ink:#e7e9ee;--muted:#9aa1ae;--rule:#2a2e37;--tint:#171a20;--good:#7fd1b0;--warn:#e2a76a;--bad:#f09a9a}}
+:root[data-theme="dark"]{color-scheme:dark;--paper:#0f1115;--ink:#e7e9ee;--muted:#9aa1ae;--rule:#2a2e37;--tint:#171a20;--good:#7fd1b0;--warn:#e2a76a;--bad:#f09a9a}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;font-size:14px;line-height:1.55}
+main{max-width:92ch;margin:0 auto;padding-block:2rem 4rem;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font-size:1.5rem;margin:0 0 .3rem}
+h2{font-size:1.1rem;margin:0 0 .5rem;text-wrap:balance}
+h3{font-size:1rem;margin:0}
+p{margin:.45rem 0}
+ul,ol{margin:.3rem 0;padding-left:1.4rem}
+li{margin:.2rem 0}
+code{font-family:inherit;background:var(--tint);padding:0 .25rem}
+.meta,.alt{color:var(--muted)}
+.sec{border-top:1px solid var(--rule);margin-top:2.2rem;padding-top:.8rem}
+.box{background:var(--tint);padding:.7rem .95rem;margin:.8rem 0}
+.quote{border-left:3px solid var(--ink);margin:.8rem 0;padding:.2rem 0 .2rem 1rem}
+.chip{display:inline-block;border:1px solid currentColor;padding:0 .4rem;font-size:.85em;white-space:nowrap}
+.good{color:var(--good)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;margin:.6rem 0}
+th,td{text-align:left;vertical-align:top;padding:.4rem .7rem .4rem 0;border-bottom:1px solid var(--rule)}
+th{color:var(--muted);font-weight:400}
+pre{background:var(--tint);padding:.7rem .95rem;margin:.6rem 0;overflow-x:auto;font:inherit}
+</style>
+
+<main>
+<h1>Phew! acting design</h1>
+<p class="meta">Phase PH "Hand", task PH.1. 15 November 2026. How Phew does steps for you on the Mac. A design for your approval: no acting code exists yet. Full version with sources: <code>docs/13-hand.md</code>.</p>
+
+<div class="box">
+<p><strong>In one line:</strong> he proposes steps on the card, you press Do it or do them yourself, he does one step at a time, checks each one, and stops the moment anything is not as expected.</p>
+</div>
+
+<section class="sec">
+<h2>What you see</h2>
+<pre>+--------------------------------------+
+| I can make the title bold:           |
+|  1. Select "Quarterly plan"          |
+|  2. Press Bold                       |
+|                                      |
+|  [ Do it ]   [ I'll do it ]   Stop   |
++--------------------------------------+
+ after Do it:
+|  Pressed Bold.              ok       |
+|  To undo: Command-Z in Notes.        |</pre>
+<ol>
+<li>You call him and ask, as today. Nothing new happens unless your words ask for doing.</li>
+<li>He shows the steps on the card. If he would type something, the exact text is shown first.</li>
+<li><strong>Do it:</strong> he does the step, or a short run of at most 5. <strong>I'll do it:</strong> the guide follows you, as today. You can mix.</li>
+<li>A mark shows while he acts. Each action is listed on the card.</li>
+<li>After each action he looks again to check it worked, before the next one.</li>
+<li>Stop always works, within one second. Touching the app yourself also stops him.</li>
+<li>A step that cannot be undone is never part of a run. It gets its own question, every time: "This sends the message. [Send] [I'll do it]".</li>
+</ol>
+<p>When something is not as expected (the button moved, you switched app, a dialog appeared, the check sees no change) he stops and says so. He never tries again by himself.</p>
+</section>
+
+<section class="sec">
+<h2>What he may do</h2>
+<div class="tw"><table>
+<tr><th>Level</th><th>Rule</th><th>Examples</th></tr>
+<tr><td><span class="chip good">Show</span></td><td>Always</td><td>Point, highlight, scroll to</td></tr>
+<tr><td><span class="chip good">Can be undone</span></td><td>Done when you press Do it</td><td>Make a word bold, tick a reminder, type in an empty cell, pick a tool, open a tab</td></tr>
+<tr><td><span class="chip warn">Cannot be undone</span></td><td>He asks once, every time</td><td>Send, submit, delete, publish, share, replace existing text, the main button of any dialog, saving a calendar event that has guests</td></tr>
+<tr><td><span class="chip bad">Never</span></td><td>Not done. He points instead</td><td>Passwords, paying, sign-in, account and system settings, Terminal and code editors, password managers, any app on your "Never read" list</td></tr>
+</table></div>
+<p><strong>Who decides the level: Phew's own code, never the AI model.</strong> The model can only make it stricter. When the code is unsure, it asks.</p>
+</section>
+
+<section class="sec">
+<h2>How he is held back</h2>
+<p>Nine guards, all in one place in the code. Nothing else in the app is able to act.</p>
+<ol>
+<li>Text on your screen is information, never orders. The model only proposes; it cannot act.</li>
+<li>An action must match the step you approved: same app, same window, same button, same text. An approval is used once and dies after 60 seconds.</li>
+<li>If you switch app or window, he stops.</li>
+<li>Limits: 5 actions per approval, 20 per minute.</li>
+<li>Nothing is ever typed into a password field.</li>
+<li>No action in an app on your "Never read" list.</li>
+<li>No action while you are typing or dragging.</li>
+<li>Every action is logged on your Mac as numbers and fixed words only. Never the text, never a name.</li>
+<li>Stop within one second.</li>
+</ol>
+<p>Off by default. Before his first action a consent screen explains all this, with Allow and Not now. The first time in each app he asks once: "Act in Excel?"</p>
+</section>
+
+<section class="sec">
+<h2>What can still go wrong</h2>
+<p class="alt">Said plainly. macOS will not stop any of this: the permission Phew already has is enough to click and type anywhere. Only his own code stands in between.</p>
+<ol>
+<li><strong>Something on your screen misleads him, and you approve it.</strong> A web page or a shared document can hold text written to trick an AI. No company has solved this. What limits it: he cannot act without your press, the text he would type is shown, and send, delete, pay are asked or refused. What does not: a misleading step that looks reasonable.</li>
+<li><strong>He clicks the wrong thing.</strong> Mostly on a canvas (Figma, Fusion), where there is no button to compare, only a place.</li>
+<li><strong>A harmful button with a harmless name.</strong> "Next" on a web page that places an order.</li>
+<li><strong>Undo may not bring it back.</strong> Figma and Fusion save to the cloud. An invitation has already gone out.</li>
+<li><strong>Pressing Do it becomes a habit.</strong> That is why runs are short and the "cannot be undone" question looks different.</li>
+</ol>
+</section>
+
+<section class="sec">
+<h2>Your apps</h2>
+<div class="tw"><table>
+<tr><th>App</th><th>How well he could act</th></tr>
+<tr><td>Notes, Reminders, Calendar</td><td><span class="chip good">Solid</span> Buttons by name, and a proper way to create notes, reminders and events.</td></tr>
+<tr><td>Excel</td><td><span class="chip good">Solid</span> Menus by name, cells and formulas through Excel's own scripting.</td></tr>
+<tr><td>Dia</td><td><span class="chip warn">Likely</span> Tabs and browser controls yes. Acting on web pages is your decision below.</td></tr>
+<tr><td>Figma</td><td><span class="chip warn">Weak</span> Menu items, plus single clicks at a point on the canvas.</td></tr>
+<tr><td>Fusion</td><td><span class="chip warn">Unknown</span> The least sure of the seven.</td></tr>
+</table></div>
+<p class="alt">Checked by reading each app's files on your Mac. No action was tried. A build task measures all seven before any acting is trusted.</p>
+</section>
+
+<section class="sec">
+<h2>Your decisions</h2>
+<div class="tw"><table>
+<tr><th>Decision</th><th>Recommendation</th></tr>
+<tr><td>May he type text into your documents?</td><td>Yes. Shown in full first, 500 characters at most. Replacing existing text is asked every time.</td></tr>
+<tr><td>May he act on web pages?</td><td>Careful start: on pages he only points; he acts only on the browser's own controls. Open pages later, after a test with hidden instructions passes.</td></tr>
+<tr><td>Single clicks on a canvas (Figma, Fusion)?</td><td>Yes, one click per approval, never in a run, until we measure how often it lands right. Without this he can do almost nothing in your two main apps.</td></tr>
+<tr><td>Scripting for Excel, Notes, Reminders, Calendar?</td><td>Yes, one app at a time, after the first acting works. macOS asks you once per app.</td></tr>
+<tr><td>May the research agents act?</td><td>Not in the first build. They read the web, where misleading text comes from, and they work while you are elsewhere. Later: a report can end with proposed steps that run on the card, with you there.</td></tr>
+<tr><td>How many steps in a run?</td><td>5, each checked before the next.</td></tr>
+<tr><td>His own Undo button?</td><td>No. The card says how to undo in the app.</td></tr>
+<tr><td>Ask "Act in this app?" once per app?</td><td>Yes, in a list you can edit.</td></tr>
+</table></div>
+</section>
+
+<section class="sec">
+<h2>The consent screen, first proposal</h2>
+<div class="quote">
+<p><strong>Phew can do steps for you.</strong></p>
+<p>When you ask, he can press buttons, pick menu items and type in the app in front of you. He shows each step on the card first. Nothing happens until you press Do it. You can always do the step yourself instead.</p>
+<p>What he changes: only the app in front of you, only the steps you approved. A mark shows while he acts, and every action is listed on the card. Stop ends it within a second. So does using the app yourself.</p>
+<p>What he asks every time: anything that cannot be undone, such as send, submit, delete or publish. What he never does: type a password, pay, change account or system settings.</p>
+<p>What leaves your Mac: after each action he looks at the window again to check it worked. As with any guide, that picture and the window's text are sent to Claude, the model made by Anthropic, after passwords, keys and card numbers are removed. Nothing he sees is saved.</p>
+<p>What can go wrong: text on your screen, such as a web page, can try to mislead him into proposing a wrong step. Read a step before you approve it. He can also press the wrong thing if the screen changes. He stops when something is not as expected, and he does not try again by himself.</p>
+<p>[Allow] [Not now]</p>
+</div>
+</section>
+
+<section class="sec">
+<h2>Rules in CLAUDE.md this changes</h2>
+<ul>
+<li>"An agent changes nothing, except new files": he may change the front app, after your approval.</li>
+<li>"Nothing from Later is built in the MVP": actions in other apps move into the MVP.</li>
+<li>"He reads the screen only when called": he also looks after his own action, to check it.</li>
+<li>Added to two privacy rules: a second local log for actions, numbers and fixed words only; and password fields are never written to, as well as never read.</li>
+</ul>
+<p>Build order: the guards, the consent screen and a made-up practice window come first. No action is sent to a real app before they pass.</p>
+</section>
+</main>

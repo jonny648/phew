@@ -10,6 +10,8 @@ struct ClaudeBrain: Brain {
     var memory = WorkingMemory()
     /// The Map, opened on first need, and the Librarian's runs. A reference, shared like `memory`.
     var map = BrainMap()
+    /// The project folders the user pointed Phew at (PB.2), and where Claude Code keeps its memory files.
+    var projectFolders = ProjectFolders()
 
     /// Only when the Map cannot be opened.
     static let cannotRemember = "My memory isn't available right now, so nothing was stored."
@@ -101,9 +103,10 @@ struct ClaudeBrain: Brain {
         shellLog("brain: route \(route), text \(packet?.visibleText.count ?? 0) chars after the observer, \(earlier.count) earlier turns, map \(store == nil ? "off" : "on") with \(lines.isEmpty ? 0 : lines.split(separator: "\n").count) lines, ready in \(Int(Date().timeIntervalSince(start) * 1000)) ms")
         let held = await store?.counts()
         let about = SelfKnowledge.live(state, turn: earlier.count + 1, projects: held?.projects, facts: held?.facts)
+        let project = route == .explain ? await projectMemoryBlock(question, packet: packet, store: store) : nil
         var explanation = "", steps: [GuideStep] = []
         try await Guide.answer(question, packet: packet, route: route, earlier: earlier, recall: lines, about: about,
-                               tools: tools ?? store.map(MapSearch.init), provider: provider) { event in
+                               projectMemory: project, tools: tools ?? store.map(MapSearch.init), provider: provider) { event in
             if case .text(let piece) = event { explanation += piece }
             if case .steps(let given) = event { steps = given }
             emit(event)
@@ -124,6 +127,25 @@ struct ClaudeBrain: Brain {
         return (store, [profile, recall].filter { !$0.isEmpty }.joined(separator: "\n"))
     }
 
+    /// "Read again when needed" (5.10, 5.11): when the question or the task is about a project whose folder the user
+    /// chose (the open file is inside it, or the Project code detects carries the folder's name), that project's
+    /// CLAUDE.md and memory files as one filtered data block, for this request only. Nil otherwise: never for another
+    /// project, never with no folder chosen.
+    func projectMemoryBlock(_ question: String, packet: ContextPacket?, store: MapStore?) async -> String? {
+        let folders = projectFolders.folders
+        guard !folders.isEmpty else { return nil }
+        let path = packet?.documentPath.map { ProjectMemoryReader.real(URL(fileURLWithPath: $0)).path }
+        var chosen = folders.first { folder in path?.hasPrefix(folder.path + "/") == true }
+        if chosen == nil, let store,
+           let project = await store.detectProject(appName: packet?.appName ?? "", windowTitle: packet?.windowTitle ?? "",
+                                                   documentPath: packet?.documentPath, question: question) {
+            chosen = folders.first { MapStore.sameName(project, $0.lastPathComponent) }
+        }
+        guard let chosen, let block = ProjectMemoryReader.excerpt(folder: chosen, claudeHome: projectFolders.claudeHome) else { return nil }
+        shellLog("brain: project memory added, \(block.count) chars")
+        return block
+    }
+
     /// The remember route (5.9): the Librarian alone, then its one line on the card. A forget clears the turns.
     private func remember(_ question: String, packet: ContextPacket?, emit: (BrainEvent) -> Void) async throws {
         guard let store = await map.ready() else { return emit(.text(Self.cannotRemember)) }
@@ -139,14 +161,46 @@ struct ClaudeBrain: Brain {
 extension ClaudeBrain {
     /// The Runner with the Map search when the Map is open (addresses left out of its lines), and the web.
     func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, add: AddItem?) -> AsyncThrowingStream<TaskEvent, Error> {
-        let injected = tools, map = map
+        let injected = tools, map = map, brain = self
         return Runner.stream(words, packet: packet, number: number, folder: folder, tools: {
             let search: (any ToolRunner)? = if let injected { injected } else { await map.now().map { MapSearch(store: $0, forRunner: true) } }
             return search.map(RunnerTools.init)
+        }, projectMemory: {
+            await brain.projectMemoryBlock(SecretsFilter.clean(words), packet: packet, store: await map.now()).map(Runner.withoutAddresses)
         }, add: add, provider: provider)
     }
 
     func keepTurn(_ question: String, answer: String) {
         memory.add(Guide.turn(question, explanation: answer, steps: []))
+    }
+}
+
+// MARK: Imported memory (phase PB)
+
+extension ClaudeBrain {
+    func sortImport(_ text: String, source: ImportSource) async throws -> ImportSort {
+        do { return try await Importer.sort(text, source: source, provider: provider) } catch { throw BrainError(error) }
+    }
+
+    func projectMemory(folder: URL) -> ProjectMemory {
+        projectFolders.remember(folder)
+        return ProjectMemoryReader.read(folder: folder, claudeHome: projectFolders.claudeHome)
+    }
+
+    func sortImport(_ memory: ProjectMemory) async throws -> ImportSort {
+        do { return try await Importer.sort(memory, provider: provider) } catch { throw BrainError(error) }
+    }
+
+    /// After every Librarian run started before, like every other write.
+    func keepImport(_ candidates: [ImportCandidate]) async throws -> ImportKept {
+        guard let store = await map.ready() else { return ImportKept(card: Self.cannotRemember) }
+        do { return try await store.keep(candidates) } catch { throw BrainError(error) }
+    }
+
+    func lastImport() async -> ImportInfo? { await map.ready()?.lastImport() }
+
+    func undoLastImport() async -> String? {
+        guard let store = await map.ready() else { return nil }
+        return (try? await store.undoLastImport())?.label
     }
 }

@@ -29,6 +29,7 @@ enum BrainSpeedCheck {
         case "hidden": await BrainTaskCheck.hidden()
         case "tricks": await BrainTaskCheck.tricksCheck()
         case "tricks2": await BrainTaskCheck.tricks2Check()  // PL.9: each job run to its end, a fake hand
+        case "import": await ImportSelfCheck.run()  // PB.1: a made-up memory list, a temporary Map
         case "self":
             var passed = 0
             for item in BrainSelfCheck.selfCases {

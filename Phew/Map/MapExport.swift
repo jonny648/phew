@@ -43,8 +43,11 @@ extension MapStore {
             default: return node.name
             }
         }
-        func origin(_ origin: Origin, _ created: String, _ confidence: Double) -> String {
-            "\(origin.rawValue.capitalized) on \(Self.exportDate(created) ?? "an unknown day"), confidence \(String(format: "%.1f", confidence))."
+        // An imported fact names its source and its import's number, so the export shows what an undo would take (5.10).
+        let imports = Dictionary(uniqueKeysWithValues: visibleEvents().filter { $0.kind == .import }.map { ($0.id, $0.app) })
+        func origin(_ origin: Origin, _ created: String, _ confidence: Double, _ source: Int64?) -> String {
+            let from = origin == .imported ? source.flatMap { id in imports[id].map { " from \($0) (import \(id))" } } ?? "" : ""
+            return "\(origin.rawValue.capitalized)\(from) on \(Self.exportDate(created) ?? "an unknown day"), confidence \(String(format: "%.1f", confidence))."
         }
         func line(_ node: MapNode) -> String {
             let kind = node.kind.isEmpty ? node.mapClass.rawValue : "\(node.mapClass.rawValue), \(node.kind)"
@@ -57,7 +60,7 @@ extension MapStore {
             if values["done"] as? Bool == true { parts.append("Done.") }
             if let path = values["path"] as? String { parts.append("Path: \(path).") }
             if let address = values["address"] as? String { parts.append("Address: \(address).") }
-            parts.append(origin(node.origin, node.created, node.confidence))
+            parts.append(origin(node.origin, node.created, node.confidence, node.sourceEvent))
             if let from = Self.exportDate(node.validFrom), from != Self.exportDate(node.created) { parts.append("True from \(from).") }
             if let until = node.validTo {
                 parts.append("True until \(Self.exportDate(until) ?? until)" + (node.supersededBy.map { ", replaced by \(name($0))" } ?? "") + ".")
@@ -68,7 +71,7 @@ extension MapStore {
         func line(_ edge: MapEdge) -> String {
             var text = "\(name(edge.from)), \(Self.exportLinkWords[edge.link] ?? edge.link.rawValue), \(name(edge.to))"
             if edge.link == .understands, let strength = edge.strength { text += ", strength \(String(format: "%.1f", strength))" }
-            text += ". " + origin(edge.origin, edge.created, edge.confidence)
+            text += ". " + origin(edge.origin, edge.created, edge.confidence, edge.sourceEvent)
             if let until = edge.validTo { text += " True until \(Self.exportDate(until) ?? until)." }
             return text
         }
@@ -76,7 +79,7 @@ extension MapStore {
             let verb = [EventKind.ask: "Asked", .guide: "Asked", .tell: "Told", .correction: "Corrected", .task: "Task given",
                         .import: "Imported"][event.kind] ?? "Asked"
             var text = "\(Self.exportDate(event.time, withTime: true) ?? "Unknown day"). \(verb)"
-            if !event.app.isEmpty { text += " in \(event.app)" }
+            if !event.app.isEmpty { text += (event.kind == .import ? " from " : " in ") + event.app }
             if let id = event.project, byID[id] != nil { text += ", on \(name(id))" }
             return text + ": \(event.summary)" + (event.sensitive ? " Sensitive." : "")
         }

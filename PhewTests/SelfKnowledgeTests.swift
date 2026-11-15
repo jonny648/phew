@@ -121,6 +121,16 @@ final class SelfKnowledgeTests: XCTestCase {
         XCTAssertFalse(text.contains("cannot do yet: research"))
     }
 
+    /// PB: he knows he imports what other assistants know, by paste and from a Claude Code folder, ticked, undoable.
+    func testTheTextSaysHeImportsMemory() {
+        let text = SelfKnowledge.text
+        for part in ["Import what other AI assistants know", "paste the memory list", "Claude Code project folder",
+                     "the user ticks the ones you keep", "\"Undo last import\""] {
+            XCTAssertTrue(text.contains(part), part)
+        }
+        XCTAssertFalse(text.contains("import memory from other AI tools"))
+    }
+
     func testFixedPartIsTheSameForTwoQuestions() async throws {
         let one = try await guideRequest("Who are you?", state: ShellState(accessibility: true), store: try await store())
         let two = try await guideRequest("How do I export a PDF?", state: ShellState(screenRecording: false), store: nil)

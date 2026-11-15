@@ -118,7 +118,8 @@ enum Runner {
     /// nothing is saved and no event follows.
     /// `add`: the Shell's door for `add_item` (PA.4); nil, no such tool. What it added is listed at the end, by title.
     static func stream(_ words: String, packet: ContextPacket?, number: Int, folder: URL?,
-                       tools: @escaping @Sendable () async -> (any ToolRunner)?, add: AddItem? = nil, provider: any ModelProvider,
+                       tools: @escaping @Sendable () async -> (any ToolRunner)?,
+                       projectMemory: @escaping @Sendable () async -> String? = { nil }, add: AddItem? = nil, provider: any ModelProvider,
                        limits: TaskLimits = TaskLimits()) -> AsyncThrowingStream<TaskEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -127,6 +128,7 @@ enum Runner {
                     let parts = [await tools(), add.map { AddItemTool(add: $0, added: added) }].compactMap { $0 }
                     let (body, limit) = try await research(words, packet: packet, number: number,
                                                            tools: parts.isEmpty ? nil : TaskTools(parts: parts),
+                                                           projectMemory: await projectMemory(),
                                                            provider: provider, limits: limits) { continuation.yield($0) }
                     try Task.checkCancellation()
                     let markdown = body + added.section
@@ -148,10 +150,10 @@ enum Runner {
 
     /// The rounds, then the report's Markdown and the limit that ended it, if one did.
     static func research(_ words: String, packet: ContextPacket?, number: Int, tools: (any ToolRunner)?,
-                         provider: any ModelProvider, limits: TaskLimits,
+                         projectMemory: String? = nil, provider: any ModelProvider, limits: TaskLimits,
                          emit: @escaping @Sendable (TaskEvent) -> Void) async throws -> (String, TaskLimit?) {
         let start = Date()
-        var request = request(words, packet: packet, number: number, tools: tools, limits: limits)
+        var request = request(words, packet: packet, number: number, tools: tools, projectMemory: projectMemory, limits: limits)
         var spent = 0.0, searches = 0, pages = 0, rounds = 0
         var report = "", limit: TaskLimit?, last = false
         rounds: while true {
@@ -236,11 +238,13 @@ enum Runner {
 
     /// The first user turn: the task as typed (secrets removed), then the screen read as data, with every web address
     /// removed. The picture goes along when there is one. Nothing from a "Never read this app" app.
+    /// `projectMemory` (PB.2): the task's project's Claude Code notes in their data block, or nil.
     static func request(_ words: String, packet: ContextPacket?, number: Int, tools: (any ToolRunner)? = nil,
-                        limits: TaskLimits = TaskLimits()) -> ModelRequest {
+                        projectMemory: String? = nil, limits: TaskLimits = TaskLimits()) -> ModelRequest {
         let read = packet?.neverRead == false ? packet : nil
         let day = Date().formatted(Date.ISO8601FormatStyle(timeZone: .current).year().month().day())
-        let text = ["Task: \(SecretsFilter.clean(words))", read.map(screenBlock) ?? "No screen was read.", "Today is \(day)."]
+        let text = ["Task: \(SecretsFilter.clean(words))", read.map(screenBlock) ?? "No screen was read."]
+            + (projectMemory.map { [SecretsFilter.clean($0)] } ?? []) + ["Today is \(day)."]
         var request = ModelRequest(agent: "runner", tier: .main, system: system, text: text.joined(separator: "\n\n"),
                                    image: read?.screenshot, effort: "medium", maxTokens: 8192)
         request.tools = tools?.tools ?? []

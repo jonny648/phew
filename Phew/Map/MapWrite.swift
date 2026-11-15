@@ -133,8 +133,6 @@ extension MapStore {
         return node
     }
 
-    private static func origin(_ text: String) -> Origin { text.lowercased() == "told" ? .told : .observed }
-
     private func write(_ reply: LibrarianReply, _ s: WriteState, _ out: inout LibrarianOutcome) throws {
         if let me = try db.scalar("SELECT id FROM all_nodes WHERE class = 'Me' AND deleted = ''").intValue { s.refs["me"] = me }
 
@@ -155,8 +153,8 @@ extension MapStore {
         for proposal in reply.notes { try write(proposal, project: project, s, &out) }
         for proposal in reply.links { try write(proposal, s, &out) }
 
-        // "Understands": the strength is set here, from what the user said about the Topic (5.4).
-        for (topic, said) in topics {
+        // "Understands": the strength is set here, from what the user said about the Topic (5.4). An import is no question.
+        for (topic, said) in topics where s.importing == nil {
             try moveUnderstanding(topic: topic, said: said, asked: s.brief.route != .remember, now: s.brief.now)
         }
 
@@ -168,8 +166,10 @@ extension MapStore {
         }
         var summary = MapStore.cleaned(reply.summary, 400)
         if Librarian.looksSecret(summary) { summary = "" }
-        let kind: EventKind = s.brief.route == .remember ? (s.corrected ? .correction : .tell) : s.brief.route == .guide ? .guide : .ask
-        let event = try add(MapEvent(time: s.stamp, app: s.brief.appName, kind: kind, summary: summary, project: project,
+        var kind: EventKind = s.brief.route == .remember ? (s.corrected ? .correction : .tell) : s.brief.route == .guide ? .guide : .ask
+        if s.importing != nil { kind = .import }
+        // An import's app is its source (5.10 step 6): the export and the menu name it.
+        let event = try add(MapEvent(time: s.stamp, app: s.importing?.label ?? s.brief.appName, kind: kind, summary: summary, project: project,
                                            mentions: s.mentions))
         out.event = event
         // The past question is the source of what it produced (5.5).
@@ -190,7 +190,7 @@ extension MapStore {
         let name = MapStore.cleaned(thing.name, 200)
         let aliases = thing.otherNames.map { MapStore.cleaned($0, 200) }.filter { !$0.isEmpty && !Librarian.looksSecret($0) }
         guard !name.isEmpty, !Librarian.looksSecret(name) else { return nil }
-        let origin = Self.origin(thing.origin)
+        let origin = s.origin(thing.origin)
         let validFrom = s.trueFrom(thing.date)
         var values: [String: Any] = [:]
         if mapClass == .task {
@@ -333,7 +333,7 @@ extension MapStore {
     private func write(_ proposal: LibrarianReply.Note, project: Int64?, _ s: WriteState, _ out: inout LibrarianOutcome) throws {
         let text = MapStore.cleaned(proposal.text, 500)
         guard !text.isEmpty, !Librarian.looksSecret(text) else { out.dropped += 1; return }
-        let origin = Self.origin(proposal.origin)
+        let origin = s.origin(proposal.origin)
         let validFrom = s.trueFrom(proposal.date)
         var about: [Int64] = []
         for ref in proposal.about {
@@ -403,7 +403,7 @@ extension MapStore {
               let from = try current(proposal.from, s), let to = try current(proposal.to, s), link.allows(from.mapClass, to.mapClass)
         else { out.dropped += 1; return }
         for end in [from, to] where end.mapClass != .me { s.mention(end.id) }
-        let origin = Self.origin(proposal.origin)
+        let origin = s.origin(proposal.origin)
         let validFrom = s.trueFrom(proposal.date)
         let live = "valid_to IS NULL AND deleted = ''"
         if let same = try db.query("SELECT * FROM all_edges WHERE from_node = ? AND to_node = ? AND link = ? AND \(live)",
@@ -457,14 +457,78 @@ extension MapStore {
         }
     }
 
+    // MARK: - Imported memory (5.10)
+
+    /// Writes the ticked candidates of one import through the Librarian's checked write path: each becomes a Note about
+    /// Me or about the things it names, things matched by name or created, every fact "imported" (set by code). A
+    /// sentence the Map already holds is seen again, not stored twice, and an imported fact never replaces a told or
+    /// observed one (5.5). One past question of kind "import" names only the source and how many facts; it is the
+    /// source of every fact written, which is what lets the import be undone. Nothing ticked: nothing written.
+    func keep(_ candidates: [ImportCandidate], now: Date = .now) throws -> ImportKept {
+        let ticked = candidates.filter(\.ticked)
+        guard let source = ticked.first?.source else { return ImportKept(card: "Nothing was imported.") }
+        let summary = "Imported \(ticked.count) \(ticked.count == 1 ? "fact" : "facts") from \(source.label)."
+        var reply = LibrarianReply(things: [], notes: [], links: [], summary: summary, project: "", forget: [], askBack: "",
+                                   card: "", windowProject: "")
+        for (i, candidate) in ticked.enumerated() {
+            var about = candidate.aboutMe ? ["me"] : []
+            for (j, thing) in candidate.things.enumerated() {
+                let label = "c\(i)t\(j)"
+                reply.things.append(.init(label: label, mapClass: thing.mapClass.rawValue, kind: thing.kind, name: thing.name, otherNames: [],
+                                          due: "", done: "", start: "", end: "", path: "", understood: "not said",
+                                          status: "new", fact: "", origin: "", date: "", sensitive: false))
+                about.append(label)
+            }
+            reply.notes.append(.init(text: candidate.sentence, kind: candidate.kind, about: about.isEmpty ? ["me"] : about,
+                                     status: "new", fact: "", origin: "", date: candidate.date, sensitive: candidate.sensitive))
+        }
+        let s = WriteState(brief: LibrarianBrief(text: "", facts: [:], route: .explain, appName: "", now: now), importing: source)
+        var out = LibrarianOutcome()
+        try db.transaction { try write(reply, s, &out) }
+        shellLog("import: kept \(ticked.count) of \(candidates.count), \(out.stored.count) stored, \(out.seen.count) seen again, \(out.dropped) dropped")
+        return ImportKept(number: out.event, stored: out.stored.count, seen: out.seen.count, card: summary)
+    }
+
+    /// The last import, while it can be undone: nil when there was none, it was undone, or nothing it wrote is left.
+    func lastImport() -> ImportInfo? {
+        guard let row = try? db.query("SELECT id, time, app, summary, deleted FROM all_events WHERE kind = 'import' ORDER BY time DESC, id DESC LIMIT 1").first,
+              let id = row.int("id"), row.text("deleted") == "", row.text("summary") != "" else { return nil }
+        let left = (try? count("SELECT count(*) FROM all_nodes WHERE source_event = ? AND origin = 'imported' AND valid_to IS NULL AND deleted = ''",
+                               [.int(id)])) ?? 0
+        guard left > 0 else { return nil }
+        return ImportInfo(number: id, count: Int(left), source: row.text("app") ?? "", date: row.text("time") ?? "")
+    }
+
+    /// "Undo last import": every fact the last import wrote goes to Recently deleted at once, like a forget (30 days,
+    /// Restore brings it back). A thing it created stays when something told or observed now points to it (5.10).
+    /// Nil when there is nothing to undo.
+    @discardableResult
+    func undoLastImport(now: Date = .now) throws -> Forgotten? {
+        guard let last = lastImport() else { return nil }
+        let rows = try db.query("SELECT id, class FROM all_nodes WHERE source_event = ? AND origin = 'imported' AND valid_to IS NULL AND deleted = ''",
+                                [.int(last.number)])
+        let ids = try rows.compactMap { row -> Int64? in
+            guard let id = row.int("id") else { return nil }
+            guard row.text("class") != "Note" else { return id }
+            let held = try count("""
+                SELECT (SELECT count(*) FROM all_edges WHERE (from_node = ?1 OR to_node = ?1) AND origin != 'imported' AND valid_to IS NULL AND deleted = '')
+                  + (SELECT count(*) FROM all_events WHERE id != ?2 AND kind != 'import' AND deleted = ''
+                       AND EXISTS (SELECT 1 FROM json_each(mentions) WHERE value = ?1))
+                """, [.int(id), .int(last.number)])
+            return held > 0 ? nil : id
+        }
+        return try forget(ids, now: now, title: "Undid the import from \(last.source)")
+    }
+
     // MARK: - Forget, restore, the real delete (5.5, 5.12)
 
     /// "Forget that": acts at once. The things (never Me), every past version, their links, the Notes about them with
     /// their past versions, and the past questions that mention them are hidden from every read and both text
     /// indexes. One `forgets` row holds the card's line; it goes to the sensitive file when any of it is sensitive.
     /// Writes no past question. Nil when there is nothing to forget.
+    /// `title`: the card line's start in place of "Forgot <name>" (an undone import).
     @discardableResult
-    func forget(_ ids: [Int64], now: Date = .now) throws -> Forgotten? {
+    func forget(_ ids: [Int64], now: Date = .now, title: String? = nil) throws -> Forgotten? {
         try db.transaction {
             let me = try db.scalar("SELECT id FROM all_nodes WHERE class = 'Me'").intValue
             let roots = try ids.filter { $0 != me }.compactMap { try node($0) }.filter { $0.mapClass != .me }
@@ -482,7 +546,7 @@ extension MapStore {
                 SELECT id FROM all_events WHERE project \(inSet) OR EXISTS (SELECT 1 FROM json_each(mentions) WHERE value \(inSet))
                 """, [set]).compactMap { $0.int("id") }
 
-            let label = try forgetLabel(first, nodes: nodes, edges: edges, events: events)
+            let label = try forgetLabel(first, nodes: nodes, edges: edges, events: events, title: title)
             let sensitive = try db.scalar("""
                 SELECT count(*) FROM (SELECT id FROM s.nodes WHERE id \(inSet) UNION ALL SELECT id FROM s.events WHERE id IN (SELECT value FROM json_each(?2)))
                 """, [set, .text(Self.json(events))]) != .int(0)
@@ -639,7 +703,7 @@ extension MapStore {
     }
 
     /// "Forgot Marta: 1 person, 4 notes, 3 links, 6 past questions. In Recently deleted for 30 days."
-    private func forgetLabel(_ first: MapNode, nodes: Set<Int64>, edges: [Int64], events: [Int64]) throws -> String {
+    private func forgetLabel(_ first: MapNode, nodes: Set<Int64>, edges: [Int64], events: [Int64], title: String? = nil) throws -> String {
         let rows = try db.query("""
             SELECT class, count(*) AS n FROM all_nodes WHERE id IN (SELECT value FROM json_each(?)) AND valid_to IS NULL GROUP BY class ORDER BY class = 'Note', class
             """, [.text(Self.json(nodes.sorted()))])
@@ -653,7 +717,7 @@ extension MapStore {
         if links > 0 { parts.append(counted(links, "link", "links")) }
         if !events.isEmpty { parts.append(counted(Int64(events.count), "past question", "past questions")) }
         let what = first.mapClass == .note ? "\"\(first.text.prefix(60))\"" : first.name
-        return SecretsFilter.clean("Forgot \(what): \(parts.joined(separator: ", ")). In Recently deleted for \(Self.daysInRecentlyDeleted) days.")
+        return SecretsFilter.clean("\(title ?? "Forgot \(what)"): \(parts.joined(separator: ", ")). In Recently deleted for \(Self.daysInRecentlyDeleted) days.")
     }
 
     // MARK: - Small helpers
@@ -732,14 +796,20 @@ private final class WriteState {
     var refs: [String: Int64]
     var mentions: [Int64] = []
     var corrected = false
+    /// Set on an import (5.10): every fact is then "imported", whatever the reply says.
+    let importing: ImportSource?
 
-    init(brief: LibrarianBrief) {
+    init(brief: LibrarianBrief, importing: ImportSource? = nil) {
         self.brief = brief
+        self.importing = importing
         stamp = MapStore.iso(brief.now)
         refs = brief.facts
     }
 
     func mention(_ id: Int64) { if !mentions.contains(id) { mentions.append(id) } }
+
+    /// The origin is set by code: "imported" on an import, else "told" only when the reply says so, else "observed".
+    func origin(_ text: String) -> Origin { importing != nil ? .imported : text.lowercased() == "told" ? .told : .observed }
 
     /// "True from": the date the Librarian gave when it can be read, else the time of the question (5.9).
     func trueFrom(_ date: String) -> String { MapStore.date(date) ?? stamp }

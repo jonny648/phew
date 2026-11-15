@@ -45,6 +45,24 @@ protocol Brain: Sendable {
 
     /// A turn the Shell showed without asking (a task's report opened from the menu), so a reply can follow it.
     func keepTurn(_ question: String, answer: String)
+
+    // MARK: Imported memory (docs/05-map.md 5.10, phase PB)
+
+    /// The paste box, after the user confirms: the text is filtered, then sorted into candidate facts by the small
+    /// model, as data. Writes nothing; candidates live in memory only. Errors are `BrainError`.
+    func sortImport(_ text: String, source: ImportSource) async throws -> ImportSort
+    /// A project folder the user chose: reads only its CLAUDE.md files and that project's Claude Code memory files,
+    /// into memory, and remembers the folder so its files can be read again when a question or a task is about that
+    /// project. Sends nothing: show the file names and sizes, then call `sortImport(_:)` on confirm.
+    func projectMemory(folder: URL) -> ProjectMemory
+    /// The files of `projectMemory`, sorted like a paste, one call per file, source Claude Code.
+    func sortImport(_ memory: ProjectMemory) async throws -> ImportSort
+    /// Writes only the candidates with `ticked` true, as one import. Errors are `BrainError`.
+    func keepImport(_ candidates: [ImportCandidate]) async throws -> ImportKept
+    /// The last import while it can be undone, for the menu entry. Nil: the entry is off.
+    func lastImport() async -> ImportInfo?
+    /// "Undo last import": the card's one line, or nil when there was nothing to undo. Restore is `restore(_:)`.
+    func undoLastImport() async -> String?
 }
 
 extension Brain {
@@ -167,4 +185,12 @@ extension Brain {
         runTask(words, packet: packet, number: number, folder: folder, add: nil)
     }
     func keepTurn(_ question: String, answer: String) {}
+
+    /// A Brain without a Map imports nothing.
+    func sortImport(_ text: String, source: ImportSource) async throws -> ImportSort { ImportSort() }
+    func projectMemory(folder: URL) -> ProjectMemory { ProjectMemory(projectName: folder.lastPathComponent) }
+    func sortImport(_ memory: ProjectMemory) async throws -> ImportSort { ImportSort() }
+    func keepImport(_ candidates: [ImportCandidate]) async throws -> ImportKept { ImportKept() }
+    func lastImport() async -> ImportInfo? { nil }
+    func undoLastImport() async -> String? { nil }
 }

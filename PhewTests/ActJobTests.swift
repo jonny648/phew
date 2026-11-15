@@ -161,7 +161,7 @@ final class ActJobTests: XCTestCase {
     }
 
     func testOffSwitchRefusesTheJob() async {
-        defaults.removeObject(forKey: Hand.allowedKey)
+        defaults.set(false, forKey: Hand.allowedKey)
         let (run, _, job, _) = make([reply("press", element: "e1")])
         let outcome = await run.run("Make it bold", job: job) { _ in }
         XCTAssertEqual(outcome, .ended(.off))
@@ -302,32 +302,11 @@ final class ActJobTests: XCTestCase {
         XCTAssertTrue(request.text.contains("Route: guide."))
     }
 
-    // MARK: The consent screen and the "Let Phew act" switch (PH.3)
+    // MARK: The "Let Phew act" switch: on by default, no consent screen (the user's word of 15 November)
 
-    func testConsentOffByDefaultAndAsks() async {
+    func testActingIsOnByDefaultAndNeverAsks() async {
         defaults.removeObject(forKey: Hand.allowedKey)  // never set
         let consent = ActConsent(defaults: defaults)
-        XCTAssertFalse(consent.allowed)
-        XCTAssertTrue(consent.asks, "the first act request shows the screen")
-        let (run, _, job, _) = make([reply("press", element: "e1")])
-        let outcome = await run.run("Make it bold", job: job) { _ in }
-        XCTAssertEqual(outcome, .ended(.off), "nothing acts until Allow")
-        XCTAssertEqual(fake.sentCount, 0)
-    }
-
-    func testConsentNotNowLeavesItOffAndAsksAgain() {
-        defaults.removeObject(forKey: Hand.allowedKey)
-        let consent = ActConsent(defaults: defaults)
-        consent.answer(false)
-        XCTAssertFalse(consent.allowed)
-        XCTAssertTrue(consent.asks, "the screen comes back next time")
-        XCTAssertNil(defaults.object(forKey: Hand.allowedKey), "Not now writes nothing")
-    }
-
-    func testConsentAllowTurnsItOn() async {
-        defaults.removeObject(forKey: Hand.allowedKey)
-        let consent = ActConsent(defaults: defaults)
-        consent.answer(true)
         XCTAssertTrue(consent.allowed)
         XCTAssertFalse(consent.asks)
         XCTAssertTrue(hand().allowed)
@@ -337,12 +316,9 @@ final class ActJobTests: XCTestCase {
         XCTAssertEqual(fake.sentCount, 1)
     }
 
-    func testSwitchOffRefusesAndDoesNotAskAgain() async {
-        let consent = ActConsent(defaults: defaults)
-        consent.answer(true)
+    func testSwitchOffRefuses() async {
         defaults.set(false, forKey: Hand.allowedKey)  // what the menu's switch writes when turned off
-        XCTAssertFalse(consent.allowed)
-        XCTAssertFalse(consent.asks, "the user has seen the screen: the menu is the way back on")
+        XCTAssertFalse(ActConsent(defaults: defaults).allowed)
         let (run, _, job, _) = make([reply("press", element: "e1")])
         let outcome = await run.run("Make it bold", job: job) { _ in }
         XCTAssertEqual(outcome, .ended(.off))

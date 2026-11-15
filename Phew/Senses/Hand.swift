@@ -215,7 +215,8 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         self.now = now
     }
 
-    var allowed: Bool { defaults.bool(forKey: Self.allowedKey) }
+    /// On unless the menu's switch turned it off (the user's word of 15 November: no Allow to press).
+    var allowed: Bool { defaults.object(forKey: Self.allowedKey) as? Bool ?? true }
 
     /// Starts a job. With `watchUser`, the user's own mouse down or key down anywhere ends it.
     @MainActor

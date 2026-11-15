@@ -4,8 +4,8 @@ import os
 @main
 struct PhewApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    /// The "Let Phew act" switch: nil until Allow on the consent screen (PH.3), then the menu shows it.
-    @AppStorage(Hand.allowedKey) private var allowed: Bool?
+    /// The "Let Phew act" switch: on unless turned off here.
+    @AppStorage(Hand.allowedKey) private var allowed = true
 
     // No main window (hard rule): the menu bar item is the only scene.
     var body: some Scene {
@@ -13,10 +13,8 @@ struct PhewApp: App {
             Button("API Key…") { delegate.keyWindow.show() }
             Button("Recently deleted…") { delegate.showRecentlyDeleted() }
             Button("Export the Map…") { delegate.showExport() }
-            if let allowed {
-                // Off: he guides instead, and the consent screen is not shown again; this is the way back on.
-                Toggle("Let Phew act", isOn: Binding(get: { allowed }, set: { self.allowed = $0 }))
-            }
+            // Off: he guides instead.
+            Toggle("Let Phew act", isOn: $allowed)
             Button("Never read this app") { delegate.neverReadFrontApp() }
             Button("Never-read apps…") { delegate.showNeverRead() }
             Divider()

@@ -107,7 +107,7 @@ final class HandTests: XCTestCase {
     // MARK: - The off switch
 
     func testOffRefusesEverything() {
-        defaults.removeObject(forKey: Hand.allowedKey)  // never set: off
+        defaults.set(false, forKey: Hand.allowedKey)  // the menu's switch, off
         let hand = self.hand()
         let press = fake.add("Bold", frame: frame(0))
         fake.menus[["Format", "Bold"]] = FakeSurface.Element(HandSeen(role: "AXMenuItem", name: "Bold"), window: "")
@@ -355,7 +355,7 @@ final class HandTests: XCTestCase {
     func testScriptsPassTheSameGates() {
         let note = script(.note(title: "Phew test 1234 made up", body: "A made-up line"))
         // Off.
-        defaults.removeObject(forKey: Hand.allowedKey)
+        defaults.set(false, forKey: Hand.allowedKey)
         var hand = self.hand()
         XCTAssertEqual(hand.act(note, in: hand.begin(watchUser: false)).end, .off)
         defaults.set(true, forKey: Hand.allowedKey)

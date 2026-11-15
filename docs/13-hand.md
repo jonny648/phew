@@ -215,21 +215,15 @@ Ranked for the new design, most serious first.
 10. **More pictures leave your Mac, and it costs more.** Each check is a look: one picture to the model, about a quarter of a cent. A job at the ceiling of 40 actions is about 10 cents. Same memory-only rule as a guide.
 11. **An app that hangs.** Stop still ends the job within a second, but an action already sent cannot be called back.
 
-## 13.8 The consent screen
+## 13.8 No consent screen
 
-Shown once, before his first action, in the same panel style as the research screen, non-activating. The text, as you approved it:
+Changed on 15 November, on your word: "users MUST not have to press allow". Phew acts from the first request, with nothing to allow. The consent screen that was built that day is no longer shown.
 
-> **Phew can do things for you.**
->
-> When you ask, he clicks, types and picks menus in your apps by himself, and lists what he did. He never types passwords, pays, or changes system settings. Stop always works.
->
-> Text on a web page or in a document can mislead him. He may then do a wrong thing, including sending or deleting.
->
-> [Allow] [Not now]
+What is left as the way to turn acting off: a switch in the menu, "Let Phew act", on by default. With it off he guides and says "Acting is off, so here is how to do it."
 
-After Allow the screen is not shown again, and a switch "Let Phew act" appears in the menu, on. After Not now he keeps pointing only, and the screen comes back the next time you ask him to do something.
+What this changes, said once: a person who installs Phew is not told beforehand that text on a page or in a document can mislead him into a wrong step, including sending or deleting. The things he never touches, Stop, and stopping on anything unexpected stay as they are.
 
-This one consent covers all apps. Phew does not ask "Act in this app?". macOS still shows its own prompt the first time Phew scripts an app ("Phew wants to control Excel"), and one each for Reminders and Calendar. Those prompts are macOS's, not Phew's.
+macOS still shows its own prompt the first time Phew scripts an app ("Phew wants to control Excel"), and one each for Reminders and Calendar. Those are macOS's, and Phew cannot remove them.
 
 ## 13.9 Decisions you took on 15 November, and what is still open
 

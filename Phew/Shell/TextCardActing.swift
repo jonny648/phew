@@ -110,9 +110,10 @@ extension TextCard {
 struct ActConsent {
     var defaults: UserDefaults = .standard
 
-    var allowed: Bool { defaults.bool(forKey: Hand.allowedKey) }
-    /// Never answered with Allow: an act request shows the consent screen first.
-    var asks: Bool { defaults.object(forKey: Hand.allowedKey) == nil }
+    var allowed: Bool { defaults.object(forKey: Hand.allowedKey) as? Bool ?? true }
+    /// The consent screen is never shown since 15 November (the user's word: no Allow to press). Acting is on
+    /// unless the menu's switch is off.
+    var asks: Bool { false }
 
     func answer(_ allow: Bool) { if allow { defaults.set(true, forKey: Hand.allowedKey) } }
 }

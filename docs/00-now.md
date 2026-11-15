@@ -44,16 +44,19 @@ Started on 15 November beside PD, because it is needed whatever the direction: t
 
 Phew is a collaboration companion for people who create projects. He works with you and does the jobs you ask for, acting on the Mac by himself. He also explains and guides, remembers your projects, and researches. Business software training is a separate product, later. See `02-vision.md` and `07-decisions.md` 7.1.
 
-## Next phase: PH Hand
+## Current phase: PH Hand and look
 
-Phew acts on the Mac. Asked to do something, he does the whole job in your apps, with no confirm. Asked how, he shows. Design and guards in `13-hand.md`. Nothing acts on a real app before the guards and the consent screen are built.
+One phase since 15 November: acting and the finished look, joined. Phew acts on the Mac: asked to do something, he does the whole job in your apps, with no confirm; asked how, he shows. Every surface gets its final look, so the new acting surfaces are built once. Design in `13-hand.md` and `15-design.md`. In your app nothing acts until you press Allow on the consent screen.
+
+By your word of 15 November, no review or test is asked of you in this phase.
 
 ## Decisions waiting for you
 
-- **Your hand tests of phase PS**: the conversation card, the screen watch, click steps, the Never read list.
-- **Still open in the acting design** (decision 39): the ceiling on actions per job, and whether the action log may name the app.
 - **Which of the cheap tests of the validation to run** (decision 40).
+- **The first user group, the cost of 10 users, what success means for you** (decision 41, `14-company.md` 14.6).
 - Which business target to explore first, if any (26). Order of the later phases (27).
+
+Taken by the written recommendation on 15 November, say if you want another: 40 actions per job and 20 per minute as a runaway brake (39); "Fusion" is Autodesk Fusion (37).
 
 The open decisions are listed in `07-decisions.md` 7.2.
 

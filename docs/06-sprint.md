@@ -23,13 +23,12 @@ Rewritten on 15 November for the direction of that day (PD.5), and made lean: th
 | | PV Your review | You read everything on one page, understand it, and answer the open decisions. No code | lead, checker | Answered and approved 14 Nov |
 | 1 | P5 Map | Memory of your projects, recall at any time, follow-up questions. Starts with research on encrypting the Map. Recently deleted | map, brain, senses, shell | Built 14 Nov; your hand tests passed |
 | 1b | PD Direction and revision | Folder tidied, one specific job chosen after research and validation, the phases after P5 rewritten. No product code | lead, research workflow, checker | |
-| 2 | PH Hand | Phew acts on the Mac by himself when asked, in your apps and across apps. The things he never touches, Stop, the consent screen, your seven apps working, the trick test | senses, shell, brain | |
-| 3 | PX Look and feel | A study of every surface, a design you approve in Figma, then the build: panel, card, conversation, pointer, menu, first run | lead, shell | |
-| 4 | PA Agents | He researches a task alone, several at once, reports as PDF, and acts in the background without taking your screen | brain, shell | |
-| 5 | PB Second brain | Memory imported from your other AI tools, by paste and from Claude Code files | map, shell, brain | |
-| 6 | P6 Voice | Hold key and speak, in Italian and English | senses | |
-| 7 | PM MVP test | Version 1 on real work: questions, memory, 5 real jobs, 3 research tasks | checker | |
-| 8 | PG GitHub and project structure | Folder to the usual standard, private repository pushed, version 0.1.0 tagged | lead, checker | |
+| 2 | PH Hand and look | One phase since 15 November (the old PH and PX). Phew acts on the Mac by himself when asked, in your apps and across apps: the things he never touches, Stop, the consent screen, your seven apps, the trick test. And every surface gets its finished look: a short study, a design written as tokens and drawn in Figma, then the build of panel, card, conversation, pointer, action list, menu, first run. No review asked of you | senses, brain, shell, lead | |
+| 3 | PA Agents | He researches a task alone, several at once, reports as PDF, and acts in the background without taking your screen | brain, shell | |
+| 4 | PB Second brain | Memory imported from your other AI tools, by paste and from Claude Code files | map, shell, brain | |
+| 5 | P6 Voice | Hold key and speak, in Italian and English | senses | |
+| 6 | PM MVP test | Version 1 on real work: questions, memory, 5 real jobs, 3 research tasks | checker | |
+| 7 | PG GitHub and project structure | Folder to the usual standard, private repository pushed, version 0.1.0 tagged | lead, checker | |
 
 Rough size, an estimate and not a promise: Map 5 days with the encryption research and Recently deleted, second brain 2, guide speed 2, agents 8 to 12 with several tasks and PDF reports, voice 2, tests 2.5, GitHub 1. About 22 to 27 working days. Re-estimated on 14 November after your answers added work. The agents figure starts from the research estimate in `10-research-agents.md` 10.2, 4 to 7 days to read and research and 2 to 3 more to save reports as files, plus about 2 for several tasks at once and PDF reports.
 

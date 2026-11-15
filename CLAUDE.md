@@ -56,8 +56,7 @@ These rules are direction, not strict rules (your choice of 14 November). Follow
 | PB | `docs/05-map.md`, `docs/10-research-memory.md` 10.3 |
 | PS | `docs/03-experience.md`, `docs/11-direction.md` 11.10, `docs/04-architecture.md` 4.4 and 4.6, `docs/10-research-speed.md` 10.4 |
 | PA | `docs/03-experience.md` 3.5 and 3.6, `docs/04-architecture.md` 4.4 and 4.6, `docs/05-map.md` 5.11, `docs/10-research-agents.md` 10.2 |
-| PH | `docs/13-hand.md`, `docs/03-experience.md` 3.6 and 3.10, `docs/04-architecture.md` 4.3 to 4.6 |
-| PX | `docs/03-experience.md`, `docs/02-vision.md` 2.3 to 2.5, `docs/11-direction.md` 11.10, then `docs/15-design.md` once written |
+| PH (Hand and look) | `docs/13-hand.md`, `docs/15-design.md`, `docs/03-experience.md`, `docs/04-architecture.md` 4.3 to 4.6, `docs/02-vision.md` 2.3 to 2.5 |
 | P6 | `docs/03-experience.md` 3.3 |
 | PM | `docs/06-sprint.md` 6.3 |
 | PG | `docs/github-guide.html` sections 5 to 7. Ask before any push |

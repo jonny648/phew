@@ -45,7 +45,10 @@ final class TextCard: EditPanel {
     /// The "Let Phew act" switch; the debug check gives it a throwaway defaults suite.
     var consent = ActConsent()
     /// The task route (PA.2): starts the task with the words and this turn's capture; returns the card's one line.
-    var onTask: ((String, ContextPacket?) -> String)?
+    var onTask: ((String, ContextPacket?, [Hearing]) -> String)?
+    /// P6.3: a spoken question where neither hearing made sense. The card has closed; this gets the best hearing and
+    /// the turn's capture, to show them in the ask panel, ready to fix. Nothing was answered and nothing acted.
+    var onUnclear: ((String, ContextPacket?) -> Void)?
     var lookPending: Bool { waitTask != nil || lookTask != nil }
     /// True while an answer streams in.
     var answering: Bool { task != nil }
@@ -76,10 +79,11 @@ final class TextCard: EditPanel {
     /// Shows the card at once, thinking, then waits for the capture and plays the Brain's answer into it.
     /// `.noKey` and `.badKey` close the card and go to `onKeyProblem` instead.
     /// `point` is the ask panel's top-left corner: the card takes its place with no fade, so it reads as the same box.
-    func show(at point: NSPoint, question: String, capture: Task<ContextPacket?, Never>?, brain: any Brain,
+    /// `spoken`: every hearing of a question said aloud, best first (P6.3); `question` is the best one. Empty: typed.
+    func show(at point: NSPoint, question: String, spoken: [Hearing] = [], capture: Task<ContextPacket?, Never>?, brain: any Brain,
               onKeyProblem: @escaping (BrainError) -> Void) {
         open(at: point, brain: brain, onKeyProblem: onKeyProblem)
-        answer(question, capture: capture)
+        answer(question, spoken: spoken, capture: capture)
     }
 
     /// A task's result, opened by the user from the menu (PA.2): shown as a finished answer they can reply to, with
@@ -113,7 +117,7 @@ final class TextCard: EditPanel {
 
     /// One turn: the question on the card, the capture awaited, the Brain's answer played in. The packet goes when
     /// this task ends; only the targets' rects stay for the guide.
-    private func answer(_ question: String, capture: Task<ContextPacket?, Never>?, guiding: Bool = false) {
+    func answer(_ question: String, spoken: [Hearing] = [], capture: Task<ContextPacket?, Never>?, guiding: Bool = false) {
         guard let brain else { return }
         let consent = consent
         // PS.14: Phew's own state for questions about himself. States only, never words.
@@ -134,13 +138,20 @@ final class TextCard: EditPanel {
                 /// Plays one answer into the card; true when it is on the act route.
                 @MainActor func play(_ state: ShellState) async throws -> Bool {
                     var acts = false
-                    for try await event in brain.answer(question, packet: packet, state: state) {
+                    for try await event in brain.answer(question, packet: packet, state: state, spoken: spoken) {
                         self?.model.apply(event)
+                        if case .route(.unclear) = event, let self {
+                            // Nothing answered, nothing acts: the card goes and the ask panel shows what was heard.
+                            let unclear = onUnclear
+                            dismiss()
+                            unclear?(question, packet)
+                            return false
+                        }
                         if case .route(.act) = event {
                             acts = true
                             if !state.acting { self?.model.note = Self.actingOff }  // with acting off, a guide
                         }
-                        if case .route(.task) = event { self?.model.text = self?.onTask?(question, packet) ?? "" }
+                        if case .route(.task) = event { self?.model.text = self?.onTask?(question, packet, spoken) ?? "" }
                         if case .steps(let steps) = event, !steps.isEmpty {
                             self?.startGuide(steps, targets: steps.map { Self.rect(for: $0.target, in: packet) })
                         }
@@ -149,7 +160,7 @@ final class TextCard: EditPanel {
                 }
                 // With acting off the Brain gave a guide with the fixed line; with it on, he does the job.
                 if try await play(state), state.acting, !Task.isCancelled {
-                    await self?.act(question, in: asked)
+                    await self?.act(question, spoken: spoken, in: asked)
                 }
             } catch {
                 failure = BrainError(error)

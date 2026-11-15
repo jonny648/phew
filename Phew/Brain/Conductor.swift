@@ -22,24 +22,29 @@ enum Conductor {
         "find out…", "look into … and write me a report", "ricerca … e fammi un report", "scopri…". A question about \
         what is on screen stays explain or guide; asking Phew to do something in the app now stays act. When you are \
         unsure between task and explain, choose explain.
-        """
+        unclear: only when the request is followed by a <spoken> block and neither hearing reads as a request about \
+        this screen, about Phew's memory or for a task. Never for a request without a <spoken> block.
 
-    static let schema = #"{"type":"object","properties":{"route":{"type":"string","enum":["explain","guide","remember","act","task"]}},"required":["route"],"additionalProperties":false}"#
 
-    /// An empty question means "explain what is under the cursor": no call is needed.
-    static func route(_ question: String, packet: ContextPacket?, provider: any ModelProvider) async throws -> Route {
+        """ + Spoken.rule
+
+    static let schema = #"{"type":"object","properties":{"route":{"type":"string","enum":["explain","guide","remember","act","task","unclear"]}},"required":["route"],"additionalProperties":false}"#
+
+    /// An empty question means "explain what is under the cursor": no call is needed. `spoken`: the hearings of a
+    /// question said aloud (P6.3). Only a spoken question can be unclear: a typed one is explained instead.
+    static func route(_ question: String, packet: ContextPacket?, spoken: [Hearing] = [], provider: any ModelProvider) async throws -> Route {
         guard !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .explain }
-        guard let route = decode(try await provider.complete(request(question, packet: packet))) else { throw BrainError.badOutput }
-        return route
+        guard let route = decode(try await provider.complete(request(question, packet: packet, spoken: spoken))) else { throw BrainError.badOutput }
+        return route == .unclear && spoken.isEmpty ? .explain : route
     }
 
-    static func request(_ question: String, packet: ContextPacket?) -> ModelRequest {
+    static func request(_ question: String, packet: ContextPacket?, spoken: [Hearing] = []) -> ModelRequest {
         var lines: [String] = []
         if let packet {
             lines += ["App: \(packet.appName)", "Window: \(packet.windowTitle)"]
             if let cursor = packet.cursor { lines.append("Under the mouse pointer: \(cursor.role) \"\(cursor.label.prefix(100))\"") }
         }
-        lines.append("Request: \(question)")
+        lines.append(Spoken.after("Request: \(question)", spoken))
         return ModelRequest(agent: "conductor", tier: .small, system: system, text: lines.joined(separator: "\n"),
                             schema: schema, maxTokens: 1024)
     }

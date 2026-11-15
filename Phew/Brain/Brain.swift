@@ -10,6 +10,15 @@ protocol Brain: Sendable {
     /// The same, with what only the Shell knows of Phew's own state, for questions about himself (PS.14).
     func answer(_ question: String, packet: ContextPacket?, state: ShellState) -> AsyncThrowingStream<BrainEvent, Error>
 
+    /// The same for a question said aloud (P6.3): `question` is the best hearing, as shown on the card, and `spoken`
+    /// holds every hearing, best first, for the model to read against the screen. Empty: a typed question. Only a
+    /// spoken question can come back `.route(.unclear)`.
+    func answer(_ question: String, packet: ContextPacket?, state: ShellState, spoken: [Hearing]) -> AsyncThrowingStream<BrainEvent, Error>
+
+    /// Names from the Map for the recogniser (P6.3): Projects, People, Tools and Organizations, the most recently
+    /// changed first, at most 30. Names only, never a fact; nothing sensitive. Empty without a Map.
+    func spokenNames() async -> [String]
+
     /// During a guide, after the user acts: looks at a fresh `packet` and says which of `steps` the user is on
     /// now, starting from `current` (0-based), so the guide moves on by itself. A runaway or bad answer is tried
     /// once more (PS.5). A refusal or a second bad answer does not end the guide: it returns `current` with no
@@ -21,6 +30,8 @@ protocol Brain: Sendable {
     /// each, oldest first), the next single action, or that the job is done, or stuck. The Brain never acts: the
     /// Shell carries the action out through the Hand. Errors are `BrainError`, like `answer`.
     func nextAction(_ request: String, packet: ContextPacket?, done: [String]) async throws -> NextAction
+    /// The same for a job asked aloud: `spoken` as in `answer`.
+    func nextAction(_ request: String, packet: ContextPacket?, done: [String], spoken: [Hearing]) async throws -> NextAction
 
     /// Drops the earlier questions and answers of the conversation. The Shell calls it when the card closes and on Quit.
     func forgetTurns()
@@ -42,6 +53,8 @@ protocol Brain: Sendable {
     /// within 2 seconds, nothing saved, no event after. `number` names the task in calls.log. Errors are `BrainError`.
     /// `add` (PA.4): the Shell's door for the Runner's `add_item`; the Brain never acts. Nil: no `add_item` tool.
     func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, add: AddItem?) -> AsyncThrowingStream<TaskEvent, Error>
+    /// The same for a task given aloud: `spoken` as in `answer`.
+    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?) -> AsyncThrowingStream<TaskEvent, Error>
 
     /// A turn the Shell showed without asking (a task's report opened from the menu), so a reply can follow it.
     func keepTurn(_ question: String, answer: String)
@@ -76,8 +89,16 @@ extension Brain {
     func answer(_ question: String, packet: ContextPacket?, state: ShellState) -> AsyncThrowingStream<BrainEvent, Error> {
         answer(question, packet: packet)
     }
+    /// A Brain that does not read hearings answers the best one as if typed.
+    func answer(_ question: String, packet: ContextPacket?, state: ShellState, spoken: [Hearing]) -> AsyncThrowingStream<BrainEvent, Error> {
+        answer(question, packet: packet, state: state)
+    }
+    func spokenNames() async -> [String] { [] }
     func forgetTurns() {}
     func nextAction(_ request: String, packet: ContextPacket?, done: [String]) async throws -> NextAction { .stuck("") }
+    func nextAction(_ request: String, packet: ContextPacket?, done: [String], spoken: [Hearing]) async throws -> NextAction {
+        try await nextAction(request, packet: packet, done: done)
+    }
     func recentlyDeleted() async -> [DeletedItem] { [] }
     func restore(_ id: Int64) async -> Bool { false }
     func deleteNow(_ id: Int64) async -> Bool { false }
@@ -104,6 +125,10 @@ enum Route: String, Sendable, CaseIterable {
     /// `task` (PA.2): work handed over to be done alone and reported back. The answer stream ends after `.route`;
     /// the Shell starts the task with `runTask`.
     case task
+    /// `unclear` (P6.3): a spoken question where neither hearing makes sense. Nothing is answered and nothing acts:
+    /// the stream ends after `.route`, and the Shell shows what was heard in the ask panel, ready to fix. Never for a
+    /// typed question.
+    case unclear
 }
 
 /// The next step of a job on the act route, as the Brain chose it from a fresh look (PH.5).
@@ -190,6 +215,9 @@ extension Brain {
     }
     func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?) -> AsyncThrowingStream<TaskEvent, Error> {
         runTask(words, packet: packet, number: number, folder: folder, add: nil)
+    }
+    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?) -> AsyncThrowingStream<TaskEvent, Error> {
+        runTask(words, packet: packet, number: number, folder: folder, add: add)
     }
     func keepTurn(_ question: String, answer: String) {}
 

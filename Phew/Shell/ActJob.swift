@@ -16,6 +16,8 @@ struct ActJob {
     var aside: (CGRect) -> Void = { _ in }
     /// Before each action, its line as it happens ("Pressing Bold"): the card lists it at once (15.5 B).
     var starting: (String) -> Void = { _ in }
+    /// Every hearing of a job asked aloud, best first (P6.3); empty when typed.
+    var spoken: [Hearing] = []
 
     enum Outcome: Equatable {
         case done(String)
@@ -42,7 +44,7 @@ struct ActJob {
             if let end = job.end { return .ended(end) }
             let next: NextAction
             do {
-                next = try await brain.nextAction(request, packet: packet, done: done)
+                next = try await brain.nextAction(request, packet: packet, done: done, spoken: spoken)
             } catch {
                 return job.end.map(Outcome.ended) ?? .failed(BrainError(error))
             }

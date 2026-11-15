@@ -36,7 +36,7 @@ enum Guide {
         steps empty.
 
 
-        """ + SelfKnowledge.text + """
+        """ + Spoken.rule + "\n\n" + SelfKnowledge.text + """
 
 
         What Phew remembers about the user may come before the screen, between <map> and </map>, one fact per \
@@ -84,10 +84,11 @@ enum Guide {
     /// turn, so a follow-up gets its own fresh recall or none.
     /// `about`: the live facts of `SelfKnowledge.live`, in their `<self>` block; nil, none.
     static func answer(_ question: String, packet: ContextPacket?, route: Route, earlier: [Turn] = [], recall: String? = nil,
-                       about: String? = nil, projectMemory: String? = nil, tools: (any ToolRunner)? = nil, provider: any ModelProvider,
-                       emit: (BrainEvent) -> Void) async throws {
+                       about: String? = nil, projectMemory: String? = nil, spoken: [Hearing] = [], tools: (any ToolRunner)? = nil,
+                       provider: any ModelProvider, emit: (BrainEvent) -> Void) async throws {
         let shot = packet?.screenshot.flatMap(ScreenshotSize.init(png:))
-        var request = request(question, packet: packet, route: route, shot: shot, earlier: earlier, recall: recall, about: about, projectMemory: projectMemory)
+        var request = request(question, packet: packet, route: route, shot: shot, earlier: earlier, recall: recall, about: about,
+                              projectMemory: projectMemory, spoken: spoken)
         var shown = false  // explanation words already on the card
         var answer: Output?
         // PS.16: a blank answer (an empty skeleton, or one-character fields) is asked once more and never shown.
@@ -148,7 +149,8 @@ enum Guide {
     }
 
     static func request(_ question: String, packet: ContextPacket?, route: Route, shot: ScreenshotSize?,
-                        earlier: [Turn] = [], recall: String? = nil, about: String? = nil, projectMemory: String? = nil) -> ModelRequest {
+                        earlier: [Turn] = [], recall: String? = nil, about: String? = nil, projectMemory: String? = nil,
+                        spoken: [Hearing] = []) -> ModelRequest {
         // "Never empty" (PS.15): since the self text joined the system prompt, about 1 guide in 3 came back as an
         // empty skeleton, every field blank, with "Explain briefly". In the user turn, so the cached prefix stays.
         let task = route == .guide ? "Route: guide. First the explanation: one or two sentences, never empty. Then the steps, each with its instruction."
@@ -163,7 +165,7 @@ enum Guide {
         let me = route == .guide ? [] : about.map { [$0] } ?? []
         // PB.2: the project's Claude Code notes, already filtered and in their own data block; filtered again (cheap).
         let notes = projectMemory.map { [SecretsFilter.clean($0)] } ?? []
-        return ModelRequest(agent: "guide", tier: .main, system: route == .guide ? guideSystem : system, text: (map + me + notes + [screen, task, asked(question)]).joined(separator: "\n\n"),
+        return ModelRequest(agent: "guide", tier: .main, system: route == .guide ? guideSystem : system, text: (map + me + notes + [screen, task, Spoken.after(asked(question), spoken)]).joined(separator: "\n\n"),
                             image: shot == nil ? nil : packet?.screenshot, schema: schema, maxTokens: 8192, earlier: history)
     }
 

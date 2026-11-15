@@ -76,7 +76,9 @@ enum Runner {
         ## Not found
         What you looked for and did not find or could not confirm. Leave this section out when nothing is missing.
         Write only the report: nothing before the title, nothing after the last section.
-        """
+
+
+        """ + Spoken.rule
 
     /// The current web tools for the main model (Claude API docs, web search and web fetch tools, read 15 Nov 2026).
     /// `allowed_callers: direct` turns dynamic filtering off: no code runs at Anthropic, no container to carry
@@ -117,7 +119,7 @@ enum Runner {
     /// PDF goes; nil, Downloads. Cancelling the consumer stops the task: the request in flight is cancelled at once,
     /// nothing is saved and no event follows.
     /// `add`: the Shell's door for `add_item` (PA.4); nil, no such tool. What it added is listed at the end, by title.
-    static func stream(_ words: String, packet: ContextPacket?, number: Int, folder: URL?,
+    static func stream(_ words: String, packet: ContextPacket?, spoken: [Hearing] = [], number: Int, folder: URL?,
                        tools: @escaping @Sendable () async -> (any ToolRunner)?,
                        projectMemory: @escaping @Sendable () async -> String? = { nil }, add: AddItem? = nil, provider: any ModelProvider,
                        limits: TaskLimits = TaskLimits()) -> AsyncThrowingStream<TaskEvent, Error> {
@@ -126,7 +128,7 @@ enum Runner {
                 do {
                     let added = AddedItems()
                     let parts = [await tools(), add.map { AddItemTool(add: $0, added: added) }].compactMap { $0 }
-                    let (body, limit) = try await research(words, packet: packet, number: number,
+                    let (body, limit) = try await research(words, packet: packet, spoken: spoken, number: number,
                                                            tools: parts.isEmpty ? nil : TaskTools(parts: parts),
                                                            projectMemory: await projectMemory(),
                                                            provider: provider, limits: limits) { continuation.yield($0) }
@@ -149,11 +151,11 @@ enum Runner {
     }
 
     /// The rounds, then the report's Markdown and the limit that ended it, if one did.
-    static func research(_ words: String, packet: ContextPacket?, number: Int, tools: (any ToolRunner)?,
+    static func research(_ words: String, packet: ContextPacket?, spoken: [Hearing] = [], number: Int, tools: (any ToolRunner)?,
                          projectMemory: String? = nil, provider: any ModelProvider, limits: TaskLimits,
                          emit: @escaping @Sendable (TaskEvent) -> Void) async throws -> (String, TaskLimit?) {
         let start = Date()
-        var request = request(words, packet: packet, number: number, tools: tools, projectMemory: projectMemory, limits: limits)
+        var request = request(words, packet: packet, spoken: spoken, number: number, tools: tools, projectMemory: projectMemory, limits: limits)
         var spent = 0.0, searches = 0, pages = 0, rounds = 0
         var report = "", limit: TaskLimit?, last = false
         rounds: while true {
@@ -239,11 +241,11 @@ enum Runner {
     /// The first user turn: the task as typed (secrets removed), then the screen read as data, with every web address
     /// removed. The picture goes along when there is one. Nothing from a "Never read this app" app.
     /// `projectMemory` (PB.2): the task's project's Claude Code notes in their data block, or nil.
-    static func request(_ words: String, packet: ContextPacket?, number: Int, tools: (any ToolRunner)? = nil,
+    static func request(_ words: String, packet: ContextPacket?, spoken: [Hearing] = [], number: Int, tools: (any ToolRunner)? = nil,
                         projectMemory: String? = nil, limits: TaskLimits = TaskLimits()) -> ModelRequest {
         let read = packet?.neverRead == false ? packet : nil
         let day = Date().formatted(Date.ISO8601FormatStyle(timeZone: .current).year().month().day())
-        let text = ["Task: \(SecretsFilter.clean(words))", read.map(screenBlock) ?? "No screen was read."]
+        let text = [Spoken.after("Task: \(SecretsFilter.clean(words))", spoken), read.map(screenBlock) ?? "No screen was read."]
             + (projectMemory.map { [SecretsFilter.clean($0)] } ?? []) + ["Today is \(day)."]
         var request = ModelRequest(agent: "runner", tier: .main, system: system, text: text.joined(separator: "\n\n"),
                                    image: read?.screenshot, effort: "medium", maxTokens: 8192)

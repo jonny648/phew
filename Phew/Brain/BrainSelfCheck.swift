@@ -22,6 +22,7 @@ enum BrainSelfCheck {
     private static func check() async {
         let arguments = CommandLine.arguments
         let after = arguments.firstIndex(of: "--debug-brain-check").map { Array(arguments.dropFirst($0 + 1).prefix(2)) } ?? []
+        if after.first == "hear" { return await HearCheck.run() }  // P6: on-device speech only, no model call, no key
         do {
             guard KeyStore().read() != nil else { return shellLog("brain check: no API key in the Keychain, stopping") }
             if let part = after.first, !part.hasPrefix("-") {

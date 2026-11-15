@@ -131,6 +131,19 @@ final class SelfKnowledgeTests: XCTestCase {
         XCTAssertFalse(text.contains("import memory from other AI tools"))
     }
 
+    /// P6: he knows he listens while the shortcut is held, on this Mac, in Italian or English; released words go at
+    /// once; silence explains what is under the pointer. Voice is no longer something he cannot do.
+    func testTheTextSaysHeListens() {
+        let text = SelfKnowledge.text
+        for part in ["hold the two keys and speak", "in Italian or English", "you listen on this Mac only",
+                     "the words are sent at once", "held with nothing said, you explain what is under the mouse pointer",
+                     "never saved as sound"] {
+            XCTAssertTrue(text.contains(part), part)
+        }
+        XCTAssertFalse(text.contains("take voice input"))
+        XCTAssertFalse(text.contains("cannot do yet: take voice"))
+    }
+
     func testFixedPartIsTheSameForTwoQuestions() async throws {
         let one = try await guideRequest("Who are you?", state: ShellState(accessibility: true), store: try await store())
         let two = try await guideRequest("How do I export a PDF?", state: ShellState(screenRecording: false), store: nil)
@@ -150,7 +163,7 @@ final class SelfKnowledgeTests: XCTestCase {
         XCTAssertFalse(guide.system.contains(SelfKnowledge.text))
         XCTAssertFalse(guide.text.contains("<self>"))
         XCTAssertTrue(guide.system.contains("When the route is guide, also give the steps"))
-        XCTAssertTrue(guide.system.contains("steps empty.\n\nWhat Phew remembers"))
+        XCTAssertTrue(guide.system.contains("steps empty.\n\n" + Spoken.rule + "\n\nWhat Phew remembers"))
         XCTAssertEqual(guide.system.count, Guide.system.count - SelfKnowledge.text.count - 2)
         let explain = Guide.request("Who are you?", packet: packet("x"), route: .explain, shot: nil, about: about)
         XCTAssertEqual(explain.system, Guide.system)

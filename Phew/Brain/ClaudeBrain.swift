@@ -21,11 +21,16 @@ struct ClaudeBrain: Brain {
     }
 
     func answer(_ question: String, packet: ContextPacket?, state: ShellState) -> AsyncThrowingStream<BrainEvent, Error> {
+        answer(question, packet: packet, state: state, spoken: [])
+    }
+
+    func answer(_ question: String, packet: ContextPacket?, state: ShellState, spoken: [Hearing]) -> AsyncThrowingStream<BrainEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    // The packet was filtered by Senses; the typed question is filtered here, before any call.
-                    try await run(SecretsFilter.clean(question), packet: packet, state: state) { continuation.yield($0) }
+                    // The packet was filtered by Senses; the typed question is filtered here, before any call (the
+                    // hearings in `Spoken.block`).
+                    try await run(SecretsFilter.clean(question), packet: packet, state: state, spoken: spoken) { continuation.yield($0) }
                     continuation.yield(.done)
                     continuation.finish()
                 } catch {
@@ -45,15 +50,22 @@ struct ClaudeBrain: Brain {
     }
 
     func nextAction(_ request: String, packet: ContextPacket?, done: [String]) async throws -> NextAction {
+        try await nextAction(request, packet: packet, done: done, spoken: [])
+    }
+
+    func nextAction(_ request: String, packet: ContextPacket?, done: [String], spoken: [Hearing]) async throws -> NextAction {
         do {
             // The packet was filtered by Senses; the words and the lines of done actions are filtered here.
-            return try await Doer.next(SecretsFilter.clean(request), packet: packet, done: done.map(SecretsFilter.clean), provider: provider)
+            return try await Doer.next(SecretsFilter.clean(request), packet: packet, done: done.map(SecretsFilter.clean),
+                                       spoken: spoken, provider: provider)
         } catch {
             throw BrainError(error)
         }
     }
 
     func forgetTurns() { memory.clear() }
+
+    func spokenNames() async -> [String] { await map.spokenNames() }
 
     // MARK: Recently deleted (5.5, roadmap P5.15)
 
@@ -78,10 +90,10 @@ struct ClaudeBrain: Brain {
 
     // MARK: One request
 
-    private func run(_ question: String, packet: ContextPacket?, state: ShellState, emit: (BrainEvent) -> Void) async throws {
+    private func run(_ question: String, packet: ContextPacket?, state: ShellState, spoken: [Hearing], emit: (BrainEvent) -> Void) async throws {
         let start = Date()
         // Side by side, so together they cost one small-model round trip. The Map is read by code, no model call.
-        async let routing = Conductor.route(question, packet: packet, provider: provider)
+        async let routing = Conductor.route(question, packet: packet, spoken: spoken, provider: provider)
         async let cleaned = Observer.clean(packet?.visibleText ?? "", question: question, provider: provider)
         async let recalled = recall(question, packet: packet)
         var route: Route
@@ -91,6 +103,7 @@ struct ClaudeBrain: Brain {
             route = .explain  // the Guide, with its fallback model, can still answer
         }
         emit(.route(route))
+        if route == .unclear { return }  // P6.3: nothing answered, nothing acts; the Shell shows what was heard
         if route == .remember { return try await remember(question, packet: packet, emit: emit) }
         if route == .task { return }  // PA.2: the Shell starts the task through `runTask`
         // PH.4: the Shell runs an act job through `nextAction`. With acting off it is shown as a guide.
@@ -106,7 +119,7 @@ struct ClaudeBrain: Brain {
         let project = route == .explain ? await projectMemoryBlock(question, packet: packet, store: store) : nil
         var explanation = "", steps: [GuideStep] = []
         try await Guide.answer(question, packet: packet, route: route, earlier: earlier, recall: lines, about: about,
-                               projectMemory: project, tools: tools ?? store.map(MapSearch.init), provider: provider) { event in
+                               projectMemory: project, spoken: spoken, tools: tools ?? store.map(MapSearch.init), provider: provider) { event in
             if case .text(let piece) = event { explanation += piece }
             if case .steps(let given) = event { steps = given }
             emit(event)
@@ -161,8 +174,12 @@ struct ClaudeBrain: Brain {
 extension ClaudeBrain {
     /// The Runner with the Map search when the Map is open (addresses left out of its lines), and the web.
     func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, add: AddItem?) -> AsyncThrowingStream<TaskEvent, Error> {
+        runTask(words, packet: packet, number: number, folder: folder, spoken: [], add: add)
+    }
+
+    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?) -> AsyncThrowingStream<TaskEvent, Error> {
         let injected = tools, map = map, brain = self
-        return Runner.stream(words, packet: packet, number: number, folder: folder, tools: {
+        return Runner.stream(words, packet: packet, spoken: spoken, number: number, folder: folder, tools: {
             let search: (any ToolRunner)? = if let injected { injected } else { await map.now().map { MapSearch(store: $0, forRunner: true) } }
             return search.map(RunnerTools.init)
         }, projectMemory: {

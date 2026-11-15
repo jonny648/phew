@@ -19,7 +19,7 @@ extension TextCard {
 
     /// Runs the job in `app`, the app the user asked in. Returns when it ends; the Hand's watch goes with it.
     /// If another app has come to the front meanwhile, it stops before any look, so no other app's screen is read.
-    func act(_ request: String, in app: NSRunningApplication?) async {
+    func act(_ request: String, spoken: [Hearing] = [], in app: NSRunningApplication?) async {
         var app = app
         // Each look reads the app the job works in, never whatever came to the front meanwhile (the Hand stops then).
         var look: ((pid_t) async -> ContextPacket?)?
@@ -55,6 +55,7 @@ extension TextCard {
                              self?.moveAside(from: spot)
                              pointer.act(on: spot)
                          })
+        run.spoken = spoken
         run.starting = { [weak self] line in self?.model.actions.append(CardModel.Action(line: line)) }
         let outcome = await run.run(request, job: job) { [weak self] line in
             count += 1

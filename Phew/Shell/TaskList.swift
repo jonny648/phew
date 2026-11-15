@@ -63,7 +63,8 @@ final class TaskList: ObservableObject {
     }
 
     /// Starts a task; returns the one line for the card. A fourth while three run is not started.
-    func start(_ words: String, packet: ContextPacket?) -> String {
+    /// `spoken`: every hearing of a task given aloud (P6.3); empty when typed.
+    func start(_ words: String, packet: ContextPacket?, spoken: [Hearing] = []) -> String {
         guard running.count < Self.most else {
             shellLog("task: not started, \(running.count) running")
             return Self.full
@@ -73,7 +74,7 @@ final class TaskList: ObservableObject {
         let number = max(last + 1, Int(Date().timeIntervalSince1970))
         last = number
         items.append(Item(id: number, words: words))
-        let stream = brain.runTask(words, packet: packet, number: number, folder: folder()) { [weak self] script in
+        let stream = brain.runTask(words, packet: packet, number: number, folder: folder(), spoken: spoken) { [weak self] script in
             await self?.add(script, task: number) ?? HandEnd.stopped.rawValue
         }
         tasks[number] = Task { [weak self] in

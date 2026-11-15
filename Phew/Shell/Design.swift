@@ -61,6 +61,8 @@ enum Design {
         /// Ask panel, card and thread, always.
         static let width: CGFloat = 400
         static let ask: CGFloat = 48
+        /// The row under the ask field: the hint, or one grey line.
+        static let hintRow: CGFloat = 24
         static let cardMax: CGFloat = 420
         static let threadMax: CGFloat = 520
         /// Header and footer of the card.
@@ -116,6 +118,8 @@ enum Design {
         static let pressFill: TimeInterval = 0.3
         /// A step or action marked done: opacity 0 to 1, scale 0.6 to 1 (opacity only with Reduce Motion).
         static let tick: TimeInterval = 0.12
+        /// The shortcut held this long is a hold to talk (P6.1); released before, it is a press.
+        static let hold: TimeInterval = 0.3
     }
 }
 

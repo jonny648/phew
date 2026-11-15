@@ -322,6 +322,8 @@
 				CODE_SIGN_ENTITLEMENTS = Phew.entitlements;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Phew adds notes in Notes and fills cells in Excel when you ask him to.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Phew listens while you hold the key, on this Mac.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Phew turns what you say into words, on this Mac.";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Phew adds events to your calendar when you ask him to, and reads them back to check.";
 				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Phew adds reminders when you ask him to, and reads them back to check.";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -354,6 +356,8 @@
 				CODE_SIGN_ENTITLEMENTS = Phew.entitlements;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Phew adds notes in Notes and fills cells in Excel when you ask him to.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Phew listens while you hold the key, on this Mac.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Phew turns what you say into words, on this Mac.";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Phew adds events to your calendar when you ask him to, and reads them back to check.";
 				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Phew adds reminders when you ask him to, and reads them back to check.";
 				LD_RUNPATH_SEARCH_PATHS = (

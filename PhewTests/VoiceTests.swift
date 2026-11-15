@@ -1,0 +1,519 @@
+import XCTest
+@testable import Phew
+
+/// P6: hold the shortcut to talk. The hotkey's press, hold and Escape on an injected timer; the hold's flow with a
+/// fake listener (nothing said explains, words go at once with both hearings, Escape drops the capture, a missing
+/// permission shows the two rows); both hearings and the one rule in each agent's request, with the cached prefix the
+/// same as typed; `unclear` for spoken questions only. A fake provider and made-up words: no microphone, no screen,
+/// no network.
+final class VoiceTests: XCTestCase {
+    typealias FakeProvider = BrainAgentsTests.FakeProvider
+    typealias Reply = FakeProvider.Reply
+    typealias Logged = ImportTests.Logged
+
+    /// Made-up words that must never reach a log line.
+    private static let italian = "rendi grassetto il QUOKKATITOLO"
+    private static let english = "ran the grass set oil QUOKKATEA TOLO"
+    private let hearings = [Hearing(language: "it-IT", text: VoiceTests.italian, confidence: 0.82),
+                            Hearing(language: "en-US", text: VoiceTests.english, confidence: 0.31)]
+
+    override func tearDown() {
+        shellLogTap = nil
+        super.tearDown()
+    }
+
+    private func packet() -> ContextPacket {
+        ContextPacket(appName: "Pages", bundleID: "com.apple.iWork.Pages", windowTitle: "Made-up menu.pages",
+                      visibleText: "Made-up bakery menu", cursor: CursorElement(role: "AXButton", label: "Bold", value: ""),
+                      windowFrame: CGRect(x: 0, y: 0, width: 800, height: 600),
+                      pointables: [Pointable(id: "e1", role: "AXButton", label: "Bold", frame: CGRect(x: 10, y: 10, width: 28, height: 28)),
+                                   Pointable(id: "e2", role: "AXButton", label: "Italic", frame: CGRect(x: 40, y: 10, width: 28, height: 28))])
+    }
+
+    // MARK: The hotkey: press, hold, Escape
+
+    /// A timer the test fires by hand.
+    @MainActor
+    private final class Clock {
+        var fire: (@MainActor () -> Void)?
+        var cancelled = 0
+        var delays: [TimeInterval] = []
+        func schedule(_ delay: TimeInterval, _ fire: @escaping @MainActor () -> Void) -> () -> Void {
+            delays.append(delay)
+            self.fire = fire
+            return { [weak self] in self?.cancelled += 1; self?.fire = nil }
+        }
+    }
+
+    @MainActor
+    private func hotKey(_ clock: Clock, _ events: @escaping (String) -> Void) -> HotKey {
+        let key = HotKey(schedule: clock.schedule) { events("press") }
+        key.holdStart = { events("start") }
+        key.holdEnd = { events("end") }
+        key.holdCancel = { events("cancel") }
+        return key
+    }
+
+    @MainActor
+    func testAShortPressOpensThePanelOnRelease() {
+        let clock = Clock()
+        var events: [String] = []
+        let key = hotKey(clock) { events.append($0) }
+        key.flags(0x50)
+        XCTAssertEqual(events, [], "nothing until the release or the hold")
+        XCTAssertEqual(clock.delays, [Design.Motion.hold])
+        XCTAssertEqual(Design.Motion.hold, 0.3)
+        key.flags(0)
+        XCTAssertEqual(events, ["press"])
+        XCTAssertEqual(clock.cancelled, 1)
+        clock.fire?()  // a late timer does nothing
+        XCTAssertEqual(events, ["press"])
+    }
+
+    @MainActor
+    func testAHoldNeverAlsoPresses() {
+        let clock = Clock()
+        var events: [String] = []
+        let key = hotKey(clock) { events.append($0) }
+        key.flags(0x50)
+        clock.fire?()
+        XCTAssertTrue(key.holding)
+        key.flags(0x50 | 0x02)  // another modifier joins: still the same hold
+        key.flags(0)
+        XCTAssertEqual(events, ["start", "end"])
+        XCTAssertFalse(key.holding)
+    }
+
+    @MainActor
+    func testReleasingEitherKeyEndsTheHold() {
+        for rest: UInt in [0x40, 0x10] {
+            let clock = Clock()
+            var events: [String] = []
+            let key = hotKey(clock) { events.append($0) }
+            key.flags(0x50)
+            clock.fire?()
+            key.flags(rest)  // one of the two still down
+            XCTAssertEqual(events, ["start", "end"])
+            key.flags(0)
+            XCTAssertEqual(events, ["start", "end"], "once")
+        }
+    }
+
+    @MainActor
+    func testEscapeDuringAHoldCancelsAndTheReleaseDoesNothing() {
+        let clock = Clock()
+        var events: [String] = []
+        let key = hotKey(clock) { events.append($0) }
+        key.flags(0x50)
+        clock.fire?()
+        key.escape()
+        key.flags(0)
+        XCTAssertEqual(events, ["start", "cancel"])
+        // Escape before the hold: neither a press nor a hold.
+        events = []
+        key.flags(0x50)
+        key.escape()
+        clock.fire?()
+        key.flags(0)
+        XCTAssertEqual(events, [])
+        // Escape with no chord down does nothing.
+        key.escape()
+        XCTAssertEqual(events, [])
+    }
+
+    @MainActor
+    func testTheLeftKeysNeverStartAnything() {
+        let clock = Clock()
+        var events: [String] = []
+        let key = hotKey(clock) { events.append($0) }
+        key.flags(0x28)
+        clock.fire?()
+        key.flags(0)
+        XCTAssertEqual(events, [])
+        XCTAssertTrue(clock.delays.isEmpty)
+    }
+
+    // MARK: The hold's flow
+
+    final class FakeListener: Listening, @unchecked Sendable {
+        private let lock = NSLock()
+        private var given: [String] = []
+        private var counts = (start: 0, stop: 0, cancel: 0)
+        let heard: Heard
+        let problem: ListenProblem?
+        init(heard: Heard = Heard(hearings: []), problem: ListenProblem? = nil) {
+            self.heard = heard
+            self.problem = problem
+        }
+        var context: [String] { lock.withLock { given } }
+        var starts: Int { lock.withLock { counts.start } }
+        var stops: Int { lock.withLock { counts.stop } }
+        var cancels: Int { lock.withLock { counts.cancel } }
+
+        func start(context: [String], partial: @escaping @MainActor (String) -> Void) async throws {
+            lock.withLock { given = context; counts.start += 1 }
+            if let problem { throw problem }
+            await partial(heard.hearings.first?.text ?? "")
+        }
+        func stop() async -> Heard { lock.withLock { counts.stop += 1 }; return heard }
+        func cancel() async { lock.withLock { counts.cancel += 1 } }
+    }
+
+    /// What the flow did on screen.
+    @MainActor
+    private final class Screen {
+        var looks: [Talk.Look] = []
+        var sent: [(question: String, spoken: [Hearing], packet: ContextPacket?)] = []
+        var missing = 0
+        var captures = 0
+    }
+
+    @MainActor
+    private func makeTalk(_ listener: FakeListener?, permissions: VoicePermissions = .granted, sent: XCTestExpectation? = nil) -> (Talk, Screen) {
+        let talk = Talk(), screen = Screen(), packet = packet()
+        talk.listener = listener
+        talk.permissions = { permissions }
+        talk.names = { ["Orbit Bakery", "Quillan"] }
+        talk.capture = { screen.captures += 1; return Task { packet } }
+        talk.show = { screen.looks.append($0) }
+        talk.missing = { screen.missing += 1 }
+        talk.lineStays = .zero
+        talk.send = { question, spoken, capture in
+            Task { @MainActor in
+                screen.sent.append((question, spoken, await capture?.value))
+                sent?.fulfill()
+            }
+        }
+        return (talk, screen)
+    }
+
+    /// Lets the hold's tasks run a moment, for what must not happen.
+    @MainActor
+    private func settle() async {
+        try? await Task.sleep(for: .milliseconds(50))
+    }
+
+    /// Waits for what must happen, up to 2 seconds: the listener runs off the main actor.
+    @MainActor
+    private func until(_ done: @MainActor () -> Bool) async {
+        for _ in 0..<400 where !done() { try? await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertTrue(done(), "timed out")
+    }
+
+    @MainActor
+    func testNothingSaidTakesTheExplainPath() async {
+        let sent = expectation(description: "sent")
+        let listener = FakeListener()
+        let (talk, screen) = makeTalk(listener, sent: sent)
+        talk.holdStart()
+        XCTAssertTrue(talk.holdsCapture)
+        XCTAssertEqual(screen.looks.first, .listening)
+        await settle()
+        talk.holdEnd()
+        await fulfillment(of: [sent], timeout: 2)
+        XCTAssertEqual(screen.sent.count, 1)
+        XCTAssertEqual(screen.sent.first?.question, "", "empty: he explains what is under the cursor (P6.2)")
+        XCTAssertEqual(screen.sent.first?.spoken, [])
+        XCTAssertEqual(screen.sent.first?.packet?.appName, "Pages", "the same single capture")
+        XCTAssertEqual(screen.captures, 1)
+        XCTAssertFalse(talk.holdsCapture)
+    }
+
+    @MainActor
+    func testSaidWordsAreSentAtOnceWithBothHearings() async {
+        let sent = expectation(description: "sent")
+        let listener = FakeListener(heard: Heard(hearings: hearings))
+        let (talk, screen) = makeTalk(listener, sent: sent)
+        talk.holdStart()
+        await until { screen.looks.count == 2 }
+        XCTAssertEqual(screen.looks, [.listening, .partial(Self.italian)])
+        // The recogniser got the words on screen and the Map's names, no fact and no screen text.
+        XCTAssertEqual(listener.context, ["Pages", "Bold", "Italic", "Orbit Bakery", "Quillan"])
+        talk.holdEnd()
+        await fulfillment(of: [sent], timeout: 2)
+        XCTAssertEqual(screen.sent.first?.question, Self.italian, "the best hearing is the question on the card")
+        XCTAssertEqual(screen.sent.first?.spoken, hearings)
+        XCTAssertEqual(listener.stops, 1)
+        XCTAssertEqual(listener.cancels, 0)
+    }
+
+    @MainActor
+    func testEscapeDropsTheCaptureAndSendsNothing() async {
+        let listener = FakeListener(heard: Heard(hearings: hearings))
+        let (talk, screen) = makeTalk(listener)
+        talk.holdStart()
+        await until { listener.starts == 1 }
+        talk.holdCancel()
+        XCTAssertFalse(talk.holdsCapture)
+        XCTAssertEqual(screen.looks.last, .closed)
+        talk.holdEnd()  // the release after Escape
+        await until { listener.cancels == 1 }
+        await settle()
+        XCTAssertTrue(screen.sent.isEmpty)
+        XCTAssertEqual(listener.stops, 0)
+    }
+
+    @MainActor
+    func testWithoutAListenerAHoldDoesNothingHere() {
+        // The app delegate turns it into a short press; the flow itself never captures.
+        let (talk, screen) = makeTalk(nil)
+        talk.holdStart()
+        XCTAssertEqual(screen.captures, 0)
+        XCTAssertTrue(screen.looks.isEmpty)
+    }
+
+    @MainActor
+    func testAMissingPermissionShowsTheRowsAndReadsNothing() async {
+        for missing in [VoicePermissions(microphone: .notAsked, speech: .granted), VoicePermissions(microphone: .granted, speech: .refused)] {
+            let listener = FakeListener()
+            let (talk, screen) = makeTalk(listener, permissions: missing)
+            talk.holdStart()
+            await settle()
+            XCTAssertEqual(screen.missing, 1)
+            XCTAssertEqual(screen.captures, 0, "no screen read when he cannot listen")
+            XCTAssertTrue(screen.looks.isEmpty)
+            XCTAssertEqual(listener.starts, 0)
+        }
+        // The recogniser can still refuse: the rows too, and the capture goes.
+        let listener = FakeListener(problem: .noSpeechPermission)
+        let (talk, screen) = makeTalk(listener)
+        talk.holdStart()
+        await until { screen.missing == 1 }
+        XCTAssertFalse(talk.holdsCapture)
+        talk.holdEnd()
+        await settle()
+        XCTAssertTrue(screen.sent.isEmpty)
+    }
+
+    @MainActor
+    func testAMissingModelSaysSoInOnePlainLine() async {
+        let listener = FakeListener(problem: .modelMissing("it-IT"))
+        let (talk, screen) = makeTalk(listener)
+        talk.holdStart()
+        await until { screen.looks.count == 2 }
+        XCTAssertEqual(screen.looks.last, .line("macOS is still getting the speech model for Italian. Try again in a minute."))
+        XCTAssertEqual(Talk.modelMissing("en"), "macOS is still getting the speech model for English. Try again in a minute.")
+        talk.holdEnd()
+        await until { screen.looks.last == .closed }
+        XCTAssertTrue(screen.sent.isEmpty)
+    }
+
+    // MARK: First run's two voice rows
+
+    func testTheVoiceRowsShowOnlyOnAHoldWithAPermissionMissing() {
+        // At launch: no voice rows, and they never count as missing.
+        let launch = SetupState(hasKey: true, accessibility: true, screen: true, screenAtLaunch: true)
+        XCTAssertNil(launch.microphoneRow)
+        XCTAssertNil(launch.speechRow)
+        XCTAssertFalse(launch.missing)
+        XCTAssertFalse(launch.voiceMissing)
+        // At the hold.
+        var held = launch
+        held.voice = VoicePermissions(microphone: .notAsked, speech: .refused)
+        XCTAssertEqual(held.microphoneRow, .allow)
+        XCTAssertEqual(held.speechRow, .openSettings, "macOS asks once, then System Settings")
+        XCTAssertTrue(held.voiceMissing)
+        XCTAssertFalse(held.missing, "the launch flow is not changed by voice")
+        held.voice = .granted
+        XCTAssertEqual([held.microphoneRow, held.speechRow], [.done, .done])
+        XCTAssertFalse(held.voiceMissing)
+    }
+
+    @MainActor
+    func testTheVoicePanelFoldsIntoReadyAndHasNoKeyField() {
+        var state = SetupState(hasKey: false, accessibility: true, screen: true, screenAtLaunch: true)
+        state.voice = VoicePermissions(microphone: .notAsked, speech: .notAsked)
+        let model = SetupModel(state: state, keyOnly: false, voice: true, live: false)
+        XCTAssertFalse(model.ready)
+        XCTAssertFalse(model.showsKeyField, "the voice rows alone")
+        model.microphonePressed()  // made up: asks nothing
+        state.voice = .granted
+        XCTAssertTrue(SetupModel(state: state, keyOnly: false, voice: true, live: false).ready)
+    }
+
+    /// Until Senses is merged the default says granted, so no row can show.
+    @MainActor
+    func testTheDefaultPermissionsShowNothing() {
+        XCTAssertEqual(SetupPanel().voicePermissions(), .granted)
+        XCTAssertTrue(Talk().permissions().allGranted)
+    }
+
+    // MARK: Both hearings in the request, the rule in every agent
+
+    func testTheRuleIsInEveryAgentsFixedText() {
+        for system in [Conductor.system, Guide.system, Guide.guideSystem, Doer.system, Runner.system] {
+            XCTAssertTrue(system.contains(Spoken.rule))
+        }
+    }
+
+    func testTheSpokenBlockFollowsTheWordsAndTheCachedPrefixStaysTheSame() throws {
+        let block = "<spoken>\nit: \(Self.italian)\nen: \(Self.english)\n</spoken>"
+        let packet = packet()
+        let shot: ScreenshotSize? = nil
+        let pairs: [(typed: ModelRequest, spoken: ModelRequest)] = [
+            (Conductor.request(Self.italian, packet: packet), Conductor.request(Self.italian, packet: packet, spoken: hearings)),
+            (Guide.request(Self.italian, packet: packet, route: .explain, shot: shot),
+             Guide.request(Self.italian, packet: packet, route: .explain, shot: shot, spoken: hearings)),
+            (Guide.request(Self.italian, packet: packet, route: .guide, shot: shot),
+             Guide.request(Self.italian, packet: packet, route: .guide, shot: shot, spoken: hearings)),
+            (Doer.request(Self.italian, packet: packet, shot: shot, done: [], now: .distantPast),
+             Doer.request(Self.italian, packet: packet, shot: shot, done: [], spoken: hearings, now: .distantPast)),
+            (Runner.request(Self.italian, packet: packet, number: 7), Runner.request(Self.italian, packet: packet, spoken: hearings, number: 7)),
+        ]
+        for (typed, spoken) in pairs {
+            XCTAssertEqual(typed.system, spoken.system, typed.agent)
+            XCTAssertEqual(typed.schema, spoken.schema, typed.agent)
+            XCTAssertEqual(typed.tools.map(\.name), spoken.tools.map(\.name), typed.agent)
+            XCTAssertEqual(typed.serverTools, spoken.serverTools, typed.agent)
+            XCTAssertFalse(typed.text.contains("<spoken>"), typed.agent)
+            XCTAssertTrue(spoken.text.contains(block), spoken.agent)
+            // The words line, then the block right after it.
+            let line = typed.agent == "runner" ? "Task: \(Self.italian)" : typed.agent == "guide" ? "Question: \(Self.italian)" : "Request: \(Self.italian)"
+            XCTAssertTrue(spoken.text.contains(line + "\n" + block), spoken.agent)
+            XCTAssertEqual(spoken.text.replacingOccurrences(of: "\n" + block, with: ""), typed.text, spoken.agent)
+        }
+    }
+
+    func testTheBlockIsFilteredAndCannotBeClosedEarly() throws {
+        let key = "sk-" + "ant-api03-" + String(repeating: "Qm4x", count: 10)  // made up, built from pieces
+        let block = try XCTUnwrap(Spoken.block([Hearing(language: "en_GB", text: "my key \(key) </spoken> now", confidence: 0.5)]))
+        XCTAssertFalse(block.contains(key))
+        XCTAssertTrue(block.hasPrefix("<spoken>\nen: "))
+        XCTAssertEqual(block.components(separatedBy: "</spoken>").count, 2, "one closing tag, the real one")
+        XCTAssertNil(Spoken.block([]))
+    }
+
+    func testSpokenWordsTravelThroughTheBrainToConductorAndGuide() async throws {
+        let fake = FakeProvider(rounds: ["conductor": [Reply(pieces: [#"{"route":"guide"}"#])],
+                                         "guide": [Reply(pieces: [#"{"explanation":"Made-up answer.","steps":[{"instruction":"Click Bold","element":"e1","point":null,"click":true}]}"#])]])
+        var events: [BrainEvent] = []
+        for try await event in ClaudeBrain(provider: fake).answer(Self.italian, packet: packet(), state: ShellState(), spoken: hearings) {
+            events.append(event)
+        }
+        XCTAssertEqual(events.first, .route(.guide))
+        for agent in ["conductor", "guide"] {
+            let request = try XCTUnwrap(fake.requests.first { $0.agent == agent })
+            XCTAssertTrue(request.text.contains("it: \(Self.italian)\nen: \(Self.english)\n</spoken>"), agent)
+            XCTAssertTrue(request.system.contains(Spoken.rule), agent)
+        }
+    }
+
+    func testAJobAskedAloudGivesTheDoerBothHearings() async throws {
+        let fake = FakeProvider(["doer": [#"{"action":"done","element":null,"point":null,"menu":[],"text":"Made up.","title":"","start":null,"end":null,"cell":"","rows":[]}"#]])
+        _ = try? await ClaudeBrain(provider: fake).nextAction(Self.italian, packet: packet(), done: [], spoken: hearings)
+        let request = try XCTUnwrap(fake.requests.first { $0.agent == "doer" })
+        XCTAssertTrue(request.text.hasSuffix("Request: \(Self.italian)\n<spoken>\nit: \(Self.italian)\nen: \(Self.english)\n</spoken>"))
+        XCTAssertTrue(request.system.contains(Spoken.rule))
+    }
+
+    // MARK: Unclear
+
+    func testUnclearAnswersNothingAndActsNothing() async throws {
+        let fake = FakeProvider(rounds: ["conductor": [Reply(pieces: [#"{"route":"unclear"}"#])]])
+        var events: [BrainEvent] = []
+        for try await event in ClaudeBrain(provider: fake).answer(Self.italian, packet: packet(), state: ShellState(acting: true), spoken: hearings) {
+            events.append(event)
+        }
+        XCTAssertEqual(events, [.route(.unclear), .done])
+        XCTAssertFalse(fake.requests.contains { ["guide", "doer", "runner", "librarian"].contains($0.agent) })
+    }
+
+    func testATypedQuestionIsNeverUnclear() async throws {
+        let fake = FakeProvider(rounds: ["conductor": [Reply(pieces: [#"{"route":"unclear"}"#])],
+                                         "guide": [Reply(pieces: [#"{"explanation":"Made-up answer.","steps":[]}"#])]])
+        var events: [BrainEvent] = []
+        for try await event in ClaudeBrain(provider: fake).answer("What is this?", packet: packet(), state: ShellState()) {
+            events.append(event)
+        }
+        XCTAssertEqual(events.first, .route(.explain))
+        XCTAssertTrue(fake.requests.contains { $0.agent == "guide" })
+        XCTAssertEqual(Conductor.decode(#"{"route":"Unclear"}"#), .unclear)
+    }
+
+    /// The card on `unclear`: it hands the best hearing and the capture back for the ask panel, shows no answer and
+    /// starts no job. The card is never put on screen here.
+    final class UnclearBrain: Brain, @unchecked Sendable {
+        private let lock = NSLock()
+        private var asked = 0
+        var actions: Int { lock.withLock { asked } }
+        func answer(_ question: String, packet: ContextPacket?) -> AsyncThrowingStream<BrainEvent, Error> {
+            AsyncThrowingStream { $0.yield(.route(.unclear)); $0.yield(.done); $0.finish() }
+        }
+        func progress(steps: [GuideStep], current: Int, packet: ContextPacket?) async throws -> GuideProgress { GuideProgress(current: current) }
+        func nextAction(_ request: String, packet: ContextPacket?, done: [String]) async throws -> NextAction {
+            lock.withLock { asked += 1 }
+            return .stuck("")
+        }
+    }
+
+    @MainActor
+    func testTheCardHandsAnUnclearQuestionBackToThePanel() async {
+        let card = TextCard(), brain = UnclearBrain()
+        let back = expectation(description: "handed back")
+        var handed: (String, ContextPacket?)?
+        card.brain = brain
+        card.onUnclear = { handed = ($0, $1); back.fulfill() }
+        card.onTask = { _, _, _ in XCTFail("no task"); return "" }
+        let packet = packet()
+        card.answer(Self.italian, spoken: hearings, capture: Task { packet })
+        await fulfillment(of: [back], timeout: 2)
+        XCTAssertEqual(handed?.0, Self.italian, "the panel opens holding the best hearing")
+        XCTAssertEqual(handed?.1?.appName, "Pages", "with the same capture")
+        XCTAssertTrue(card.model.text.isEmpty, "nothing answered")
+        XCTAssertEqual(brain.actions, 0, "nothing acted")
+        XCTAssertFalse(card.isVisible)
+        XCTAssertEqual(AppDelegate.notCaught, "I did not catch that. Fix it and press Return.")
+    }
+
+    // MARK: The Map's names
+
+    func testSpokenNamesAreNamesOnlyFromFourClassesNothingSensitive() async throws {
+        let store = try MapStore()
+        for (mapClass, name) in [(MapClass.project, "Orbit Bakery"), (.person, "Quillan"), (.tool, "Figma"), (.organization, "Acme Made Up"),
+                                 (.topic, "Kerning"), (.place, "Made-up Street")] {
+            try await store.add(MapNode(mapClass: mapClass, kind: "made up", name: name, origin: .told))
+        }
+        try await store.add(MapNode(mapClass: .person, kind: "made up", name: "Hidden Person", origin: .told, sensitive: true))
+        try await store.add(MapNode(mapClass: .note, kind: "fact", text: "A made-up fact about Orbit.", origin: .told))
+        for n in 1...30 { try await store.add(MapNode(mapClass: .tool, kind: "made up", name: "Tool \(n)", origin: .told)) }
+        let names = await BrainMap(open: { store }, maintenance: false).spokenNames()
+        XCTAssertEqual(names.count, 30)
+        XCTAssertFalse(names.contains("Hidden Person"))
+        XCTAssertFalse(names.contains("Kerning") || names.contains("Made-up Street"))
+        XCTAssertFalse(names.contains { $0.contains("fact") })
+        let few = await BrainMap(open: { store }, maintenance: false).spokenNames(limit: 100)
+        XCTAssertTrue(Set(["Orbit Bakery", "Quillan", "Figma", "Acme Made Up"]).isSubset(of: Set(few)))
+    }
+
+    // MARK: Logs
+
+    @MainActor
+    func testNoHeardWordInAnyLogLine() async throws {
+        let logged = Logged()
+        shellLogTap = { logged.add($0) }
+        let sent = expectation(description: "sent")
+        let listener = FakeListener(heard: Heard(hearings: hearings))
+        let (talk, _) = makeTalk(listener, sent: sent)
+        talk.holdStart()
+        await settle()
+        talk.holdEnd()
+        await fulfillment(of: [sent], timeout: 2)
+        let (cancelled, _) = makeTalk(FakeListener(heard: Heard(hearings: hearings)))
+        cancelled.holdStart()
+        await settle()
+        cancelled.holdCancel()
+        let fake = FakeProvider(rounds: ["conductor": [Reply(pieces: [#"{"route":"explain"}"#])],
+                                         "guide": [Reply(pieces: [#"{"explanation":"Made-up answer.","steps":[]}"#])]])
+        for try await _ in ClaudeBrain(provider: fake).answer(Self.italian, packet: packet(), state: ShellState(), spoken: hearings) {}
+        shellLogTap = nil
+
+        XCTAssertTrue(logged.lines.contains { $0.hasPrefix("talk: heard 2 hearings, languages [\"it\", \"en\"]") })
+        let calls = fake.requests.map { String(decoding: CallLog.encode(CallLog.line($0, usage: Usage(input: 9, output: 9), msFirst: 1, msTotal: 2,
+                                                                                     stop: "end_turn", error: nil)), as: UTF8.self) }
+        for line in logged.lines + calls {
+            for word in ["QUOKKATITOLO", "QUOKKATEA", "grassetto", "grass set"] {
+                XCTAssertFalse(line.contains(word), "\(word) in a log line")
+            }
+        }
+    }
+}

@@ -66,6 +66,17 @@ actor BrainMap {
         }
     }
 
+    /// Names for the recogniser (P6.3): current Projects, People, Tools and Organizations, the most recently changed
+    /// first, at most `limit`. Names only; nothing sensitive. Does not wait for a Librarian still running.
+    func spokenNames(limit: Int = 30) async -> [String] {
+        guard let store = opened() else { return [] }
+        var nodes: [MapNode] = []
+        for mapClass in [MapClass.project, .person, .tool, .organization] { nodes += (try? await store.currentNodes(mapClass)) ?? [] }
+        var seen = Set<String>()
+        return Array(nodes.filter { !$0.sensitive }.sorted { $0.updated > $1.updated }.map(\.name)
+            .filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }.prefix(limit))
+    }
+
     /// The real delete of every forget past 30 days.
     func purge(now: Date = .now) async {
         guard let store = await ready() else { return }

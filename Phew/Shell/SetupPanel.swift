@@ -16,6 +16,9 @@ struct SetupState: Equatable {
     /// "Open System Settings" was pressed for Screen Recording in this run. The system may go on saying "not
     /// granted" until Phew reopens, so the row offers the reopen rather than sending the user to Settings again.
     var screenSentToSettings = false
+    /// Microphone and Speech Recognition (P6.1): nil until the user holds the shortcut to talk with one of them
+    /// missing. Voice is optional, so these rows never show at launch.
+    var voice: VoicePermissions?
 
     /// The one control of a row. `done`: the row shows its tick and no control.
     enum Control: Equatable { case done, keyField, allow, openSettings, reopen }
@@ -30,6 +33,20 @@ struct SetupState: Equatable {
 
     /// First run shows at launch only when this is true; once false, the rows fold into "Phew is ready".
     var missing: Bool { [key, accessibilityRow, screenRow].contains { $0 != .done } }
+
+    /// The two voice rows; nil while they are not shown. macOS asks once, then System Settings.
+    var microphoneRow: Control? { voice.map { Self.row($0.microphone) } }
+    var speechRow: Control? { voice.map { Self.row($0.speech) } }
+    /// The voice rows show and one is not done: once false, they fold into "Phew can hear you".
+    var voiceMissing: Bool { [microphoneRow, speechRow].contains { $0 != nil && $0 != .done } }
+
+    private static func row(_ state: VoicePermissions.State) -> Control {
+        switch state {
+        case .granted: .done
+        case .notAsked: .allow
+        case .refused: .openSettings
+        }
+    }
 }
 
 extension KeyStore {
@@ -62,6 +79,11 @@ final class SetupPanel {
 
     var isShown: Bool { panel?.isVisible ?? false }
     private(set) var model: SetupModel?
+    /// Microphone and Speech Recognition now, and their system prompts (P6.1). Senses gives the real ones; until
+    /// then both report granted, so the voice rows never show.
+    var voicePermissions: () -> VoicePermissions = { .granted }
+    var askMicrophone: () -> Void = {}
+    var askSpeech: () -> Void = {}
 
     /// The system's values now. No prompt: these only look.
     func read() -> SetupState {
@@ -85,10 +107,20 @@ final class SetupPanel {
         show(SetupModel(state: read(), keyOnly: true, rejected: rejected, live: true))
     }
 
+    /// A hold to talk found a voice permission missing: the two voice rows alone.
+    func showVoice() {
+        var state = read()
+        state.voice = voicePermissions()
+        show(SetupModel(state: state, keyOnly: false, voice: true, live: true))
+    }
+
     /// `live` false: made-up values for the debug check; nothing is read, asked or written.
     func show(_ model: SetupModel) {
         dismiss()
         model.onClose = { [weak self] in self?.dismiss() }
+        model.readVoice = { [weak self] in self?.voicePermissions() ?? .granted }
+        model.askMicrophone = { [weak self] in self?.askMicrophone() }
+        model.askSpeech = { [weak self] in self?.askSpeech() }
         model.onAccessibilityGranted = { [weak self] in self?.onAccessibilityGranted() }
         let panel = EditPanel(contentRect: .zero, styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.title = model.keyOnly ? "API Key" : ""
@@ -111,7 +143,7 @@ final class SetupPanel {
         }
         self.panel = panel
         self.model = model
-        shellLog("setup shown: key only \(model.keyOnly), missing \(model.state.missing), rows \([model.state.key, model.state.accessibilityRow, model.state.screenRow]), visible \(panel.isVisible), nonactivating \(panel.styleMask.contains(.nonactivatingPanel)), key \(panel.isKeyWindow), field focused \(panel.firstResponder is NSTextView), app active \(NSRunningApplication.current.isActive), phew front \(phewIsFront)")
+        shellLog("setup shown: key only \(model.keyOnly), voice \(model.voice), missing \(model.state.missing), rows \([model.state.key, model.state.accessibilityRow, model.state.screenRow]), visible \(panel.isVisible), nonactivating \(panel.styleMask.contains(.nonactivatingPanel)), key \(panel.isKeyWindow), field focused \(panel.firstResponder is NSTextView), app active \(NSRunningApplication.current.isActive), phew front \(phewIsFront)")
     }
 
     func dismiss() {
@@ -136,19 +168,25 @@ final class SetupModel: ObservableObject {
     /// The why-line of the key row is replaced by this sentence.
     @Published var keyProblem: String?
     let keyOnly: Bool
+    /// The two voice rows alone (P6.1).
+    let voice: Bool
     let live: Bool
     var onClose: () -> Void = {}
     var onAccessibilityGranted: () -> Void = {}
+    var readVoice: () -> VoicePermissions = { .granted }
+    var askMicrophone: () -> Void = {}
+    var askSpeech: () -> Void = {}
 
-    init(state: SetupState, keyOnly: Bool, rejected: Bool = false, live: Bool) {
+    init(state: SetupState, keyOnly: Bool, voice: Bool = false, rejected: Bool = false, live: Bool) {
         self.state = state
         self.keyOnly = keyOnly
+        self.voice = voice
         self.live = live
         keyProblem = rejected ? "Claude did not accept the saved API key. Paste a new one." : nil
     }
 
-    var showsKeyField: Bool { keyOnly || state.key == .keyField }
-    var ready: Bool { !keyOnly && !state.missing }
+    var showsKeyField: Bool { !voice && (keyOnly || state.key == .keyField) }
+    var ready: Bool { voice ? !state.voiceMissing : !keyOnly && !state.missing }
 
     /// Every second while open: Accessibility and Screen Recording as the system says now.
     func recheck() {
@@ -157,6 +195,21 @@ final class SetupModel: ObservableObject {
         if trusted && !state.accessibility { onAccessibilityGranted() }
         state.accessibility = trusted
         state.screen = CGPreflightScreenCaptureAccess()
+        if voice { state.voice = readVoice() }
+    }
+
+    func microphonePressed() {
+        guard live else { return }
+        if state.microphoneRow == .openSettings { return openSettings("Privacy_Microphone") }
+        askMicrophone()
+        shellLog("setup: microphone prompt asked")
+    }
+
+    func speechPressed() {
+        guard live else { return }
+        if state.speechRow == .openSettings { return openSettings("Privacy_SpeechRecognition") }
+        askSpeech()
+        shellLog("setup: speech recognition prompt asked")
     }
 
     func keySaved() {
@@ -219,7 +272,9 @@ struct SetupView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Design.Space.s12) {
-            if model.ready {
+            if model.voice {
+                if model.ready { voiceReady } else { voiceRows }
+            } else if model.ready {
                 ready
             } else {
                 if !model.keyOnly {
@@ -250,6 +305,47 @@ struct SetupView: View {
     }
 
     private var divider: some View { Design.Ink.hairline.frame(height: Design.Size.hairline) }
+
+    /// P6.1: the two rows talking needs, shown at the first hold with one missing.
+    private var voiceRows: some View {
+        VStack(alignment: .leading, spacing: Design.Space.s12) {
+            VStack(alignment: .leading, spacing: Design.Space.s4) {
+                Text("Talk to Phew").font(Design.Text.title)
+                Text("Two things, once.").font(Design.Text.small).foregroundStyle(Design.Ink.secondary)
+            }
+            .padding(.bottom, Design.Space.s4)
+            SetupRow(control: model.state.microphoneRow ?? .done, title: "Microphone",
+                     why: "So he can hear you while you hold the shortcut.", action: model.microphonePressed)
+            divider
+            SetupRow(control: model.state.speechRow ?? .done, title: "Speech Recognition",
+                     why: "So your words become text, on this Mac.", action: model.speechPressed)
+        }
+    }
+
+    private var voiceReady: some View {
+        VStack(alignment: .leading, spacing: Design.Space.s12) {
+            HStack(spacing: Design.Space.s8) {
+                TickMark()
+                Text("Phew can hear you").font(Design.Text.title)
+            }
+            VStack(alignment: .leading, spacing: Design.Space.s4) {
+                HStack(spacing: Design.Space.s4) {
+                    Text("Hold")
+                    Keycap(key: "right ⌥")
+                    Text("and")
+                    Keycap(key: "right ⌘")
+                    Text("and speak.")
+                }
+                Text("Let go and your words are sent.")
+            }
+            .font(Design.Text.body)
+            .accessibilityElement(children: .combine)
+            HStack {
+                Spacer()
+                Button("Done") { model.onClose() }.buttonStyle(MainButton())
+            }
+        }
+    }
 
     /// The rows folded into one last state: how to call him. The panel waits for the user to close it.
     private var ready: some View {

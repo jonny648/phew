@@ -156,14 +156,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var capture: Task<ContextPacket?, Never>?
     /// The ask panel's top-left corner: the card opens there, in its place.
     var anchor = NSPoint.zero
-    private lazy var hotKey = HotKey { [unowned self] in shortcut() }
+    /// The recogniser (P6.1), Senses' `AppleListener` once merged. Nil: a hold behaves like a short press.
+    var listener: (any Listening)?
+    /// Hold the shortcut to talk (P6).
+    lazy var talk = makeTalk()
+    private lazy var hotKey = makeHotKey()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         ClaudeExportReader.sweep()
         hotKey.install()
         // Re-install once Accessibility is granted, so the shortcut works without a relaunch.
         setup.onAccessibilityGranted = { [unowned self] in hotKey.install() }
-        card.onTask = { [unowned self] in tasks.start($0, packet: $1) }
+        card.onTask = { [unowned self] in tasks.start($0, packet: $1, spoken: $2) }
+        card.onUnclear = { [unowned self] in unclear($0, packet: $1) }
         importUndo.watchMenus()
         #if DEBUG
         runDebugChecks()
@@ -302,13 +307,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         anchor = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)  // 15.5 A: the card takes the panel's place
     }
 
-    /// An empty question is fine: the Brain then explains what is under the cursor.
-    func ask(_ question: String) {
-        card.show(at: anchor, question: question, capture: capture, brain: brain) { [unowned self] error in
+    /// An empty question is fine: the Brain then explains what is under the cursor. `spoken`: every hearing of a
+    /// question said aloud, best first; empty when typed.
+    func ask(_ question: String, spoken: [Hearing] = []) {
+        card.show(at: anchor, question: question, spoken: spoken, capture: capture, brain: brain) { [unowned self] error in
             setup.showKey(rejected: error == .badKey)  // the student asks again himself once the key is saved
         }
         capture = nil
     }
+
+    // MARK: Hold to talk (P6)
+
+    private func makeHotKey() -> HotKey {
+        let key = HotKey { [unowned self] in shortcut() }
+        key.holdStart = { [unowned self] in holdStart() }
+        key.holdEnd = { [unowned self] in talk.holdEnd() }
+        key.holdCancel = { [unowned self] in talk.holdCancel() }
+        return key
+    }
+
+    private func makeTalk() -> Talk {
+        let talk = Talk()
+        talk.names = { [brain] in await brain.spokenNames() }
+        talk.capture = { [unowned self] in
+            card.dismiss()  // off screen first, so the capture reads the user's app and not the card
+            return Senses.capture()  // before the panel: it opens under the cursor
+        }
+        talk.show = { [unowned self] look in
+            switch look {
+            case .listening: panel.listen()
+            case .partial(let words): panel.heard(words)
+            case .line(let line): panel.listenProblem(line)
+            case .closed: panel.endListening()
+            }
+        }
+        talk.send = { [unowned self] question, spoken, capture in
+            anchor = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)  // 15.5 A: the card takes the panel's place
+            panel.endListening(fade: false)
+            self.capture = capture
+            ask(question, spoken: spoken)
+        }
+        talk.missing = { [unowned self] in setup.showVoice() }
+        talk.permissions = { [unowned self] in setup.voicePermissions() }
+        return talk
+    }
+
+    /// Held long enough to talk. Without a listener, or while the panel or a conversation is open, the shortcut's
+    /// press instead.
+    private func holdStart() {
+        talk.listener = listener
+        guard listener != nil, !panel.isOpen, !(card.isVisible && card.model.open) else { return shortcut() }
+        shellLog("shortcut held, phew front \(phewIsFront)")
+        talk.holdStart()
+    }
+
+    /// P6.3: neither hearing made sense. The ask panel in its typing state where the card was, holding the best
+    /// hearing and one grey line; the turn's capture goes with it, dropped if the panel closes without a question.
+    private func unclear(_ heard: String, packet: ContextPacket?) {
+        shellLog("talk: not caught, panel opened to fix, \(heard.count) characters")
+        capture = Task { packet }
+        panel.open(text: heard, line: Self.notCaught, at: anchor) { [unowned self] question in
+            if let question { ask(question) } else { capture = nil }
+        }
+    }
+
+    static let notCaught = "I did not catch that. Fix it and press Return."
 }
 
 // MARK: - Debug evidence. Release builds log nothing.

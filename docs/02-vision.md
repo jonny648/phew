@@ -67,7 +67,7 @@ Underneath, never the user's job: context understanding, the conversation card a
 
 Later, not in the MVP: lecture listening, connections to other tools, the dashboard, business software training.
 
-This order differs from `CLAUDE.md`, which still says "two visible features". The proposed new wording is given to you with this rewrite. `CLAUDE.md` is not changed until you approve.
+`CLAUDE.md` now carries this order: its rule "Four things you see" replaced "two visible features".
 
 ## 2.7 What Phew is not
 

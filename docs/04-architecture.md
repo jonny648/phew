@@ -62,7 +62,7 @@ WEBSITE
 | Secrets filter | Removes keys, card numbers, password fields | Local rules | Yes |
 | Local store | The Map: things, links and past questions. The last turns of a conversation stay in memory only | SQLite | Yes |
 | Lecture capture | Microphone and system audio | AVFoundation, ScreenCaptureKit audio | Later |
-| Hands | Press, type, scroll, scripts | Accessibility actions, AppleScript, Shortcuts | Later |
+| Hands | Press, set a value, pick a menu item, a single click, scripts | Accessibility actions, AppleScript, the system's calendar and reminders access (`13-hand.md`) | Yes, phase PH |
 | Updates | Signed, notarised, automatic | Developer ID, Sparkle | Later |
 
 Positions from the Accessibility API let Phew point at the exact button. When an app exposes nothing, the main model returns coordinates from the screenshot.
@@ -78,7 +78,7 @@ Positions from the Accessibility API let Phew point at the exact button. When an
 | Librarian | Writes what was learned to the Map after each answer. Reading before an answer is done by Phew's own code, with no model call | Small | Yes |
 | Runner | Researches a task alone: reads the screen once, the Map, the project's Claude Code files when needed, and the web, in a loop with limits, then reports. The Runner itself has no tool that writes. When the report is ready, Phew's own code saves it as a new PDF in the folder you chose or in Downloads, with a Markdown copy in Phew's own storage | Main, with web search and web fetch | Yes |
 | Scribe | Lecture transcript to key points | Main | Later |
-| Hand | Actions in other apps | Main | Later |
+| Hand | Actions in other apps. Not a new agent: the Guide plans the steps, the Follower checks them, and Phew's own acting function carries each one out (`13-hand.md`) | No model of its own | Yes, phase PH |
 | Keeper | Nightly housekeeping of the Map | Small | Later |
 
 Model provider: Claude API. Small means the Haiku class, main means the Sonnet class. The coding agent must read the current model names from the API documentation instead of guessing them.
@@ -86,7 +86,7 @@ Model provider: Claude API. Small means the Haiku class, main means the Sonnet c
 Flow of one request:
 
 1. You press the shortcut or hold the key and say "I don't get this".
-2. Senses build the raw packet. Observer cleans it.
+2. Senses build the raw packet. The Observer cleans it only when the screen text is over 4,000 characters; otherwise it is skipped and the packet goes on as it is. Decided on 15 November, for speed.
 3. Phew's own code adds what the Map knows about this project and topic, and the last turns of the conversation as text. It is a text search, with no model call (see `05-map.md`). The Guide can also search the Map itself when it needs more.
 4. Conductor sends it to Guide.
 5. Guide streams an explanation and steps, each tied to an element on screen.
@@ -98,7 +98,7 @@ Following a guide faster (phase PS). The Guide marks each step that needs only a
 
 Flow of one task: you type or say a task. The Conductor chooses the task route. Before the first task the consent screen is shown (`03-experience.md` 3.5). The Runner gets your task and the one screen read made when you called him. It can search the Map with the same search tool the Guide has, and read the project's `CLAUDE.md` and memory files with `read_project_memory` when the task needs them (see `05-map.md` 5.10). It then searches and reads the web until it can answer or reaches a limit. Up to 3 tasks run at once (first proposal), each with its own limits and its own Stop. A mark in the menu bar shows how many are working. When a task ends, Phew's own code saves the report at once: a PDF in the folder you chose, or in Downloads, and a Markdown copy in Phew's storage. The report waits in the menu until you open it on the card. The screen is not read again during the task. The one read stays in memory until the task ends or is stopped, then it is dropped.
 
-How the Runner's rules are kept. The rules are in `03-experience.md` 3.6. Read the web search and web fetch pages of the Claude API documentation again before building.
+How the Runner's rules are kept. The rules are in `03-experience.md` 3.6. The table shows the Runner as built for research: it writes nothing itself. Since 15 November an agent may also act in the background, only through the apps' own scripting and the system's calendar and reminders access (`13-hand.md` 13.4 and guard 12). That is added in phase PA and goes through Phew's one acting function. Read the web search and web fetch pages of the Claude API documentation again before building.
 
 | Rule | Kept by |
 |---|---|

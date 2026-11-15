@@ -49,7 +49,7 @@ Rules to build in from the first day:
 2. A limit on searches, fetches and tokens per task (W15, W16).
 3. The agent may not open a web address that came from the screen, the memory or a file. The fetch tool does not do this by itself: by default it opens any address found in the user's message or in a tool result (W16).
 4. The secrets filter runs before every call, as today.
-5. The research agent has no tool that writes or changes anything. This follows the advice to give an agent the least power it needs (W26).
+5. The research agent has no tool that writes or changes anything. This follows the advice to give an agent the least power it needs (W26). Changed on 15 November: an agent may also act in the background, in a narrow way (`13-hand.md` 13.4).
 
 **What was decided.** On 13 November you approved the rules for agents; they are hard rules in `CLAUDE.md`. How each one is kept is written in `03-experience.md` 3.6 and `04-architecture.md` 4.4. Where this part and those two differ, those two count. Three points go further than the research:
 
@@ -87,7 +87,7 @@ Days are the research agent's rough estimate for one builder with AI help. They 
 
 Finding: B1 is the only step beyond reading that is both safe and small. C also breaks the rule that Phew never takes focus.
 
-**What was decided.** On 13 November you put levels A and B1 in the MVP, as phase PA. B2 and C come after the MVP.
+**What was decided.** On 13 November you put levels A and B1 in the MVP, as phase PA. B2 and C come after the MVP. Changed on 15 November: level C, acting in apps, moved into the MVP as phase PH (`13-hand.md`). B2 stays after the MVP.
 
 ### Copy, avoid
 

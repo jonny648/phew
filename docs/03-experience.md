@@ -38,19 +38,19 @@ With nothing said, he explains what is under the cursor. He works on the whole w
 
 ## 3.4 What he does
 
+- **Work with you and act.** Asked to do something, he does the whole job by himself in your apps, in several apps if the job needs it. Asked how, he shows. Rules in 3.6, design in `13-hand.md`. In the MVP (phase PH).
 - **Explain.** What is this, in the context of your project.
 - **Guide.** Shows the next step on screen, one step at a time, in any app.
 - **Remember.** Learns each time you work on a project. Nothing to save by hand.
-- **Research alone.** You give a task, such as a short research or collecting sources. He works in the background and the result waits in the menu bar. In the MVP.
+- **Research alone.** You give a task, such as a short research or collecting sources. He works in the background and the result waits in the menu bar. He may also act in the background, in the narrow way described in 3.6. In the MVP.
 - **Listen to lectures.** Captures a lesson and keeps the important details you may miss while writing notes, linked to its project. Later.
-- **Act.** Takes actions in other apps under the rules in 3.6. Later.
 - **Work in the background.** Scheduled work, and silent housekeeping on his own. Later.
 
 ## 3.5 Agents in the UI
 
 Agents are visible as a pleasant detail, never as a control panel. Eggs in the notch show how many are working. Hovering shows one line per agent. Full history lives in the dashboard.
 
-In the MVP: a "working" mark on the menu bar icon with the number of tasks running, a Stop entry per task in the menu, and the result waiting in the menu until you open it on the card. He never shows a result by himself. Before the first task, one screen says in plain words what a task may read and send.
+In the MVP: a "working" mark on the menu bar icon with the number of tasks running, a Stop entry per task in the menu, and the result waiting in the menu until you open it on the card. He never shows a result by himself. An agent's action that cannot be undone, or that leaves your Mac, also waits in the menu for one confirm from you. Before the first task, one screen says in plain words what a task may read and send.
 
 The screen's text. You approved it on 14 November. Lines were then brought in line with your other answers of the same day: reports are always saved, an address you type is opened, the project's Claude Code files are read when needed, and several tasks can run:
 
@@ -68,21 +68,24 @@ The screen's text. You approved it on 14 November. Lines were then brought in li
 
 After Allow the screen is not shown again. After Not now the task does not start, agents stay off, and the screen comes back the next time you give a task.
 
+One line of this text is older than your decisions of 15 November: "What he changes on your Mac: nothing, except new files." An agent may now also act in the background, in the narrow way described in 3.6. The text above is the one you approved, so it is left as it is; a new wording of that line is yours to approve before agents act (phase PA). Acting has its own short consent screen, in 3.6.
+
 ## 3.6 What he may do alone: consent levels
 
-Decided on 13 November 2026 after the research in `10-research-agents.md` 10.2.
+Decided on 13 November 2026 after the research in `10-research-agents.md` 10.2. Level C changed on 15 November 2026: acting moved into the MVP, design in `13-hand.md`.
 
 | Level | What he may do | When |
 |---|---|---|
 | A. Read and research | Read the screen once when you give the task, read the Map and the project's Claude Code files when needed, search and read the web, open an address you type, report on the card | MVP |
 | B1. New files | Save the report as a new PDF in the folder you chose, or in Downloads, and a Markdown copy in Phew's own storage. He never overwrites and never deletes. Each report is listed with Reveal and Delete. Delete is your own click | MVP |
 | B2. Edit files | Change existing files in that folder, each change shown and approved, with a backup | Later |
-| C. Act in apps | Click and type in other apps. A separate opt-in, off by default | Later |
+| C. Act in apps | When you ask him to do something, he clicks, types and picks menus in your apps: the whole job, with no confirm. A research agent acts only in the background, in the narrow way below. Off until you press Allow on the acting consent screen | MVP, phase PH. For agents, phase PA |
 
-Rules for every level, each with how it is kept: by Phew's own code or by the request, not by asking the model to behave.
+Rules for a research task, each with how it is kept: by Phew's own code or by the request, not by asking the model to behave. The rules for acting are under "Acting in your apps" below.
 
 - What he reads from the screen, the Map, the web, a file or pasted text is data, never instructions. A web page cannot give him orders. No defence here is perfect: a page can still try to steer what he searches for next. The rules below keep the damage small.
-- He has no tool that writes or changes anything. He can only search, read and report. Phew's own code saves the finished report, never the model, as new files only: the PDF in the folder you chose or in Downloads, the Markdown copy in Phew's storage.
+- He searches, reads and reports. Phew's own code saves the finished report, never the model, as new files only: the PDF in the folder you chose or in Downloads, the Markdown copy in Phew's storage. He never overwrites or deletes a file.
+- When a task needs an action (phase PA), he acts only through ways that do not take your screen: the apps' own scripting and the system's calendar and reminders access, in Notes, Reminders, Calendar and Excel, plus new files. He never clicks in the background and brings no app to the front. He may read back what he just wrote, to check it. Anything that cannot be undone, or that leaves your Mac, is not done: it waits in the menu bar for one confirm from you.
 - He never opens a web address that came from the screen, the Map or a file. Two guards. Phew's own code removes every web address from the screen text, the Map facts (also the ones a Map search returns) and file text before they reach him. And a setting of the web fetch tool lets him open only addresses he found by his own searches, on pages he already opened, or typed by you in the task. Anthropic's server refuses any other. An address you type is opened: your decision of 14 November. It leaves Phew's own removal as the only guard for the screen text, which is the risk you accepted.
 - Each task has a limit on searches, pages and cost: 5 searches, 8 pages, 50 cents, approved 14 November. Rate limits on usage come after the MVP. The limits on searches and pages are set in the request itself, so they hold while the work runs at Anthropic. Phew's own code adds up the cost after each reply. At a limit he stops, reports what he has, and says which limit he reached.
 - He reads the screen once, when you give the task, and not again. What he read stays in memory until the task ends or is stopped. Then it is dropped.
@@ -102,14 +105,31 @@ How a report is saved. Approved 14 November:
 - The file holds the report only. The screen text and the picture he read are never written to it.
 - The menu has a "Saved reports" list. Each has Reveal, which shows the PDF in Finder, and Delete. Delete is your own click, never the agent's. It asks once and moves the PDF and its copy to the Trash.
 
-### Actions in other apps, when built
+### Acting in your apps
+
+Your decisions of 15 November 2026. The full design, the guards and what can still go wrong are in `13-hand.md`. Phase PH; not built yet.
+
+There are no "Do it" buttons and no confirm. Whether he acts or shows comes from your words and from what you do.
+
+| You say or do | He |
+|---|---|
+| "Make the title bold." "Add a reminder for Friday." | Does the whole job by himself |
+| "How do I make it bold?" "Where is the export?" | Shows you, by pointing |
+| Words that could mean either | Shows |
+| You start doing a step yourself | Stops acting. The job is yours again |
 
 | Level | Examples | Rule |
 |---|---|---|
 | Show | Point, highlight, scroll to | Always allowed |
-| Reversible | Open, click, type into a draft, create a file | Done when you ask for it |
-| Irreversible | Send, submit, delete, publish | He asks once, every time |
-| Never | Passwords, payments, account settings | Not done |
+| Acts | Click, type, pick a menu, fill cells. Also send, delete, publish and replace, when that is the job | Done when your words ask for it. No confirm |
+| Never | Passwords and secure fields, paying and card details, sign-in and account settings, System Settings, Terminal and code editors, password managers, apps on the "Never read this app" list, Phew's own windows | Not done, whatever the words. Phew's own code decides, never the model |
+
+- **Off until Allow.** Before his first action a short consent screen is shown once (text in `13-hand.md` 13.8). One consent covers all apps. After Not now he keeps pointing only.
+- **Every action is listed on the card** as it happens, and a mark shows while he acts. An action that cannot be undone carries a mark in the list.
+- **He checks after each action** by looking again. When something is not as expected he stops by himself and says so. He never retries blindly.
+- **Stop ends a job within one second.** Stop is on the card the whole time. The shortcut stops too, and so does using the app yourself.
+- **Several apps in one job.** He brings the other app to the front, works there, and returns you to where you were.
+- **A research agent** acts only in the background, as written in the rules above.
 
 ## 3.7 Web dashboard
 
@@ -131,12 +151,13 @@ One motion language, one palette built on black and shell white, one type family
 |---|---|
 | Home in the menu bar | Home in the notch, character, animations |
 | Shortcut, click, hold key and speak | His name as wake word |
-| Explain and guide with a simple pointer and text card | Pointer effects, eggs for agents |
-| Remembers your projects, on the Mac. Follow-up questions. Recall at any time | Dashboard and Map view online |
+| Acts in your apps when you ask: the whole job, in several apps if needed. Agents act in the background in a narrow way (3.6) | Editing existing files on disk directly |
+| Explain and guide with a simple pointer and text card. The card opens into a conversation (3.10) | Pointer effects, eggs for agents |
+| Remembers your projects, on the Mac. Recall at any time | Dashboard and Map view online |
 | Learns from your other AI tools: a pasted memory list, Claude Code files | Reading export files, connections to other tools |
-| Researches a task alone, reports on the card, saves the report as a file | Editing files, actions in other apps, scheduled work, lecture listening |
+| Researches a task alone, reports on the card, saves the report as a file | Scheduled work, lecture listening |
 
-The MVP must solve the main problem: understand and move forward on what is in front of you, with no re-explaining. Looks come after.
+The MVP must solve the main problem: understand and move forward on what is in front of you, with no re-explaining. The look and feel is its own phase inside the MVP (PX). The notch home and the character come after.
 
 Lecture listening, when built, shows a recording notice in the way Granola does. For personal use now this is not a concern.
 

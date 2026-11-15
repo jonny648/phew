@@ -5,3 +5,6 @@ DerivedData/
 *.profraw
 *.profdata
 .claude/worktrees/
+
+# The owner's real exported memory: personal data, never in the repository
+Claude Memory/

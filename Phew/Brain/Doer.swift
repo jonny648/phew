@@ -7,7 +7,8 @@ import Foundation
 enum Doer {
     /// Fixed, so it is cached.
     static let system = """
-        You do a job the user asked for in the app in front of them on their Mac, one action at a time. Each time you \
+        You do a job the user asked for on their Mac, in the app in front of them or in another app the job needs, \
+        one action at a time. Each time you \
         get the user's words, their screen as it is now, and the actions you already made in this job with how each \
         ended. The screen comes as a screenshot with the app, the front window, the element under the mouse pointer, \
         the elements you can act on (id, role, label, position) and the visible text of the front window.
@@ -20,10 +21,14 @@ enum Doer {
         they read, for example ["Format", "Font", "Bold"]. Menus are not listed with the elements: use the menus the \
         app has, or those the user names.
         - click: one click on a spot with no element to press, such as a canvas. Give an element id, or a point in \
-        screenshot pixels (x to the right, y down, from the top-left corner). Use press, set or pick whenever they fit.
+        screenshot pixels (x to the right, y down, from the top-left corner), inside the app's window. Use press, set \
+        or pick whenever they fit.
+        - open_app: bring another app to the front and go on there, when the request names or needs an app that is not \
+        in front. In title one of: Notes, Reminders, Calendar, Excel, Dia, Figma, Fusion, Safari, Finder. The next \
+        screen is that app's. The user is brought back to where they were when the job ends, by itself.
 
         For Notes, Reminders, Calendar and Excel, use these instead of pressing. They work behind the app, which need \
-        not be in front, and they only add:
+        not be in front (no open_app for them), and they only add:
         - note: a new note in Notes. In title its first line, in text the lines under it.
         - append: lines added at the end of the note you made earlier in this job, in text.
         - reminder: a new reminder. In title its name; in start its due date, "YYYY-MM-DD", or with a time \
@@ -53,7 +58,7 @@ enum Doer {
         """
 
     static let schema = #"""
-        {"type":"object","properties":{"action":{"type":"string","enum":["press","set","pick","click","note","append","reminder","event","workbook","cells","done","stuck"]},"element":{"type":["string","null"]},"point":{"anyOf":[{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"additionalProperties":false},{"type":"null"}]},"menu":{"type":"array","items":{"type":"string"}},"text":{"type":"string"},"title":{"type":"string"},"start":{"type":["string","null"]},"end":{"type":["string","null"]},"cell":{"type":["string","null"]},"rows":{"type":"array","items":{"type":"array","items":{"type":"string"}}}},"required":["action","element","point","menu","text","title","start","end","cell","rows"],"additionalProperties":false}
+        {"type":"object","properties":{"action":{"type":"string","enum":["press","set","pick","click","open_app","note","append","reminder","event","workbook","cells","done","stuck"]},"element":{"type":["string","null"]},"point":{"anyOf":[{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"additionalProperties":false},{"type":"null"}]},"menu":{"type":"array","items":{"type":"string"}},"text":{"type":"string"},"title":{"type":"string"},"start":{"type":["string","null"]},"end":{"type":["string","null"]},"cell":{"type":["string","null"]},"rows":{"type":"array","items":{"type":"array","items":{"type":"string"}}}},"required":["action","element","point","menu","text","title","start","end","cell","rows"],"additionalProperties":false}
         """#
 
     struct Output: Decodable {
@@ -74,6 +79,13 @@ enum Doer {
     static let noScreen = "I could not read the screen, so I stopped."
     static let noTarget = "I could not find that control on the screen, so I stopped."
     static let badScript = "I could not tell what to make, so I stopped."
+    static let noApp = "I can switch only to Notes, Reminders, Calendar, Excel, Dia, Figma, Fusion, Safari or Finder, so I stopped."
+
+    /// The apps a job may bring to the front, by the name the model gives (any case), and their bundle ids. Fixed in
+    /// code, never from the model; the Hand still checks each against the Never list.
+    static let apps = ["Notes": "com.apple.Notes", "Reminders": "com.apple.reminders", "Calendar": "com.apple.iCal",
+                       "Excel": "com.microsoft.Excel", "Dia": "company.thebrowser.dia", "Figma": "com.figma.Desktop",
+                       "Fusion": "com.autodesk.fusion360", "Safari": "com.apple.Safari", "Finder": "com.apple.finder"]
 
     static func next(_ request: String, packet: ContextPacket?, done: [String], provider: any ModelProvider) async throws -> NextAction {
         guard let packet, !packet.neverRead else { return .stuck(noScreen) }
@@ -106,8 +118,12 @@ enum Doer {
             return menu.isEmpty ? .stuck(noTarget) : .act(.pick, target: nil, menu: menu)
         case "note", "append", "reminder", "event", "workbook", "cells":
             return script(output).map(NextAction.script) ?? .stuck(badScript)
+        case "open_app":
+            let name = (output.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let app = apps.first(where: { $0.key.caseInsensitiveCompare(name) == .orderedSame }) else { return .stuck(noApp) }
+            return .front(bundleID: app.value, name: app.key)
         case let word:
-            guard let kind = HandStep.Kind(rawValue: word) else { return .stuck(noTarget) }
+            guard let kind = HandStep.Kind(rawValue: word), [.press, .set, .click].contains(kind) else { return .stuck(noTarget) }
             // Press and set act on a named element only; a click may take a point.
             let target = Guide.target(element: output.element, point: kind == .click ? output.point : nil, packet: packet, shot: shot)
             guard let target else { return .stuck(noTarget) }

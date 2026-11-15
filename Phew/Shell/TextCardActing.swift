@@ -4,7 +4,8 @@ import SwiftUI
 /// The act route on the card (PH.5, look in docs/15-design.md 15.5 B and C): Phew does the job in the front app.
 /// Each action is a row on the card as it happens, ticked when it lands; the pointer presses on the spot and the ring
 /// stays there; the footer holds Stop. Then the summary, or the plain reason he stopped. Stop is the footer's button,
-/// Escape or closing the card (`dismiss`), and the user's own click or key anywhere (`Hand.begin`).
+/// Escape or closing the card (`dismiss`), and the user's own click or key in the app he works in (`Hand.begin`).
+/// A job may bring another app to the front (PH.7); the Hand brings the user's app back at the end.
 /// Split out of TextCard.swift; the stored state stays on `TextCard`.
 extension TextCard {
     /// One fixed line above a guide given instead of acting, while acting is off.
@@ -33,9 +34,12 @@ extension TextCard {
             model.problem = ActJob.sentence(for: .frontChanged)
             return
         }
-        let pid = app.processIdentifier
-        let capture = look ?? { await Senses.capture(app: app).value }
-        let job = Hand.shared.begin(watchUser: watchUser)
+        // The app the job works in now, by pid; one no longer running gives no look, never the front app's.
+        let capture: (pid_t) async -> ContextPacket? = look.map { look in { _ in await look() } } ?? { pid in
+            guard let app = NSRunningApplication(processIdentifier: pid) else { return nil }
+            return await Senses.capture(app: app).value
+        }
+        let job = Hand.shared.begin(watchUser: watchUser, in: app.processIdentifier)
         handJob = job
         model.startActing(in: app.localizedName ?? "")
         let start = Date()
@@ -45,7 +49,7 @@ extension TextCard {
         let screen = NSScreen.screens.first { $0.frame.contains(frame.origin) } ?? NSScreen.screens[0]
         let pointer = PointerOverlay(on: screen)
         overlay = pointer
-        var run = ActJob(brain: brain, hand: .shared, pid: pid, capture: capture,
+        var run = ActJob(brain: brain, hand: .shared, capture: capture,
                          aside: { [weak self] rect in
                              let spot = rect.flipped(mainHeight: mainHeight)
                              self?.moveAside(from: spot)

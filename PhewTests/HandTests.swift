@@ -31,16 +31,38 @@ final class FakeSurface: HandSurface, @unchecked Sendable {  // state under `loc
     }
 
     var sentCount: Int { lock.withLock { sent.count } }
+    /// Every read of an app's screen (element, menu, focus, window, dialogs): none may come before the Never list.
+    private(set) var reads = 0
 
     func frontPID() -> pid_t? { front }
     func bundleID(_ pid: pid_t) -> String? { bundles[pid] }
     func secureInput() -> Bool { secureInputOn }
-    func focusedIsSecure(_ pid: pid_t) -> Bool { focusedSecure }
-    func element(at point: CGPoint, pid: pid_t) -> AnyObject? { elements.first { $0.seen.frame?.contains(point) == true } }
-    func menuItem(_ path: [String], pid: pid_t) -> AnyObject? { menus[path] }
+    func focusedIsSecure(_ pid: pid_t) -> Bool { reads += 1; return focusedSecure }
+    func element(at point: CGPoint, pid: pid_t) -> AnyObject? { reads += 1; return elements.first { $0.seen.frame?.contains(point) == true } }
+    func menuItem(_ path: [String], pid: pid_t) -> AnyObject? { reads += 1; return menus[path] }
     func read(_ element: AnyObject) -> HandSeen? { (element as! Element).seen }
     func windowTitle(of element: AnyObject) -> String { (element as! Element).window }
-    func dialogs(_ pid: pid_t) -> Int { dialogCount }
+    func dialogs(_ pid: pid_t) -> Int { reads += 1; return dialogCount }
+
+    /// PH.7: apps not running yet, by bundle id, and the pid each comes up with when brought to the front.
+    var launchable: [String: pid_t] = [:]
+    /// How the app answered being brought to the front.
+    var activateEnd = HandEnd.done
+    /// Every app brought to the front, by bundle id, in order.
+    private(set) var activated: [String] = []
+    /// The app a click lands in (`owner(at:)`): the practice app unless a test says otherwise; nil is "not known".
+    var clickOwner: pid_t? = pid
+
+    func owner(at point: CGPoint) -> pid_t? { clickOwner }
+    func running(_ bundleID: String) -> pid_t? { bundles.first { $0.value == bundleID }?.key }
+    func activate(_ bundleID: String, stop: @escaping () -> Bool) -> (HandEnd, pid_t?) {
+        lock.withLock { activated.append(bundleID) }
+        guard activateEnd == .done else { return (activateEnd, nil) }
+        guard let pid = running(bundleID) ?? launchable[bundleID] else { return (.failed, nil) }
+        bundles[pid] = bundleID
+        front = pid
+        return (.done, pid)
+    }
 
     func send(_ step: HandStep, to element: AnyObject?) -> HandEnd {
         if delay > 0 { Thread.sleep(forTimeInterval: delay) }
@@ -301,13 +323,13 @@ final class HandTests: XCTestCase {
     func testUserInputStopsAndOwnClicksDoNot() throws {
         let step = fake.add("Bold", frame: frame(0))
         let hand = self.hand()
-        let job = hand.begin(watchUser: false)
+        let job = hand.begin(watchUser: false, in: FakeSurface.pid)
         let own = try XCTUnwrap(CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: .zero, mouseButton: .left))
         own.setIntegerValueField(.eventSourceUserData, value: Hand.mark)
-        job.seen(own)  // made, never posted
+        hand.seen(own, by: job)  // made, never posted
         XCTAssertNil(job.end)
         XCTAssertEqual(hand.act(step, in: job).end, .done)
-        job.seen(try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true)))
+        hand.seen(try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true)), by: job)  // the front app is his
         XCTAssertEqual(job.end, .userInput)
         XCTAssertEqual(hand.act(step, in: job).end, .userInput)
         XCTAssertEqual(fake.sentCount, 1)
@@ -397,12 +419,12 @@ final class HandTests: XCTestCase {
     func testUserInputDuringAScriptDoesNotEndTheJob() throws {
         let click = try XCTUnwrap(CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: .zero, mouseButton: .left))
         let hand = self.hand()
-        let job = hand.begin(watchUser: false)
-        fake.during = { job.seen(click) }  // made, never posted
+        let job = hand.begin(watchUser: false, in: FakeSurface.pid)
+        fake.during = { hand.seen(click, by: job) }  // made, never posted; lands in the app he works in
         XCTAssertEqual(hand.act(script(.workbook), in: job).end, .done)
         XCTAssertNil(job.end)
         fake.during = nil
-        job.seen(click)
+        hand.seen(click, by: job)
         XCTAssertEqual(job.end, .userInput)
         let stopped = hand.begin(watchUser: false)
         fake.during = { stopped.stop() }
@@ -464,6 +486,156 @@ final class HandTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(start), 1)
     }
 
+    // MARK: - PH.7: several apps in one job
+
+    private static let sheets: pid_t = 7
+    private func front(_ app: String = "com.example.sheets") -> HandStep { HandStep(kind: .front, pid: 0, name: "Sheets", app: app) }
+
+    func testFrontSwitchPassesTheGates() throws {
+        fake.bundles[Self.sheets] = "com.example.sheets"  // running, behind the practice app
+        // Off.
+        defaults.set(false, forKey: Hand.allowedKey)
+        var hand = self.hand()
+        XCTAssertEqual(hand.act(front(), in: hand.begin(watchUser: false, in: FakeSurface.pid)).end, .off)
+        defaults.set(true, forKey: Hand.allowedKey)
+        // The Never list for the app brought, before anything of it is read: Never read, never act, Phew's own,
+        // secure input on.
+        neverRead.add(name: "Sheets", bundleID: "com.example.sheets")
+        hand = self.hand()
+        XCTAssertEqual(hand.act(front(), in: hand.begin(watchUser: false, in: FakeSurface.pid)).end, .neverReadApp)
+        neverRead.remove("com.example.sheets")
+        fake.launchable["com.apple.Terminal"] = 8
+        hand = self.hand()
+        XCTAssertEqual(hand.act(front("com.apple.Terminal"), in: hand.begin(watchUser: false, in: FakeSurface.pid)).end, .neverActApp)
+        hand = self.hand(ownPID: Self.sheets)
+        XCTAssertEqual(hand.act(front(), in: hand.begin(watchUser: false, in: FakeSurface.pid)).end, .ownApp)
+        fake.secureInputOn = true
+        hand = self.hand()
+        XCTAssertEqual(hand.act(front(), in: hand.begin(watchUser: false, in: FakeSurface.pid)).end, .secureInput)
+        fake.secureInputOn = false
+        // Only from the app the job works in: a front change he did not make stops the job.
+        fake.front = 99
+        hand = self.hand()
+        XCTAssertEqual(hand.act(front(), in: hand.begin(watchUser: false, in: FakeSurface.pid)).end, .frontChanged)
+        fake.front = FakeSurface.pid
+        XCTAssertEqual(fake.activated, [])
+        XCTAssertEqual(fake.reads, 0, "nothing of any app was read")
+        // An app that does not come up ends the job, never tried again.
+        fake.activateEnd = .timeout
+        hand = self.hand()
+        let slow = hand.begin(watchUser: false, in: FakeSurface.pid)
+        XCTAssertEqual(hand.act(front(), in: slow).end, .timeout)
+        XCTAssertEqual(hand.act(front(), in: slow).end, .timeout)
+        XCTAssertEqual(fake.activated.count, 1)
+        fake.activateEnd = .done
+
+        // The switch: the app brought is the job's app now, and a step there acts.
+        hand = self.hand()
+        let job = hand.begin(watchUser: false, in: FakeSurface.pid)
+        XCTAssertEqual(hand.act(front(), in: job).end, .done)
+        XCTAssertEqual(fake.front, Self.sheets)
+        XCTAssertEqual(job.app, Self.sheets)
+        var bold = fake.add("Bold", frame: frame(0))
+        bold.pid = Self.sheets
+        XCTAssertEqual(hand.act(bold, in: job).end, .done)
+        // A front change he did not make still stops the job.
+        fake.front = FakeSurface.pid
+        XCTAssertEqual(hand.act(bold, in: job).end, .frontChanged)
+        XCTAssertEqual(fake.sentCount, 1)
+        // The log line: fixed words, no app.
+        ActionLog.flush()
+        let text = try String(contentsOf: log, encoding: .utf8)
+        XCTAssertFalse(text.contains("sheets") || text.contains("Sheets") || text.contains("Terminal"))
+        XCTAssertTrue(text.contains(#""kind":"front""#) && text.contains(#""role":"other""#), text)
+    }
+
+    func testFrontSwitchesCountTowardsTheCeilings() {
+        fake.bundles[Self.sheets] = "com.example.sheets"
+        let time = Date(timeIntervalSince1970: 1_000_000)
+        let hand = self.hand(now: { time })
+        for _ in 0..<Hand.perMinute {
+            fake.front = FakeSurface.pid
+            XCTAssertEqual(hand.act(front(), in: hand.begin(watchUser: false, in: FakeSurface.pid)).end, .done)
+        }
+        fake.front = FakeSurface.pid
+        XCTAssertEqual(hand.act(front(), in: hand.begin(watchUser: false, in: FakeSurface.pid)).end, .minuteCeiling)
+    }
+
+    /// Back to the app the user was in on done, stuck, Stop and a refused step; never after their own take-over.
+    func testBackReturnsUnlessTheUserTookOver() {
+        fake.bundles[Self.sheets] = "com.example.sheets"
+        let hand = self.hand()
+        func switched() -> HandJob {
+            fake.front = FakeSurface.pid
+            let job = hand.begin(watchUser: false, in: FakeSurface.pid)
+            XCTAssertEqual(hand.act(front(), in: job).end, .done)
+            return job
+        }
+        // Done or stuck: the job has no end of its own yet.
+        XCTAssertEqual(hand.back(switched()), .done)
+        XCTAssertEqual(fake.front, FakeSurface.pid)
+        // Stop.
+        var job = switched()
+        job.stop()
+        XCTAssertEqual(hand.back(job), .done)
+        XCTAssertEqual(fake.front, FakeSurface.pid)
+        // A refused step in the app he brought.
+        job = switched()
+        var pay = fake.add("Pay now", frame: frame(3))
+        pay.pid = Self.sheets
+        XCTAssertEqual(hand.act(pay, in: job).end, .paying)
+        XCTAssertEqual(hand.back(job), .done)
+        XCTAssertEqual(fake.front, FakeSurface.pid)
+        XCTAssertEqual(fake.activated, Array(repeating: ["com.example.sheets", "com.example.practice"], count: 3).flatMap { $0 })
+        // The user took over in the app he brought: he leaves them there.
+        job = switched()
+        fake.clickOwner = Self.sheets
+        hand.seen(CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: .zero, mouseButton: .left)!, by: job)
+        XCTAssertEqual(job.end, .userInput)
+        XCTAssertNil(hand.back(job))
+        XCTAssertEqual(fake.front, Self.sheets)
+        // The user brought another app to the front: he leaves them there too.
+        job = switched()
+        fake.front = 99
+        XCTAssertNil(hand.back(job))
+        XCTAssertEqual(fake.front, 99)
+        // No switch, nothing to return; and the switch off refuses the return too.
+        fake.front = FakeSurface.pid
+        XCTAssertNil(hand.back(hand.begin(watchUser: false, in: FakeSurface.pid)))
+        job = switched()
+        defaults.set(false, forKey: Hand.allowedKey)
+        XCTAssertEqual(hand.back(job), .off)
+        XCTAssertEqual(fake.front, Self.sheets)
+    }
+
+    /// The user's own click or key stops the job only in the app he works in now (the user's word, PH.7).
+    func testUserInputStopsOnlyInTheAppHeWorksIn() throws {
+        fake.bundles[Self.sheets] = "com.example.sheets"
+        let click = try XCTUnwrap(CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: .zero, mouseButton: .left))
+        let key = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true))
+        let hand = self.hand()
+        var job = hand.begin(watchUser: false, in: FakeSurface.pid)
+        fake.clickOwner = 99  // another app's window
+        hand.seen(click, by: job)
+        XCTAssertNil(job.end)
+        fake.clickOwner = FakeSurface.pid
+        hand.seen(click, by: job)
+        XCTAssertEqual(job.end, .userInput)
+        // After his switch, the app he brought is his: a click in the user's first app does not stop him.
+        job = hand.begin(watchUser: false, in: FakeSurface.pid)
+        XCTAssertEqual(hand.act(front(), in: job).end, .done)
+        fake.clickOwner = FakeSurface.pid
+        hand.seen(click, by: job)
+        XCTAssertNil(job.end)
+        hand.seen(key, by: job)  // a key lands in the front app, the one he brought
+        XCTAssertEqual(job.end, .userInput)
+        // Not known where it lands: careful side, it counts.
+        job = hand.begin(watchUser: false, in: FakeSurface.pid)
+        fake.clickOwner = nil
+        hand.seen(click, by: job)
+        XCTAssertEqual(job.end, .userInput)
+    }
+
     // MARK: - PH.10: live tests look only at their own made-up window
 
     func testOnlyTheTestsOwnWindowMayBeSent() {
@@ -518,7 +690,7 @@ final class HandTests: XCTestCase {
         let acting = ["AXUIElementPerformAction", "AXUIElementSetAttributeValue", "AXUIElementPostKeyboardEvent",
                       "CGEventPost", "CGEventTapPostEvent", ".post(tap:", "postToPid", "mouseEventSource:",
                       "keyboardEventSource:", "NSAppleScript", "NSUserAppleScriptTask", "osascript", "SBApplication",
-                      "NSAppleEventDescriptor", "AESend"]
+                      "NSAppleEventDescriptor", "AESend", "kAXFrontmostAttribute"]
         // Named exceptions, line by line:
         // WindowReader asks Chromium, Electron and Keynote to build their full Accessibility tree, for reading only
         // (AXManualAccessibility, AXEnhancedUserInterface). It sets those two flags and nothing else.

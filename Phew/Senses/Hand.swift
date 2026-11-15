@@ -17,6 +17,8 @@ struct HandStep: Sendable {
         case click
         /// The app's own scripting or the system's reminders and calendar access (`script`), behind the app.
         case script
+        /// Brings the app `app` to the front for the job (docs/13-hand.md 13.4, 7); `Hand.back` returns at its end.
+        case front
     }
 
     var kind: Kind
@@ -35,6 +37,8 @@ struct HandStep: Sendable {
     var opensWindow = false
     /// For `script`: what it makes. Held in memory only, never logged.
     var script: HandScript? = nil
+    /// For `front`: the bundle id of the app brought to the front (`name` is its plain name, for the card). Never logged.
+    var app = ""
 }
 
 /// What a script makes in Notes, Reminders, Calendar or Excel (docs/13-hand.md 13.2, methods 3 and 4). It works behind
@@ -122,19 +126,35 @@ final class HandJob: @unchecked Sendable {  // state under `lock`
     fileprivate var monitors: [Any] = []
     /// What this job's scripts made, oldest first: `append` and `cells` act only on these.
     fileprivate(set) var made: [HandMade] = []
+    /// The app the job began in: where the user was, and where `Hand.back` returns at the end.
+    let start: pid_t
+    private var current: pid_t  // under `lock`
 
-    fileprivate init(number: Int) { self.number = number }
+    fileprivate init(number: Int, app: pid_t) {
+        self.number = number
+        start = app
+        current = app
+    }
 
     var end: HandEnd? { lock.withLock { ended } }
+
+    /// The app the job works in now: where it began, then each app the Hand brought to the front (PH.7).
+    var app: pid_t { lock.withLock { current } }
+    fileprivate func moved(to pid: pid_t) { lock.withLock { current = pid } }
 
     /// The card's Stop or the shortcut. Takes effect before the next action; the one in flight is cut by `Hand.timeout`.
     func stop() { finish(.stopped) }
 
-    /// A mouse or key event seen while the job runs: the user's own ends the job. Phew's own clicks carry `Hand.mark`.
+    /// A mouse or key event seen while the job runs, and the app it lands in (nil: not known, counted as his app).
+    /// The user's own in the app he works in ends the job; in another app it does not (the user's word, PH.7): if
+    /// that app comes to the front, the next action stops on `frontChanged`. Phew's own clicks carry `Hand.mark`.
     /// Not while a script runs: it works behind the app, so the user's clicks cannot race it, and the click that
     /// answers macOS's one-time "Phew wants to…" question must not end the job it was asked for (measured, PH.6).
-    func seen(_ event: CGEvent) {
-        if !Hand.isOwn(event), !lock.withLock({ scripting }) { finish(.userInput) }
+    func seen(_ event: CGEvent, in pid: pid_t?) {
+        guard !Hand.isOwn(event) else { return }
+        lock.withLock {
+            if !scripting, pid == nil || pid == current, ended == nil { ended = .userInput }
+        }
     }
 
     fileprivate var scripting = false  // under `lock`
@@ -161,6 +181,13 @@ protocol HandSurface {
     /// A script, once, then read back. `made`: what this job made before. Ends `stopped` as soon as `stop` says so.
     /// Returns how it ended and, when it made something, what.
     func run(_ script: HandScript, made: [HandMade], stop: @escaping () -> Bool) -> (HandEnd, HandMade?)
+    /// The app whose window or menu is at `point` (where a click lands), nil when not known. Reads only the owner.
+    func owner(at point: CGPoint) -> pid_t?
+    /// The app with this bundle id, when it runs.
+    func running(_ bundleID: String) -> pid_t?
+    /// Brings the app to the front, launching it if needed, and waits until it is in front, or `stop`, at most
+    /// `Hand.frontTimeout`. Returns how it ended and the app's pid.
+    func activate(_ bundleID: String, stop: @escaping () -> Bool) -> (HandEnd, pid_t?)
 }
 
 /// An element as read at the moment of acting. `value` is never read from a secure field.
@@ -186,6 +213,8 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     /// The longest a script may take. Long enough for macOS's one-time "Phew wants to control…" question and an app's
     /// cold start; Stop still ends the job within a second (the script is cut, though the app may finish what it got).
     static let scriptTimeout: TimeInterval = 60
+    /// The longest an app may take to come to the front, a cold launch included. Stop still ends the wait at once.
+    static let frontTimeout: TimeInterval = 30
     /// A target whose frame moved more than this, in points, is no longer where the look saw it.
     static let tolerance: CGFloat = 4
     /// Written into every event Phew posts, so the user's own clicks and keys are told apart from his.
@@ -218,18 +247,24 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     /// On unless the menu's switch turned it off (the user's word of 15 November: no Allow to press).
     var allowed: Bool { defaults.object(forKey: Self.allowedKey) as? Bool ?? true }
 
-    /// Starts a job. With `watchUser`, the user's own mouse down or key down anywhere ends it.
+    /// Starts a job in `app`, the app the user asked in. With `watchUser`, the user's own mouse down or key down in
+    /// the app the job works in ends it (`seen`).
     @MainActor
-    func begin(watchUser: Bool = true) -> HandJob {
-        let job = lock.withLock { jobs += 1; return HandJob(number: jobs) }
+    func begin(watchUser: Bool = true, in app: pid_t = 0) -> HandJob {
+        let job = lock.withLock { jobs += 1; return HandJob(number: jobs, app: app) }
         if watchUser {
-            // shortcut: any app, not only the one acted in; the user touching anything takes the job back.
             let events: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .keyDown]
-            if let global = NSEvent.addGlobalMonitorForEvents(matching: events, handler: { [weak job] in
-                if let e = $0.cgEvent { job?.seen(e) }
+            if let global = NSEvent.addGlobalMonitorForEvents(matching: events, handler: { [weak self, weak job] in
+                if let e = $0.cgEvent, let job { self?.seen(e, by: job) }
             }) { job.monitors.append(global) }
         }
         return job
+    }
+
+    /// The user's own event, with the app it lands in: a key in the front app, a click in the app under it.
+    func seen(_ event: CGEvent, by job: HandJob) {
+        guard !Self.isOwn(event) else { return }
+        job.seen(event, in: event.type == .keyDown ? surface.frontPID() : surface.owner(at: event.location))
     }
 
     /// Ends the job and its watch. A step after this returns `stopped`.
@@ -272,6 +307,7 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     private func check(_ step: HandStep, job: HandJob, role: inout String, marked: inout Bool) -> HandEnd {
         guard allowed else { return .off }
         if step.kind == .script { return script(step.script, job: job) }
+        if step.kind == .front { return front(step.app, job: job) }
         // The Never list, first the app, before anything of it is read.
         if let end = NeverList.refusal(bundleID: surface.bundleID(step.pid), pid: step.pid, ownPID: ownPID,
                                        secureInput: surface.secureInput(), list: list) { return end }
@@ -332,6 +368,49 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         #if DEBUG
         ranHere.append((script, end, made))
         #endif
+        return end
+    }
+
+    /// Under `lock`. Another app to the front, the one focus exception (CLAUDE.md): the Never list for that app before
+    /// anything of it is read, the ceilings, the job's own app still in front (a change he did not make stops the
+    /// job), then the switch. The app brought becomes the job's app. Phew itself never becomes the active app.
+    private func front(_ app: String, job: HandJob) -> HandEnd {
+        guard !app.isEmpty else { return .failed }
+        if let end = NeverList.refusal(bundleID: app, pid: surface.running(app) ?? 0, ownPID: ownPID,
+                                       secureInput: surface.secureInput(), list: list) { return end }
+        let time = now()
+        if let end = brake(job, time) { return end }
+        guard surface.frontPID() == job.app else { return .frontChanged }
+        if let end = job.end { return end }
+        job.acted += 1
+        recent.append(time)
+        let (end, pid) = surface.activate(app, stop: { job.end != nil })
+        guard end == .done, let pid else { return end == .done ? .failed : end }
+        job.moved(to: pid)
+        return .done
+    }
+
+    /// At the job's end, however it ended: brings back the app the job began in, when the job brought another to
+    /// the front. Not when the user took over (their own input, or another app they brought to the front): he
+    /// leaves them where they are. The switch and own-app check apply and it is logged like any action; no ceiling,
+    /// so a job stopped at one still returns; no Never list, as the user was in that app and nothing of it is read.
+    /// Nil when there is nothing to return. Blocks up to `frontTimeout`: off the main thread.
+    @discardableResult
+    func back(_ job: HandJob) -> HandEnd? {
+        let (home, app) = (job.start, job.app)
+        guard home != 0, app != home, job.end != .userInput, surface.frontPID() == app else { return nil }
+        let begun = Date()
+        let end = lock.withLock { () -> HandEnd in
+            job.steps += 1
+            guard allowed else { return .off }
+            if home == ownPID { return .ownApp }
+            guard let bundle = surface.bundleID(home) else { return .failed }
+            let (end, pid) = surface.activate(bundle, stop: { false })
+            if end == .done, let pid { job.moved(to: pid) }
+            return end
+        }
+        ActionLog.record(ActionLog.line(job: job.number, step: job.steps, kind: .front, role: "", ended: end, marked: false,
+                                        ms: Int(Date().timeIntervalSince(begun) * 1000), chars: 0))
         return end
     }
 
@@ -433,13 +512,51 @@ struct AXSurface: HandSurface {
                 event.postToPid(step.pid)
             }
             return .done
-        case .script:
-            return .failed  // scripts go through `run`
+        case .script, .front:
+            return .failed  // scripts go through `run`, fronts through `activate`
         }
         switch result {
         case .success: return .done
         case .cannotComplete: return .timeout
         default: return .failed
+        }
+    }
+
+    /// Phew's own pid is "not known": a click through his pointer ring lands in the app under it, so it counts.
+    func owner(at point: CGPoint) -> pid_t? {
+        let wide = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(wide, Hand.timeout)
+        var hit: AXUIElement?, owner: pid_t = 0
+        guard AXUIElementCopyElementAtPosition(wide, Float(point.x), Float(point.y), &hit) == .success, let hit,
+              AXUIElementGetPid(hit, &owner) == .success, owner != getpid() else { return nil }
+        return owner
+    }
+
+    func running(_ bundleID: String) -> pid_t? {
+        NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first?.processIdentifier
+    }
+
+    /// A running app is asked to the front through Accessibility; one not running is launched by LaunchServices.
+    func activate(_ bundleID: String, stop: @escaping () -> Bool) -> (HandEnd, pid_t?) {
+        if running(bundleID) == nil {
+            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return (.failed, nil) }
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = true
+            NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+        }
+        var asked: pid_t?
+        let deadline = Date() + Hand.frontTimeout
+        while true {
+            if let pid = running(bundleID) {
+                if front() == pid { return (.done, pid) }
+                if asked != pid {  // once per process
+                    asked = pid
+                    AXUIElementSetAttributeValue(app(pid), kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+                }
+            }
+            if stop() { return (.stopped, nil) }
+            if Date() > deadline { return (.timeout, nil) }
+            Thread.sleep(forTimeInterval: 0.05)
         }
     }
 

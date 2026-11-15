@@ -48,13 +48,16 @@ final class ActJobTests: XCTestCase {
         return #"{"action":"\#(action)","element":\#(element),"point":null,"menu":[\#(menu)],"text":"\#(text)"}"#
     }
 
-    private func make(_ replies: [String], capture: (() -> Void)? = nil) -> (ActJob, FakeProvider, HandJob, Hand) {
+    /// The apps each look was of, by pid, in order.
+    private var looked: [pid_t] = []
+
+    private func make(_ replies: [String], packet: ContextPacket? = nil, capture: (() -> Void)? = nil) -> (ActJob, FakeProvider, HandJob, Hand) {
         let provider = FakeProvider(rounds: ["doer": replies.map { FakeProvider.Reply(pieces: [$0]) }])
         let hand = hand()
-        let packet = packet
-        let run = ActJob(brain: ClaudeBrain(provider: provider), hand: hand, pid: FakeSurface.pid,
-                         capture: { capture?(); return packet })
-        return (run, provider, hand.begin(watchUser: false), hand)
+        let packet = packet ?? self.packet
+        let run = ActJob(brain: ClaudeBrain(provider: provider), hand: hand,
+                         capture: { [weak self] pid in self?.looked.append(pid); capture?(); return packet })
+        return (run, provider, hand.begin(watchUser: false, in: FakeSurface.pid), hand)
     }
 
     // MARK: The loop
@@ -93,8 +96,8 @@ final class ActJobTests: XCTestCase {
         packet.pointables[0].label = "Pay now"
         let provider = FakeProvider(rounds: ["doer": [.init(pieces: [reply("press", element: "e1")])]])
         let hand = hand()
-        let run = ActJob(brain: ClaudeBrain(provider: provider), hand: hand, pid: FakeSurface.pid, capture: { packet })
-        let outcome = await run.run("Press it", job: hand.begin(watchUser: false)) { _ in }
+        let run = ActJob(brain: ClaudeBrain(provider: provider), hand: hand, capture: { _ in packet })
+        let outcome = await run.run("Press it", job: hand.begin(watchUser: false, in: FakeSurface.pid)) { _ in }
         XCTAssertEqual(outcome, .ended(.paying))
         XCTAssertEqual(fake.sentCount, 0)
     }
@@ -127,9 +130,9 @@ final class ActJobTests: XCTestCase {
             }
         }
         let hand = hand()
-        let job = hand.begin(watchUser: false)
+        let job = hand.begin(watchUser: false, in: FakeSurface.pid)
         let packet = packet
-        let run = ActJob(brain: Stopping(job: job), hand: hand, pid: FakeSurface.pid, capture: { packet })
+        let run = ActJob(brain: Stopping(job: job), hand: hand, capture: { _ in packet })
         let outcome = await run.run("Make it bold", job: job) { _ in XCTFail("nothing may be listed") }
         XCTAssertEqual(outcome, .ended(.stopped))
         XCTAssertEqual(fake.sentCount, 0)
@@ -141,7 +144,7 @@ final class ActJobTests: XCTestCase {
         let key = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true))  // made, never posted
         let (run, _, made, _) = make([reply("press", element: "e1"), reply("press", element: "e1")]) {
             looks += 1
-            if looks == 2 { job?.seen(key) }
+            if looks == 2 { job?.seen(key, in: FakeSurface.pid) }  // a key in the app he works in
         }
         job = made
         let outcome = await run.run("Press Bold twice", job: made) { _ in }
@@ -269,6 +272,189 @@ final class ActJobTests: XCTestCase {
         XCTAssertTrue(provider.requests[2].text.contains("2. Filled 4 cells from A1 in Excel: done"))
         XCTAssertTrue(provider.requests[0].text.contains("\nNow: 20"), "the date for \"tomorrow\"")
         XCTAssertEqual(ActJob.sentence(for: .noAccess), "macOS has not allowed me to use that app. You can allow it in System Settings, Privacy & Security.")
+    }
+
+    // MARK: Several apps in one job (PH.7)
+
+    private static let excel: pid_t = 7
+
+    /// Excel not running yet: it comes up as pid 7 when brought to the front.
+    private func excelJob(_ replies: [String], capture: (() -> Void)? = nil) -> (ActJob, FakeProvider, HandJob, Hand) {
+        fake.launchable["com.microsoft.Excel"] = Self.excel
+        return make([script("open_app", title: "Excel")] + replies, capture: capture)
+    }
+
+    func testAJobSwitchesAppWorksThereAndReturns() async {
+        let (run, provider, job, _) = excelJob([reply("press", element: "e1"), reply("done", text: "Done in Excel.")])
+        var lines: [String] = []
+        let outcome = await run.run("Make it bold in Excel", job: job) { lines.append($0) }
+        XCTAssertEqual(outcome, .done("Done in Excel."))
+        XCTAssertEqual(lines, ["Switched to Excel", "Pressed Bold"])
+        XCTAssertEqual(looked, [FakeSurface.pid, Self.excel, Self.excel], "each look after the switch is of the app he brought")
+        XCTAssertEqual(fake.sent.map(\.pid), [Self.excel], "the press went to Excel")
+        XCTAssertTrue(provider.requests[1].text.contains("1. Switched to Excel: done"))
+        XCTAssertEqual(fake.activated, ["com.microsoft.Excel", "com.example.practice"], "back where the user was")
+        XCTAssertEqual(fake.front, FakeSurface.pid)
+    }
+
+    func testTheReturnHappensOnStuckStopAndARefusedStep() async {
+        // Stuck.
+        var (run, _, job, _) = excelJob([reply("stuck", text: "No table here.")])
+        var outcome = await run.run("Copy it into Excel", job: job) { _ in }
+        XCTAssertEqual(outcome, .stuck("No table here."))
+        XCTAssertEqual(fake.front, FakeSurface.pid)
+        // Stop during the look after the switch.
+        var stop: (() -> Void)?
+        var looks = 0
+        (run, _, job, _) = excelJob([reply("press", element: "e1")]) {
+            looks += 1
+            if looks == 2 { stop?() }
+        }
+        stop = job.stop
+        outcome = await run.run("Make it bold in Excel", job: job) { _ in }
+        XCTAssertEqual(outcome, .ended(.stopped))
+        XCTAssertEqual(fake.front, FakeSurface.pid)
+        // A refused step in the app he brought.
+        fake.elements[0].seen.name = "Pay now"
+        var packet = packet
+        packet.pointables[0].label = "Pay now"
+        fake.launchable["com.microsoft.Excel"] = Self.excel
+        (run, _, job, _) = make([script("open_app", title: "Excel"), reply("press", element: "e1")], packet: packet)
+        outcome = await run.run("Press it in Excel", job: job) { _ in }
+        XCTAssertEqual(outcome, .ended(.paying))
+        XCTAssertEqual(fake.front, FakeSurface.pid)
+        XCTAssertEqual(fake.sentCount, 0)
+        XCTAssertEqual(fake.activated, Array(repeating: ["com.microsoft.Excel", "com.example.practice"], count: 3).flatMap { $0 })
+    }
+
+    func testUserInputInTheAppHeBroughtStopsAndHeLeavesThemThere() async throws {
+        let key = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true))  // made, never posted
+        var job: HandJob?, hand: Hand?
+        var looks = 0
+        let (run, _, made, madeHand) = excelJob([reply("press", element: "e1"), reply("press", element: "e1")]) {
+            looks += 1
+            if looks == 2, let job { hand?.seen(key, by: job) }  // a key: it lands in Excel, now in front
+        }
+        (job, hand) = (made, madeHand)
+        let outcome = await run.run("Press Bold twice in Excel", job: made) { _ in }
+        XCTAssertEqual(outcome, .ended(.userInput))
+        XCTAssertEqual(fake.front, Self.excel, "left where the user took over")
+        XCTAssertEqual(fake.activated, ["com.microsoft.Excel"])
+    }
+
+    func testAClickInTheFirstAppDoesNotStopTheJobInTheSecond() async throws {
+        let click = try XCTUnwrap(CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: .zero, mouseButton: .left))
+        var job: HandJob?, hand: Hand?
+        var looks = 0
+        fake.clickOwner = FakeSurface.pid  // the user's own app, behind Excel now
+        let (run, _, made, madeHand) = excelJob([reply("press", element: "e1"), reply("done", text: "Done.")]) {
+            looks += 1
+            if looks == 2, let job { hand?.seen(click, by: job) }
+        }
+        (job, hand) = (made, madeHand)
+        let outcome = await run.run("Make it bold in Excel", job: made) { _ in }
+        XCTAssertEqual(outcome, .done("Done."))
+        XCTAssertEqual(fake.sentCount, 1)
+    }
+
+    func testAnUnknownOrNeverAppIsRefusedBeforeAnyLook() async {
+        var (run, _, job, _) = make([script("open_app", title: "Word")])
+        var outcome = await run.run("Open it in Word", job: job) { _ in }
+        XCTAssertEqual(outcome, .stuck(Doer.noApp))
+        let list = NeverReadList(defaults: defaults)
+        list.add(name: "Microsoft Excel", bundleID: "com.microsoft.Excel")
+        looked = []
+        (run, _, job, _) = excelJob([reply("done", text: "Done.")])
+        outcome = await run.run("Copy it into Excel", job: job) { _ in }
+        XCTAssertEqual(outcome, .ended(.neverReadApp))
+        XCTAssertEqual(looked, [FakeSurface.pid], "nothing of Excel was looked at")
+        XCTAssertEqual(fake.activated, [])
+        XCTAssertEqual(fake.front, FakeSurface.pid)
+    }
+
+    func testDoerOpenAppAnswers() throws {
+        func decide(_ json: String) throws -> NextAction {
+            Doer.decide(try JSONDecoder().decode(Doer.Output.self, from: Data(json.utf8)), packet: packet, shot: nil)
+        }
+        XCTAssertEqual(try decide(script("open_app", title: " excel ")), .front(bundleID: "com.microsoft.Excel", name: "Excel"))
+        XCTAssertEqual(try decide(script("open_app", title: "Fusion")), .front(bundleID: "com.autodesk.fusion360", name: "Fusion"))
+        for bad in ["Word", "", "com.apple.Terminal", "Terminal"] { XCTAssertEqual(try decide(script("open_app", title: bad)), .stuck(Doer.noApp), bad) }
+        // Only press, set and click take a target: never a front or a script by another name.
+        for word in ["front", "script"] { XCTAssertEqual(try decide(reply(word, element: "e1")), .stuck(Doer.noTarget), word) }
+        XCTAssertEqual(ActJob.line(HandStep(kind: .front, pid: 0, name: "Excel", app: "com.microsoft.Excel"), doing: true), "Switching to Excel")
+        XCTAssertTrue(Doer.schema.contains(#""open_app""#))
+        XCTAssertEqual(Doer.apps.count, 9)
+    }
+
+    // MARK: Clicks at a point, for canvases (PH.11)
+
+    /// A PNG's first 24 bytes: all `ScreenshotSize` reads.
+    private func png(_ width: Int, _ height: Int) -> Data {
+        func be(_ n: Int) -> [UInt8] { [24, 16, 8, 0].map { UInt8((n >> $0) & 0xFF) } }
+        return Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13] + Array("IHDR".utf8) + be(width) + be(height))
+    }
+
+    private func canvas(window: CGRect, shot: CGRect, size: (Int, Int)) -> ContextPacket {
+        var packet = ContextPacket(appName: "Practice", bundleID: "com.example.practice", windowTitle: "Canvas", visibleText: "",
+                                   cursor: nil, windowFrame: window)
+        packet.screenshot = png(size.0, size.1)
+        packet.screenshotFrame = shot
+        return packet
+    }
+
+    private func click(_ x: Int, _ y: Int) -> String {
+        #"{"action":"click","element":null,"point":{"x":\#(x),"y":\#(y)},"menu":[],"text":""}"#
+    }
+
+    func testACanvasPointMapsToTheScreenInTheJobsWindow() throws {
+        func step(_ json: String, _ packet: ContextPacket) throws -> HandStep? {
+            let shot = packet.screenshot.flatMap(ScreenshotSize.init(png:))
+            guard case let .act(kind, target, menu, text) = Doer.decide(try JSONDecoder().decode(Doer.Output.self, from: Data(json.utf8)),
+                                                                         packet: packet, shot: shot) else { return nil }
+            return ActJob.step(kind, target: target, menu: menu, text: text, packet: packet, pid: 7)
+        }
+        // The window's own picture: picture pixel + the picture's origin.
+        let window = CGRect(x: 100, y: 100, width: 400, height: 300)
+        let small = canvas(window: window, shot: window, size: (400, 300))
+        let hit = try XCTUnwrap(try step(click(50, 60), small))
+        XCTAssertEqual([hit.frame.origin.x, hit.frame.origin.y], [150, 160])
+        XCTAssertEqual(hit.kind, .click)
+        XCTAssertEqual(hit.pid, 7, "sent to the job's app only")
+        XCTAssertEqual([hit.role, hit.name], ["", ""], "a bare spot")
+        // The whole display, downsized by the API: the model's point is scaled back to picture pixels first.
+        let display = CGRect(x: 0, y: 0, width: 3840, height: 2160)
+        let big = canvas(window: CGRect(x: 1800, y: 1000, width: 400, height: 300), shot: display, size: (3840, 2160))
+        XCTAssertTrue(ScreenshotSize(width: 3840, height: 2160).seenWidth == 2576)
+        let far = try XCTUnwrap(try step(click(1288, 724), big))
+        XCTAssertEqual([far.frame.origin.x, far.frame.origin.y], [1920, 1079])
+        // Refused: outside the job's window (another app's window or the desktop in the picture), outside the
+        // picture, a window frame not known, and a point for anything but a click.
+        XCTAssertNil(try step(click(100, 100), big), "outside the job's window")
+        XCTAssertNil(try step(click(5000, 100), big), "outside the picture")
+        var noWindow = small
+        noWindow.windowFrame = nil
+        XCTAssertNil(try step(click(50, 60), noWindow))
+        XCTAssertNil(ActJob.step(.press, target: .point(x: 50, y: 60), menu: [], text: "", packet: small, pid: 7))
+    }
+
+    func testACanvasClickJobClicksThenLooksAgain() async {
+        let window = CGRect(x: 300, y: 300, width: 400, height: 300)  // away from the fake's Bold and Title
+        let (run, provider, job, _) = make([click(50, 60), reply("done", text: "Clicked it.")],
+                                           packet: canvas(window: window, shot: window, size: (400, 300)))
+        var lines: [String] = []
+        let outcome = await run.run("Click the shape", job: job) { lines.append($0) }
+        XCTAssertEqual(outcome, .done("Clicked it."))
+        XCTAssertEqual(lines, ["Clicked a spot"])
+        XCTAssertEqual(fake.sent.map(\.kind), [.click])
+        XCTAssertEqual(fake.sent.first?.frame.origin, CGPoint(x: 350, y: 360))
+        XCTAssertEqual(fake.sent.first?.pid, FakeSurface.pid)
+        XCTAssertEqual(looked.count, 2, "the look after the click is the check")
+        XCTAssertNotNil(provider.requests[0].image, "the Doer sees the picture")
+        // Outside the window: nothing is sent.
+        let (refused, _, other, _) = make([click(450, 60)], packet: canvas(window: window, shot: CGRect(x: 300, y: 300, width: 600, height: 300), size: (600, 300)))
+        let stuck = await refused.run("Click there", job: other) { _ in }
+        XCTAssertEqual(stuck, .stuck(ActJob.noTarget))
+        XCTAssertEqual(fake.sentCount, 1)
     }
 
     // MARK: The act route (PH.4)

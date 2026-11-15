@@ -4,14 +4,14 @@ import AppKit
 /// and again, until the Brain says done or stuck, or the Hand ends any way but done (Stop, the user's own click or
 /// key, the Never list, a surprise, a ceiling). The Brain never acts, and nothing here acts by itself: every action
 /// goes through `Hand.act`, whose ceilings are the brake. Each look lives for one round only and is never kept.
+/// The job works in `job.app`: the app the user asked in, then each app the Hand brought to the front (PH.7). At the
+/// end the Hand brings back the app the user was in (`Hand.back`).
 @MainActor
 struct ActJob {
     let brain: any Brain
     let hand: Hand
-    /// The app the user asked in, front when the job began. The Hand stops the job if another comes to the front.
-    let pid: pid_t
-    /// A fresh look at the front app, once per round.
-    let capture: () async -> ContextPacket?
+    /// A fresh look at the app the job works in now (its pid), once per round.
+    let capture: (pid_t) async -> ContextPacket?
     /// Before each action, where it acts, screen points with a top-left origin: the card moves out of its way.
     var aside: (CGRect) -> Void = { _ in }
     /// Before each action, its line as it happens ("Pressing Bold"): the card lists it at once (15.5 B).
@@ -26,10 +26,18 @@ struct ActJob {
 
     /// `listed` gets one plain line per action the Hand made, as it happens. The caller closes `job`.
     func run(_ request: String, job: HandJob, listed: (String) -> Void) async -> Outcome {
+        let outcome = await work(request, job: job, listed: listed)
+        // Done, stuck, stopped or refused: back to where the user was, unless they took over.
+        let hand = hand
+        _ = await Task.detached { hand.back(job) }.value
+        return outcome
+    }
+
+    private func work(_ request: String, job: HandJob, listed: (String) -> Void) async -> Outcome {
         var done: [String] = []  // for the Brain: what was made, by name, and how it ended
         while true {
             if let end = job.end { return .ended(end) }
-            let packet = await capture()
+            let packet = await capture(job.app)
             if let end = job.end { return .ended(end) }
             let next: NextAction
             do {
@@ -39,44 +47,45 @@ struct ActJob {
             }
             // Stop or the user's own input during the call: nothing is sent.
             if let end = job.end { return .ended(end) }
+            let step: HandStep
             switch next {
             case .done(let line): return .done(line)
             case .stuck(let line): return .stuck(line)
-            case .script, .act:
-                let step: HandStep
-                if case .script(let script) = next {
-                    step = HandStep(kind: .script, pid: 0, script: script)  // behind the app: nothing on screen to move aside from
-                } else if case let .act(kind, target, menu, text) = next, let packet,
-                          let found = Self.step(kind, target: target, menu: menu, text: text, packet: packet, pid: pid) {
-                    step = found
-                    if kind != .pick { aside(step.frame) }
-                } else {
-                    return .stuck(Self.noTarget)
-                }
-                starting(Self.line(step, doing: true))
-                let hand = hand
-                // Off the main thread: an app that hangs blocks for at most `Hand.timeout`.
-                let result = await Task.detached { hand.act(step, in: job) }.value
-                let line = Self.line(step)
-                done.append("\(line): \(result.end.rawValue)")
-                guard result.end == .done else { return .ended(result.end) }
-                listed(line)
+            case .script(let script):
+                step = HandStep(kind: .script, pid: 0, script: script)  // behind the app: nothing on screen to move aside from
+            case let .front(app, name):
+                step = HandStep(kind: .front, pid: 0, name: name, app: app)  // the Hand checks the app before anything of it is read
+            case let .act(kind, target, menu, text):
+                guard let packet, let found = Self.step(kind, target: target, menu: menu, text: text, packet: packet, pid: job.app)
+                else { return .stuck(Self.noTarget) }
+                step = found
+                if kind != .pick { aside(step.frame) }
             }
+            starting(Self.line(step, doing: true))
+            let hand = hand
+            // Off the main thread: an app that hangs blocks for at most `Hand.timeout`.
+            let result = await Task.detached { hand.act(step, in: job) }.value
+            let line = Self.line(step)
+            done.append("\(line): \(result.end.rawValue)")
+            guard result.end == .done else { return .ended(result.end) }
+            listed(line)
         }
     }
 
     static let noTarget = "I could not find that control on the screen, so I stopped."
 
     /// The Brain's action as the Hand takes it: role, name and frame as this look saw the element. A name cut to the
-    /// packet's label length is left out, so it is not taken for a renamed control.
+    /// packet's label length is left out, so it is not taken for a renamed control. A point (screenshot pixels, put on
+    /// the screen by `screenRect`) is for clicks only, and only inside the window of the app the job works in.
     static func step(_ kind: HandStep.Kind, target: StepTarget?, menu: [String], text: String, packet: ContextPacket, pid: pid_t) -> HandStep? {
         if kind == .pick {
             guard !menu.isEmpty else { return nil }
             return HandStep(kind: .pick, pid: pid, role: "AXMenuItem", name: menu.last!, menuPath: menu, opensWindow: opens(menu.last!))
         }
-        guard let target, let frame = packet.screenRect(for: target) else { return nil }
+        guard [.press, .set, .click].contains(kind), let target, let frame = packet.screenRect(for: target) else { return nil }
         guard case .element(let id) = target, let element = packet.pointables.first(where: { $0.id == id }) else {
-            return kind == .click ? HandStep(kind: .click, pid: pid, frame: frame) : nil  // a bare point: clicks only
+            guard kind == .click, packet.windowFrame?.contains(frame.origin) == true else { return nil }
+            return HandStep(kind: .click, pid: pid, frame: frame)
         }
         let name = element.label.count < ContextPacket.labelCap ? element.label : ""
         return HandStep(kind: kind, pid: pid, role: element.role, name: name, frame: frame, text: text, opensWindow: opens(name))
@@ -94,6 +103,7 @@ struct ActJob {
         case .set: return "\(doing ? "Typing" : "Typed") \(step.text.count) character\(step.text.count == 1 ? "" : "s") in \(name ?? "a field")"
         case .pick: return "\(doing ? "Picking" : "Picked") \(step.menuPath.joined(separator: " > "))"
         case .click: return "\(doing ? "Clicking" : "Clicked") \(name ?? "a spot")"
+        case .front: return "\(doing ? "Switching" : "Switched") to \(name ?? "another app")"
         case .script:
             switch step.script {
             case .note(let title, _): return "Made the note “\(title)” in Notes"

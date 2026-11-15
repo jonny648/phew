@@ -71,9 +71,9 @@ final class SelfKnowledgeTests: XCTestCase {
         XCTAssertEqual(counts.facts, 3)
         let info: [String: Any] = ["CFBundleShortVersionString": "0.1 \(made)", "CFBundleVersion": "7"]
         let labels = ["Accessibility permission:", "Screen Recording permission:", "Guide running when asked:",
-                      "Question in this conversation:", "Map:", "App version:"]
+                      "Let Phew act:", "Question in this conversation:", "Map:", "App version:"]
         let words: Set = ["on", "off", "unknown", "yes", "no", "projects", "facts", "not", "available", "build"]
-        for state in [ShellState(), ShellState(accessibility: true, screenRecording: true, guideRunning: true)] {
+        for state in [ShellState(), ShellState(accessibility: true, screenRecording: true, guideRunning: true, acting: true)] {
             for (projects, facts) in [(counts.projects, counts.facts), (nil, nil)] as [(Int?, Int?)] {
                 let text = SelfKnowledge.live(state, turn: 3, projects: projects, facts: facts, info: info)
                 let lines = text.split(separator: "\n").map(String.init)
@@ -88,6 +88,26 @@ final class SelfKnowledgeTests: XCTestCase {
                 XCTAssertTrue(text.contains("App version: 0.1, build 7"))
             }
         }
+    }
+
+    /// PH.8: he knows he acts, how, where, what he never touches and how a job is stopped; nothing says he cannot.
+    func testTheTextSaysHeActs() {
+        let text = SelfKnowledge.text
+        for part in ["Do a job when the user asks you to do it", "with no confirm", "Asked how, you show instead",
+                     "In Notes, Reminders, Calendar and Excel you work through the app's own scripting, behind the app",
+                     "press buttons, type into fields, pick menu items, and click on a spot",
+                     "One job may use several apps", "bring the user back to where they were",
+                     "it is on from the start", "\"Let Phew act\" switch in the menu",
+                     "Stop on the card", "click or key in the app you are working in hands the job back",
+                     "secure fields", "pay or enter card details", "sign in", "System Settings, Terminal, code editors, password managers",
+                     "never act in it", "your own windows"] {
+            XCTAssertTrue(text.contains(part), part)
+        }
+        for stale in ["act in apps for the user", "cannot do yet: act", "not files, mail or other apps"] {
+            XCTAssertFalse(text.contains(stale), stale)
+        }
+        XCTAssertTrue(SelfKnowledge.live(ShellState(acting: true), turn: 1, projects: nil, facts: nil).contains("Let Phew act: on"))
+        XCTAssertTrue(SelfKnowledge.live(ShellState(acting: false), turn: 1, projects: nil, facts: nil).contains("Let Phew act: off"))
     }
 
     func testFixedPartIsTheSameForTwoQuestions() async throws {

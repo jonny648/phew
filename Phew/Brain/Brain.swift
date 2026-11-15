@@ -82,6 +82,9 @@ enum NextAction: Sendable, Equatable {
     case act(HandStep.Kind, target: StepTarget?, menu: [String] = [], text: String = "")
     /// One action through an app's own scripting or the system's reminders and calendar access: no target on screen.
     case script(HandScript)
+    /// Another app to the front, to go on there (PH.7): its bundle id from the fixed list in `Doer.apps`, and its
+    /// plain name for the card.
+    case front(bundleID: String, name: String)
     /// The job is finished: one short line for the card, in the user's language.
     case done(String)
     /// The next action is not possible: one short plain reason for the card. Empty when there is none.

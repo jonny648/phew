@@ -27,7 +27,7 @@ Not built yet: importing memory from other AI tools (PB), the faster guide (PS),
 
 ## The current phase: PD Direction and revision
 
-Phew is too general today. This phase picks one specific job for him.
+This phase picked one specific job for Phew. The direction is set; the phase closes when the competitor map is updated and the checker has read every doc.
 
 1. **PD.1** Tidy the folder: docs index, this page, long docs split, finished pages archived.
 2. **PD.2** Research 3 to 4 specific jobs Phew could do. Written in `11-direction.md`.
@@ -40,12 +40,20 @@ Phew is too general today. This phase picks one specific job for him.
 
 Started on 15 November beside PD, because it is needed whatever the direction: the conversation card, faster answers with the Map, and the faster guide.
 
+## The direction, set on 15 November
+
+Phew is a collaboration companion for people who create projects. He works with you and does the jobs you ask for, acting on the Mac by himself. He also explains and guides, remembers your projects, and researches. Business software training is a separate product, later. See `02-vision.md` and `07-decisions.md` 7.1.
+
+## Next phase: PH Hand
+
+Phew acts on the Mac. Asked to do something, he does the whole job in your apps, with no confirm. Asked how, he shows. Design and guards in `13-hand.md`. Nothing acts on a real app before the guards and the consent screen are built.
+
 ## Decisions waiting for you
 
-- **Confirm the direction (PD.3), after the validation.** Your working direction of 15 November: Phew teaches you the software you work in and collaborates with you on your projects. First niche after the MVP: business training on proprietary software. See `07-decisions.md` 7.1.
-- **Approve the conversation card design (PS.10).**
-- **Which business target to explore first, if any** (decision 26). Needed after the MVP.
-- **Order of the later phases** (decision 27). Needed at the retro.
+- **Your hand tests of phase PS**: the conversation card, the screen watch, click steps, the Never read list.
+- **Still open in the acting design** (decision 39): the ceiling on actions per job, and whether the action log may name the app.
+- **Which of the cheap tests of the validation to run** (decision 40).
+- Which business target to explore first, if any (26). Order of the later phases (27).
 
 The open decisions are listed in `07-decisions.md` 7.2.
 
@@ -53,7 +61,8 @@ The open decisions are listed in `07-decisions.md` 7.2.
 
 - `README.md` in this folder: every doc, with what it is for.
 - `../roadmap.html`: the checklist of every phase.
-- `11-direction.md`: the direction research.
+- `11-direction.md` and `12-validation.md`: the direction research and its validation.
+- `13-hand.md`: how Phew acts on the Mac.
 - `07-decisions.md`: your decisions and the session log.
 - `03-experience.md`: what you see and do.
 - `05-map.md` and `05-map-storage.md`: the Map.

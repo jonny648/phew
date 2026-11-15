@@ -1,6 +1,6 @@
 # 8. Business software training: a separate product, later
 
-Rewritten on 15 November 2026 for the direction you set that day. Waiting for your approval (PD.3).
+Rewritten on 15 November 2026 for the direction you set that day. Approved by you on 15 November 2026, with the plan of that day.
 
 ## 8.1 The point
 

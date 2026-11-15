@@ -1,6 +1,6 @@
 # 2. Vision, mission, values
 
-Rewritten on 15 November 2026 for the direction you set that day. Waiting for your approval (PD.3).
+Rewritten on 15 November 2026 for the direction you set that day. Approved by you on 15 November 2026, with the plan of that day.
 
 The direction, in your words of 15 November (`07-decisions.md` 7.1, last row): Phew is an AI collaboration companion for people who create projects. He works with you and does the second-level jobs you delegate, acting on the Mac. Then he educates. He keeps memory and is your second brain. He is not focused on teaching software. Business software training is a separate product under the same brand, later (`08-b2b-targets.md`).
 

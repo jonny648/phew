@@ -6,7 +6,7 @@ No fixed deadline since 13 November 2026. The first aim was 24 November; you rem
 
 **Version 1.** On your Mac, Phew explains and guides in the apps you use, remembers your projects so you never re-explain, learns what your other AI tools already know about you, follows a guide without lag, takes speech, and researches a task by himself.
 
-Not in the MVP: notch and character, backend, dashboard, connections to other tools, editing existing files, actions in other apps, lecture listening, wake word, anything for publishing.
+Not in the MVP: notch and character, backend, dashboard, connections to other tools, editing existing files, lecture listening, wake word, anything for publishing.
 
 ## 6.2 Phases
 
@@ -25,6 +25,7 @@ Since 14 November, after your P5 hand test, the phases after PD are open to chan
 | 1b | PD Direction and revision | Folder tidied, one specific job chosen after research and validation, the phases after P5 rewritten. No product code | lead, research workflow, checker | |
 | 2 | PB Second brain | Memory imported from your other AI tools, by paste and from Claude Code files. Claude Code files also read when an answer needs them | map, shell, brain | |
 | 1c | PS Conversation and speed | Started 15 Nov beside PD. The answer card opens into a conversation, answers with the Map get faster, the guide stops feeling slow and costs half. Pause removed, "Never read this app" list | shell, senses, brain | |
+| 3b | PH Hand | Phew acts on the Mac by himself when asked, in your apps, across apps. Guards, consent screen, the seven apps measured, the trick test | senses, shell, brain | |
 | 4 | PA Agents | He researches tasks alone, several at once, and reports. Reports saved as PDF | brain, shell | |
 | 5 | P6 Voice | Hold key and speak, in Italian and English | senses | |
 | 6 | PT Manual testing | Checks only you can run: InDesign, Acrobat, Figma Slides | checker | |
@@ -64,7 +65,7 @@ Order to confirm at the retro. Unscheduled.
 | L2 Backend | Supabase: accounts, Map in Postgres, gateway, sync. Moving the Map off the Mac changes a rule and needs your decision first |
 | L3 Background agents | Scheduled and server-side agents, Keeper, eggs in the UI |
 | L4 Lectures | Capture, transcript, Scribe, recording notice |
-| L5 Hand | Actions in other apps, editing existing files |
+| L5 Editing files | Changing existing files on disk. Actions in other apps moved into the MVP on 15 November (phase PH) |
 | L6 Dashboard | Website, Map view |
 | L7 Wake word | His name, matched loosely |
 | L8 Public | Apple Developer Program, signing, legal, pricing, first business pilot |

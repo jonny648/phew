@@ -1,6 +1,6 @@
 # 1. Foundation
 
-Rewritten on 15 November 2026 for the direction you set that day. Waiting for your approval (PD.3).
+Rewritten on 15 November 2026 for the direction you set that day. Approved by you on 15 November 2026, with the plan of that day.
 
 Where this page says "not verified", the claim was not confirmed on a page we opened, or sources disagree. Where it says "judgement", it is our reading, not a published fact.
 

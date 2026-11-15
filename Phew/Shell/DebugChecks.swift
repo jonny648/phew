@@ -16,6 +16,7 @@ extension AppDelegate {
         if arguments.contains("--debug-brain-check") { BrainSelfCheck.run() }  // real API calls, made-up data
         if arguments.contains("--debug-card") { Task { await checkCard() } }
         if arguments.contains("--debug-guide") { Task { await checkGuide() } }
+        if arguments.contains("--debug-thread") { Task { await checkThread() } }
         if arguments.contains("--debug-deleted-check") { Task { await checkDeleted() } }
         if arguments.contains("--debug-export-check") { Task { await checkExport() } }
     }
@@ -194,6 +195,59 @@ extension AppDelegate {
             let left = NSApp.windows.filter { $0 is PointerOverlay }.count
             shellLog("guide check \(ending) end: card visible=\(card.isVisible) overlay released=\(overlay == nil) overlay windows left=\(left) phewFront=\(phewIsFront) cardKey=\(card.isKeyWindow) monitor removed=\(card.actionMonitor == nil) lookPending=\(card.lookPending) looks=\(card.rule.looks)")
         }
+        brain = realBrain
+    }
+
+    /// PS.11, the conversation card, through a fake Brain and the real card: the closed card, the thread opened as a
+    /// click does, a reply typed with a new line (Shift and Return) and sent with Return, a reply typed and sent while
+    /// he answers (it waits, then goes), and the shortcut on the empty, focused field (it closes). Each reply takes a
+    /// real capture of the front app, in memory only, which the fake Brain ignores. Logs counts and focus only, never
+    /// the typed words. No model calls.
+    private func checkThread() async {
+        try? await Task.sleep(for: .seconds(1))
+        NSApp.deactivate()
+        let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        let realBrain = brain
+        brain = FakeBrain()
+        capture = Task<ContextPacket?, Never> { nil }
+        anchor = NSEvent.mouseLocation
+        ask("")
+        await until { !self.card.answering }
+        func state(_ moment: String) {
+            let editor = card.firstResponder as? NSTextView
+            shellLog("thread check \(moment): visible=\(card.isVisible) open=\(card.model.open) key=\(card.isKeyWindow) replyFocused=\(editor?.isEditable ?? false) size=\(Int(card.frame.width))x\(Int(card.frame.height)) insideVisibleFrame=\(NSScreen.screens.contains { $0.visibleFrame.contains(self.card.frame) }) earlier=\(card.model.history.count) thinking=\(card.model.thinking) answering=\(card.answering) queued=\(card.model.queued) draftLines=\(card.model.draft.isEmpty ? 0 : card.model.draft.split(separator: "\n").count) appActive=\(NSRunningApplication.current.isActive) phewFront=\(phewIsFront) frontUnchanged=\(NSWorkspace.shared.frontmostApplication?.processIdentifier == front)")
+        }
+        func type(_ text: String) {
+            (card.firstResponder as? NSTextView)?.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
+        }
+        func pressReturn(shift: Bool = false) {
+            guard let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: shift ? .shift : [], timestamp: 0,
+                                               windowNumber: card.windowNumber, context: nil, characters: "\r",
+                                               charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36) else { return }
+            card.sendEvent(event)
+        }
+        state("closed card")
+        card.openThread()  // what a click on the closed card calls
+        try? await Task.sleep(for: .seconds(1))
+        state("opened")
+        type("Made-up first line")
+        pressReturn(shift: true)
+        type("made-up second line")
+        try? await Task.sleep(for: .milliseconds(200))
+        state("typed two lines")
+        pressReturn()
+        try? await Task.sleep(for: .milliseconds(300))
+        state("reply sent")
+        type("Made-up reply typed while he answers")
+        pressReturn()
+        state("reply sent while answering")
+        await until { self.card.model.history.count == 2 && !self.card.answering }
+        try? await Task.sleep(for: .milliseconds(300))
+        state("waiting reply answered")
+        card.focusReply()
+        card.shortcutPressed()  // the field is focused and empty: the conversation closes
+        try? await Task.sleep(for: .milliseconds(300))
+        state("after the shortcut on the empty field")
         brain = realBrain
     }
 

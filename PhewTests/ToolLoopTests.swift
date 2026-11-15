@@ -162,13 +162,14 @@ final class ToolLoopTests: XCTestCase {
                                   answer: "Use the toolbar.\nSteps:\n1. Click Table\n2. Pick a style"))
     }
 
-    func testAtMostThreeTurnsAreKept() {
+    // PS.11 (3.10): the P5.5 limits of 3 turns and 5 minutes became 8 turns and 10 minutes.
+    func testAtMostEightTurnsAreKept() {
         let memory = WorkingMemory()
-        for n in 1...4 { memory.add(Turn(question: "q\(n)", answer: "a\(n)")) }
-        XCTAssertEqual(memory.turns.map(\.question), ["q2", "q3", "q4"])
+        for n in 1...9 { memory.add(Turn(question: "q\(n)", answer: "a\(n)")) }
+        XCTAssertEqual(memory.turns.map(\.question), (2...9).map { "q\($0)" })  // the oldest dropped, not summarised
     }
 
-    func testTurnsAreDroppedFiveMinutesAfterTheLastAnswer() {
+    func testTurnsAreDroppedTenMinutesAfterTheLastAnswer() {
         final class Clock: @unchecked Sendable {
             private let lock = NSLock()
             private var value = Date(timeIntervalSince1970: 1_000_000)
@@ -179,8 +180,8 @@ final class ToolLoopTests: XCTestCase {
         let memory = WorkingMemory(now: { clock.now })
         memory.add(Turn(question: "q1", answer: "a1"))
         clock.advance(200)
-        memory.add(Turn(question: "q2", answer: "a2"))  // the 5 minutes count from the last answer
-        clock.advance(299)
+        memory.add(Turn(question: "q2", answer: "a2"))  // the 10 minutes count from the last answer
+        clock.advance(599)
         XCTAssertEqual(memory.turns.count, 2)
         clock.advance(1)
         XCTAssertTrue(memory.turns.isEmpty)

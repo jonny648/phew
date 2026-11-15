@@ -61,7 +61,7 @@ extension TextCard {
         // The student picked a step on the card during the look: their choice wins.
         guard model.current == from else { return shellLog("guide: look result dropped, a step was picked on the card") }
         let now = min(max(result.current, 0), targets.count)
-        guard now < targets.count else { return dismiss() }  // every step done: pointer home, card closed
+        guard now < targets.count else { return guideDone() }  // every step done: pointer home; an open thread stays
         let rect = Self.rect(for: result.target, in: packet)
         if now == from {
             // No target: the check failed or nothing fits, so the pointer stays where it is.

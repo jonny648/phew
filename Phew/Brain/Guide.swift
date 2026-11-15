@@ -107,8 +107,10 @@ enum Guide {
         let screen = packet.map { context($0, shot: shot) } ?? "No screen context."
         // An empty recall adds nothing, like an empty list in 5.11.
         let map = recall.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : [mapBlock($0)] } ?? []
+        // The whole history leaves the Mac again with every reply, so it is filtered again every time (3.10).
+        let history = earlier.map { Turn(question: SecretsFilter.clean($0.question), answer: SecretsFilter.clean($0.answer)) }
         return ModelRequest(agent: "guide", tier: .main, system: system, text: (map + [screen, task, asked(question)]).joined(separator: "\n\n"),
-                            image: shot == nil ? nil : packet?.screenshot, schema: schema, maxTokens: 8192, earlier: earlier)
+                            image: shot == nil ? nil : packet?.screenshot, schema: schema, maxTokens: 8192, earlier: history)
     }
 
     /// The recall lines in their delimiter, in the user turn, so the system prompt stays the same on every call.

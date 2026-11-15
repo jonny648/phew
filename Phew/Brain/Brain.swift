@@ -11,7 +11,7 @@ protocol Brain: Sendable {
     /// `BrainError` like `answer`.
     func progress(steps: [GuideStep], current: Int, packet: ContextPacket?) async throws -> GuideProgress
 
-    /// Drops the earlier questions and answers kept for follow-up questions. The Shell calls it on Quit.
+    /// Drops the earlier questions and answers of the conversation. The Shell calls it when the card closes and on Quit.
     func forgetTurns()
 
     /// Each forget waiting in Recently deleted, for the menu's list.

@@ -27,6 +27,7 @@ extension TextCard {
 
     func pointAtCurrentStep() {
         let step = model.current, count = targets.count, target = targets[step]
+        moveAside(from: target)  // 3.10: the card never covers the spot it marks
         overlay?.point(at: target, beside: frame) {
             shellLog("guide: pointer arrived, step \(step + 1) of \(count), \(target == nil ? "beside the card" : target!.isEmpty ? "point ring" : "element ring")")
         }

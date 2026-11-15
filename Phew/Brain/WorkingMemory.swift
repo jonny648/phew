@@ -1,11 +1,12 @@
 import Foundation
 
-/// The working memory (`docs/05-map.md` 5.8): the last 3 questions and answers, as text only, so a follow-up
-/// question is understood. Never a screen text or a picture: a follow-up takes a fresh look. In memory only.
-/// Dropped 5 minutes after the last answer, and on Quit.
+/// The working memory (`docs/05-map.md` 5.8, `docs/03-experience.md` 3.10): the conversation in the card, its last
+/// 8 questions and answers, as text only. Older turns are dropped, not summarised. Never a screen text or a picture:
+/// every reply takes a fresh look. In memory only. Dropped when the card closes (`Brain.forgetTurns()`), 10 minutes
+/// after the last answer with no reply, and on Quit.
 final class WorkingMemory: @unchecked Sendable {
-    static let maxTurns = 3
-    static let lifetime: TimeInterval = 5 * 60
+    static let maxTurns = 8
+    static let lifetime: TimeInterval = 10 * 60
 
     private let lock = NSLock()
     private var kept: [Turn] = []
@@ -14,7 +15,7 @@ final class WorkingMemory: @unchecked Sendable {
 
     init(now: @escaping @Sendable () -> Date = { Date() }) { self.now = now }
 
-    /// The kept turns, oldest first. Empty once 5 minutes have passed since the last answer.
+    /// The kept turns, oldest first. Empty once 10 minutes have passed since the last answer.
     var turns: [Turn] {
         lock.withLock {
             dropIfOld()
@@ -36,7 +37,7 @@ final class WorkingMemory: @unchecked Sendable {
         }
     }
 
-    /// Drops every turn. The Shell calls it on Quit, through `Brain.forgetTurns()`.
+    /// Drops every turn. The Shell calls it when the card closes and on Quit, through `Brain.forgetTurns()`.
     func clear() {
         lock.withLock { kept = [] }
     }

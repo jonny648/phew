@@ -54,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
     }
 
-    /// P5.5: the turns kept for follow-up questions do not outlive the app.
+    /// The conversation's turns do not outlive the app (closing the card also forgets them).
     func applicationWillTerminate(_ notification: Notification) {
         brain.forgetTurns()
         shellLog("quit: turns dropped")
@@ -71,6 +71,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func shortcut() {
         // Paused, or the panel is already open (a second capture would read Phew's own panel).
         guard !Shell.shared.paused, !panel.isVisible else { return }
+        // 3.10: while a conversation is open the shortcut goes back to its reply field; no second card.
+        if card.isVisible && card.model.open { return card.shortcutPressed() }
         card.dismiss()  // off screen first, so the capture reads the user's app and not the card
         shellLog("shortcut fired, phew front \(phewIsFront)")
         capture = Senses.capture()  // before the panel: it opens under the cursor

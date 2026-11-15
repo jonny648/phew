@@ -4,6 +4,8 @@ Written 15 November 2026 for tasks PX.1 (study) and PX.2 (design). It stands in 
 
 Not in this phase: the character, the notch, sound. He never speaks. Every surface stays a small non-activating panel; there is no main window and no Dock icon. No surface shows what was captured from the screen.
 
+**As built, 15 November.** Drawn in Figma from the real screens: https://www.figma.com/design/GlLT4s5vxGiTuEnqTutghP ("Phew interface", in the drafts of GG Works). Three things below are no longer true: the acting consent screen (15.1, 15.5 F) was removed on your word, acting is on from the start; `KeyWindow.swift` and `PermissionsWindow.swift` (15.6) are replaced by `SetupPanel.swift`; the card grows on a 0.35 s ease-out, not a spring. Not built: the hint row, the multi-line ask field, the "To undo" line, the "can't be undone" tag.
+
 ## 15.1 Surfaces today
 
 Values are read from the code in `Phew/Shell/`. "Rough" means what a designer would notice in the first minute.

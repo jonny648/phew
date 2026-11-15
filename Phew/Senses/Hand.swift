@@ -504,9 +504,15 @@ struct AXSurface: HandSurface {
         case .click:
             // Posted to the target app only, so a click can never land in another app that moved on top.
             let point = CGPoint(x: step.frame.midX, y: step.frame.midY)
-            let source = CGEventSource(stateID: .hidSystemState)
-            for type in [CGEventType.leftMouseDown, .leftMouseUp] {
-                guard let event = CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: point, mouseButton: .left)
+            // A click posted to the pid reaches its window only as AppKit makes it: with the window's number and the
+            // point inside that window. A bare CGEvent arrives with no window, or at the window's corner, and is dropped
+            // (measured in PL.1). Phew's AppKit cannot see the other app's window, so it takes the point as if the
+            // window sat at the main screen's top-left corner; it is given in those terms.
+            guard let (window, bounds) = Self.window(of: step.pid, at: point) else { return .failed }
+            let location = Self.clickLocation(point, in: bounds, mainHeight: NSScreen.screens.first?.frame.height ?? 0)
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                guard let event = NSEvent.mouseEvent(with: type, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                     windowNumber: window, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)?.cgEvent
                 else { return .failed }
                 event.setIntegerValueField(.eventSourceUserData, value: Hand.mark)
                 event.postToPid(step.pid)
@@ -520,6 +526,24 @@ struct AXSurface: HandSurface {
         case .cannotComplete: return .timeout
         default: return .failed
         }
+    }
+
+    /// The point inside `bounds` (both top-left origin) as `NSEvent.mouseEvent` must be given it for another app's
+    /// window: flipped against the main screen's height, as if the window sat at its top-left corner (measured, PL.1).
+    static func clickLocation(_ point: CGPoint, in bounds: CGRect, mainHeight: CGFloat) -> NSPoint {
+        NSPoint(x: point.x - bounds.minX, y: mainHeight - (point.y - bounds.minY))
+    }
+
+    /// The window server's number and bounds (top-left origin) of the topmost on-screen window of `pid` containing
+    /// `point`, or nil. Reads only window numbers, owners and bounds, never a title.
+    static func window(of pid: pid_t, at point: CGPoint) -> (Int, CGRect)? {
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        for info in windows where info[kCGWindowOwnerPID as String] as? pid_t == pid && info[kCGWindowLayer as String] as? Int == 0 {  // front to back
+            guard let bounds = (info[kCGWindowBounds as String] as? NSDictionary).flatMap({ CGRect(dictionaryRepresentation: $0 as CFDictionary) }),
+                  bounds.contains(point), let number = info[kCGWindowNumber as String] as? Int else { continue }
+            return (number, bounds)
+        }
+        return nil
     }
 
     /// Phew's own pid is "not known": a click through his pointer ring lands in the app under it, so it counts.

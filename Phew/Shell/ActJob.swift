@@ -35,6 +35,7 @@ struct ActJob {
 
     private func work(_ request: String, job: HandJob, listed: (String) -> Void) async -> Outcome {
         var done: [String] = []  // for the Brain: what was made, by name, and how it ended
+        var last = "", repeats = 0  // the same action on the same spot, in a row
         while true {
             if let end = job.end { return .ended(end) }
             let packet = await capture(job.app)
@@ -61,6 +62,12 @@ struct ActJob {
                 step = found
                 if kind != .pick { aside(step.frame) }
             }
+            // Seen live on 15 November: a click that did not land was asked for 11 times. The same action a third time
+            // in a row means nothing changed: he stops, in code, whatever the model says.
+            let same = "\(step.kind.rawValue) \(Self.line(step)) \(step.frame)"
+            repeats = same == last ? repeats + 1 : 0
+            last = same
+            guard repeats < 2 else { return .stuck(Self.noChange) }
             starting(Self.line(step, doing: true))
             let hand = hand
             // Off the main thread: an app that hangs blocks for at most `Hand.timeout`.
@@ -72,6 +79,7 @@ struct ActJob {
         }
     }
 
+    static let noChange = "I did the same thing twice and nothing changed, so I stopped."
     static let noTarget = "I could not find that control on the screen, so I stopped."
 
     /// The Brain's action as the Hand takes it: role, name and frame as this look saw the element. A name cut to the

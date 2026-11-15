@@ -320,6 +320,15 @@ final class HandTests: XCTestCase {
         }
     }
 
+    /// PL.1, measured: a click posted to another app's pid lands only when made by AppKit with the window's number and
+    /// the point inside it, flipped against the main screen's height. A point not inside any window of the app gives none.
+    func testClickLocationAndWindow() {
+        let bounds = CGRect(x: 881, y: 153, width: 420, height: 472)
+        XCTAssertEqual(AXSurface.clickLocation(CGPoint(x: 961, y: 440), in: bounds, mainHeight: 982), NSPoint(x: 80, y: 695))
+        XCTAssertEqual(AXSurface.clickLocation(CGPoint(x: 881, y: 153), in: bounds, mainHeight: 982), NSPoint(x: 0, y: 982))
+        XCTAssertNil(AXSurface.window(of: 999_999, at: CGPoint(x: 10, y: 10)))
+    }
+
     func testUserInputStopsAndOwnClicksDoNot() throws {
         let step = fake.add("Bold", frame: frame(0))
         let hand = self.hand()
@@ -689,7 +698,7 @@ final class HandTests: XCTestCase {
         let root = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent().appending(path: "Phew")
         let acting = ["AXUIElementPerformAction", "AXUIElementSetAttributeValue", "AXUIElementPostKeyboardEvent",
                       "CGEventPost", "CGEventTapPostEvent", ".post(tap:", "postToPid", "mouseEventSource:",
-                      "keyboardEventSource:", "NSAppleScript", "NSUserAppleScriptTask", "osascript", "SBApplication",
+                      "keyboardEventSource:", "mouseEvent(with:", "NSAppleScript", "NSUserAppleScriptTask", "osascript", "SBApplication",
                       "NSAppleEventDescriptor", "AESend", "kAXFrontmostAttribute"]
         // Named exceptions, line by line:
         // WindowReader asks Chromium, Electron and Keynote to build their full Accessibility tree, for reading only

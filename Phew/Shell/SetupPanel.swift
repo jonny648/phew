@@ -111,7 +111,7 @@ final class SetupPanel {
         }
         self.panel = panel
         self.model = model
-        shellLog("setup shown: key only \(model.keyOnly), missing \(model.state.missing), key \(panel.isKeyWindow), field focused \(panel.firstResponder is NSTextView), phew front \(phewIsFront)")
+        shellLog("setup shown: key only \(model.keyOnly), missing \(model.state.missing), rows \([model.state.key, model.state.accessibilityRow, model.state.screenRow]), visible \(panel.isVisible), nonactivating \(panel.styleMask.contains(.nonactivatingPanel)), key \(panel.isKeyWindow), field focused \(panel.firstResponder is NSTextView), app active \(NSRunningApplication.current.isActive), phew front \(phewIsFront)")
     }
 
     func dismiss() {

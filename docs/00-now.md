@@ -31,13 +31,15 @@ Phew is a collaboration companion for people who create projects. He works with 
 
 ## Where the build is
 
-**PH Hand and look** and **PA Agents** are built, on 15 November. He acts in your apps from your words, with nothing to allow; several apps in one job; the new look on every surface. He researches a task alone, up to three at once, saves a PDF report, and can add notes, reminders, events and sheets in the background.
+**PH Hand and look, PA Agents and PL Live checks are done**, on 15 November. He acts in your apps from your words, with nothing to allow; several apps in one job; the new look on every surface. He researches a task alone, up to three at once, saves a PDF report, and adds notes, reminders, events and sheets in the background.
 
-Part of it is proven live (acting in a practice window and in Notes, the scripting of Notes, Reminders, Calendar and Excel, the routing of "do" and "how"). The rest is checked by automatic tests only, by your word of 15 November: nothing on your screen and no live call for now.
+Proven live on made-up data: acting in a practice window, clicking on a canvas, switching app and coming back, the scripting of Notes, Reminders, Calendar and Excel, a real research task, three at once with Stop, and two trick tests where no hidden text made him do something else.
 
-## Next: PL Live checks
+**Yours to try (PL.8):** ask him to do something in Dia, Figma and Fusion; open the menu once. Those were not tested, because a test there would send your open tabs and files to the model.
 
-One sitting, about 30 to 40 minutes of your Mac and about $3, when you say so. It runs what could not be run: several apps, Dia, Figma and Fusion, the trick test, the first run, the agents, the self-questions. Then the checker ticks and your app is relaunched. Until then the app you run is the build of 17:44 on 15 November.
+## Next: PB Second brain
+
+Memory imported from your other AI tools, by paste and from Claude Code files. Then voice (P6), the MVP test (PM) and GitHub (PG).
 
 ## Decisions waiting for you
 

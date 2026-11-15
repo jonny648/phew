@@ -41,25 +41,24 @@ struct PhewApp: App {
 
 /// Working (each task's Stop, with its progress as the entry's second line) and Ready (a click opens the report on
 /// the card), 15.5 D. Each heading only while it has entries.
+// Not `Section`: in the menu each one adds a separator before and after, so the menu showed them doubled.
 private struct TaskEntries: View {
     @ObservedObject var tasks: TaskList
     let open: (Int) -> Void
 
     var body: some View {
         if !tasks.running.isEmpty {
-            Section("Working") {
-                ForEach(tasks.running) { item in
-                    Button { tasks.stop(item.id) } label: {
-                        Text("Stop “\(item.title)”")
-                        Text(item.progress)
-                    }
+            Text("Working")
+            ForEach(tasks.running) { item in
+                Button { tasks.stop(item.id) } label: {
+                    Text("Stop “\(item.title)”")
+                    Text(item.progress)
                 }
             }
         }
         if !tasks.waiting.isEmpty {
-            Section("Ready") {
-                ForEach(tasks.waiting) { item in Button(item.title) { open(item.id) } }
-            }
+            Text("Ready")
+            ForEach(tasks.waiting) { item in Button(item.title) { open(item.id) } }
         }
         if !tasks.running.isEmpty || !tasks.waiting.isEmpty { Divider() }
     }
@@ -119,7 +118,13 @@ private struct MenuIcon: View {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The one place the Brain is made. Everything else in the Shell sees only the `Brain` protocol.
-    var brain: any Brain = ClaudeBrain()
+    var brain: any Brain = {
+        #if DEBUG
+        // A test copy under another bundle id: no Map maintenance at launch, so it never touches the user's Map folder.
+        if CommandLine.arguments.contains("--debug-no-map") { return ClaudeBrain(map: BrainMap(maintenance: false)) }
+        #endif
+        return ClaudeBrain()
+    }()
     let panel = InputPanel()
     let card = TextCard()
     /// First run, and the key row alone from "API Key…".
@@ -142,8 +147,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         card.onTask = { [unowned self] in tasks.start($0, packet: $1) }
         #if DEBUG
         runDebugChecks()
-        // Made-up states only: no look at the Keychain or the permissions.
-        if CommandLine.arguments.contains("--debug-first-run") { return }
+        // Made-up states only: no look at the Keychain or the permissions, and no first-run panel taking the keyboard.
+        if ["--debug-first-run", "--debug-report", "--debug-menu"].contains(where: CommandLine.arguments.contains) { return }
         #endif
         setup.showAtLaunch()
     }

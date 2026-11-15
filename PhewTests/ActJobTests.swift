@@ -62,6 +62,14 @@ final class ActJobTests: XCTestCase {
 
     // MARK: The loop
 
+    func testTheSameActionAThirdTimeInARowStopsTheJob() async {
+        let again = reply("press", element: "e1")
+        let (run, _, job, _) = make([again, again, again, again])
+        let outcome = await run.run("Make it bold", job: job) { _ in }
+        XCTAssertEqual(outcome, .stuck(ActJob.noChange))
+        XCTAssertEqual(fake.sentCount, 2, "the third identical action is never sent")
+    }
+
     func testEndsOnDoneAndListsEachAction() async {
         let (run, provider, job, _) = make([reply("press", element: "e1"), reply("set", element: "e2", text: "Made up"),
                                            reply("done", text: "Made it bold and typed the title.")])

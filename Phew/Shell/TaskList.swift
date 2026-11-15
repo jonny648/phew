@@ -160,3 +160,10 @@ final class TaskList: ObservableObject {
         return end.rawValue
     }
 }
+
+#if DEBUG
+extension TaskList {
+    /// A made-up entry for the menu and report checks: no task runs, nothing is called.
+    func debugAdd(_ item: Item) { items.append(item) }
+}
+#endif

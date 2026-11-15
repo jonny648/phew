@@ -28,6 +28,142 @@ extension AppDelegate {
         if let flag = arguments.firstIndex(of: "--debug-add-items"), let marker = arguments.dropFirst(flag + 1).first {
             Task { await checkAddItems(marker) }
         }
+        if arguments.contains("--debug-report") { Task { await checkReport() } }
+        if let flag = arguments.firstIndex(of: "--debug-menu"), let dir = arguments.dropFirst(flag + 1).first {
+            Task { await checkMenu(dir) }
+            if let flag = arguments.firstIndex(of: "--debug-list-windows"), let pid = arguments.dropFirst(flag + 1).first.flatMap({ Int32($0) }) {
+            listPracticeWindows(pid)
+        }
+        // PH.11: one click at a screen point (Accessibility coordinates) through the Hand, in a practice app only. No model call.
+        if let flag = arguments.firstIndex(of: "--debug-click"), arguments.count > flag + 3, let pid = Int32(arguments[flag + 1]),
+           let x = Double(arguments[flag + 2]), let y = Double(arguments[flag + 3]) {
+            Task {
+                guard NSRunningApplication(processIdentifier: pid)?.bundleIdentifier?.hasPrefix("com.example.phew-practice") == true
+                else { shellLog("click check: not a practice app"); exit(0) }
+                UserDefaults.standard.setVolatileDomain([Hand.allowedKey: true], forName: UserDefaults.argumentDomain)
+                try? await Task.sleep(for: .seconds(1))
+                let job = Hand.shared.begin(watchUser: false, in: pid)
+                let step = HandStep(kind: .click, pid: pid, frame: CGRect(x: x, y: y, width: 0, height: 0))
+                let end = await Task.detached { Hand.shared.act(step, in: job) }.value.end
+                Hand.shared.close(job)
+                shellLog("click check: ended \(end.rawValue), post events allowed \(CGPreflightPostEventAccess()), accessibility \(AXIsProcessTrusted())")
+                exit(0)
+            }
+        }
+    }
+    }
+
+    /// A made-up report for the report check: a title, two headings, a list, bold, italics, code and a link.
+    static let madeUpReport = """
+    # Kerning sources for the poster
+
+    A short look at where to learn **kerning** for a made-up poster, with three sources worth reading first.
+
+    ## What I found
+
+    - **Example Type Guide**: a free chapter on spacing capitals, with pictures of each pair.
+    - *Spacing Basics*, a made-up course: about two hours, video and exercises.
+    - A forum thread on kerning in headlines, mostly about `AV`, `To` and `Wa`.
+    - The [Example Foundry notes](https://example.com/kerning-notes) on optical kerning.
+
+    ## What to do next
+
+    1. Read the guide's chapter on capitals first; it is the shortest.
+    2. Try the course's second lesson on your poster title.
+    3. Keep the forum thread for later questions.
+
+    Kerning matters most in large type. In body text the font's own spacing is usually right, so leave it alone.
+
+    The headline is set in capitals, so the pairs to check are AV, LT, TA and WA. Tighten them a little, then look at the title from a distance.
+
+    A made-up line to make the report longer, so the card reaches its full height.
+    Another made-up line, for the same reason.
+    And a last one.
+
+    Sources were read on 15 November 2026.
+    """
+
+    /// PA.6: the made-up report above opened from the menu as a click does (`openTask`), with its PDF saved in a
+    /// temporary folder and then as not saved, light and dark. Logs the card's height, whether it scrolls and shows the
+    /// file row, and focus. The temporary folder is deleted. No model call. Quits at the end.
+    private func checkReport() async {
+        try? await Task.sleep(for: .seconds(1))
+        NSApp.deactivate()
+        let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        let tmp = FileManager.default.temporaryDirectory.appending(path: "phew-report-check-\(UUID().uuidString)")
+        Report.copies = tmp.appending(path: "copies")  // never the user's own reports folder
+        try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let words = "Made-up kerning sources for the poster"
+        let saved = try? Report.save(Self.madeUpReport, task: words, folder: tmp)
+        for (n, (dark, file)) in [(false, saved), (false, nil), (true, saved), (true, nil)].enumerated() {
+            NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            tasks.debugAdd(TaskList.Item(id: 900 + n, words: words, state: .ready, report: TaskReport(markdown: Self.madeUpReport, saved: file)))
+            openTask(900 + n)
+            try? await Task.sleep(for: .seconds(2))
+            func scrolls(_ view: NSView) -> [NSScrollView] { ((view as? NSScrollView).map { [$0] } ?? []) + view.subviews.flatMap(scrolls) }
+            let scroll = card.contentView.flatMap { scrolls($0).first }
+            shellLog("report check \(dark ? "dark" : "light") \(file == nil ? "unsaved" : "saved"): visible=\(card.isVisible) height=\(Int(card.frame.height)) docHeight=\(Int(scroll?.documentView?.bounds.height ?? 0)) clipHeight=\(Int(scroll?.contentView.bounds.height ?? 0)) fileRow=\(card.model.saved != nil) unsavedLine=\(card.model.text.hasSuffix("could not be saved as a file.")) key=\(card.isKeyWindow) phewFront=\(phewIsFront) frontUnchanged=\(NSWorkspace.shared.frontmostApplication?.processIdentifier == front)")
+            card.dismiss()
+        }
+        try? FileManager.default.removeItem(at: tmp)
+        shellLog("report check done: pdf saved \(saved != nil), temp removed \(!FileManager.default.fileExists(atPath: tmp.path))")
+        exit(0)
+    }
+
+    /// The menu bar menu as the system holds it, with a made-up running task and a made-up ready one, written to
+    /// `<dir>/menu.txt`: each entry's title, second line, state and whether it is enabled. Nothing is clicked; the menu
+    /// is never opened. Quits at the end.
+    private func checkMenu(_ dir: String) async {
+        tasks.debugAdd(TaskList.Item(id: 801, words: "Made-up kerning sources for the poster", progress: "Searching, 2 searches"))
+        tasks.debugAdd(TaskList.Item(id: 802, words: "Made-up font licences", state: .ready, report: TaskReport(markdown: "# Made up", saved: nil)))
+        try? await Task.sleep(for: .seconds(2))
+        var out: [String] = []
+        func dump(_ menu: NSMenu, _ indent: String) {
+            menu.delegate?.menuNeedsUpdate?(menu)
+            for item in menu.items {
+                out.append(indent + (item.isSeparatorItem ? "-----" : "\(item.title) | \(item.subtitle ?? "") | on=\(item.state == .on) enabled=\(item.isEnabled)"))
+                if let sub = item.submenu { dump(sub, indent + "    ") }
+            }
+        }
+        let item = NSApp.windows.lazy.filter { $0.className == "NSStatusBarWindow" && $0.responds(to: NSSelectorFromString("statusItem")) }
+            .compactMap { $0.value(forKey: "statusItem") as? NSStatusItem }.first { $0.menu != nil }
+        if let menu = item?.menu { dump(menu, "") } else { out.append("no menu found") }
+        try? out.joined(separator: "\n").write(to: URL(filePath: dir).appending(path: "menu.txt"), atomically: true, encoding: .utf8)
+        exit(0)
+    }
+
+    /// PH.7 diagnosis: the windows of a made-up practice app (bundle id `com.example.phew-practice…` only, never any
+    /// other app's) as Accessibility and the window server list them. Roles, sizes, title lengths and whether the title
+    /// carries a test marker: never a title or a text. Quits at the end.
+    private func listPracticeWindows(_ pid: pid_t) {
+        guard let bundle = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier, bundle.hasPrefix("com.example.phew-practice")
+        else { shellLog("list windows: not a practice app, nothing read"); exit(0) }
+        func attribute(_ el: AXUIElement, _ name: String) -> CFTypeRef? {
+            var value: CFTypeRef?
+            return AXUIElementCopyAttributeValue(el, name as CFString, &value) == .success ? value : nil
+        }
+        let app = AXUIElementCreateApplication(pid)
+        let focused = attribute(app, kAXFocusedWindowAttribute).map { $0 as! AXUIElement }
+        let main = attribute(app, kAXMainWindowAttribute).map { $0 as! AXUIElement }
+        let windows = attribute(app, kAXWindowsAttribute) as? [AXUIElement] ?? []
+        shellLog("list windows: \(windows.count) in Accessibility, focused given \(focused != nil), main given \(main != nil)")
+        func describe(_ w: AXUIElement) -> String {
+            let title = attribute(w, kAXTitleAttribute) as? String ?? ""
+            var size = CGSize.zero
+            if let v = attribute(w, kAXSizeAttribute), CFGetTypeID(v) == AXValueGetTypeID() { AXValueGetValue(v as! AXValue, .cgSize, &size) }
+            let kids = (attribute(w, kAXChildrenAttribute) as? [AXUIElement] ?? []).map { attribute($0, kAXRoleAttribute) as? String ?? "?" }
+            return "role \(attribute(w, kAXRoleAttribute) as? String ?? "?") subrole \(attribute(w, kAXSubroleAttribute) as? String ?? "?") title \(title.count) chars marked \(title.contains("Phew test")) size \(Int(size.width))x\(Int(size.height)) children \(kids)"
+        }
+        for (i, w) in windows.enumerated() {
+            shellLog("list windows: #\(i) \(describe(w)) focused \(focused.map { CFEqual($0, w) } ?? false) main \(main.map { CFEqual($0, w) } ?? false)")
+        }
+        if let focused, !windows.contains(where: { CFEqual($0, focused) }) { shellLog("list windows: focused, not in the list: \(describe(focused))") }
+        let server = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] ?? []
+        for info in server where info[kCGWindowOwnerPID as String] as? pid_t == pid {
+            let bounds = (info[kCGWindowBounds as String] as? NSDictionary).flatMap { CGRect(dictionaryRepresentation: $0 as CFDictionary) } ?? .zero
+            shellLog("list windows: server layer \(info[kCGWindowLayer as String] as? Int ?? -1) onScreen \(info[kCGWindowIsOnscreen as String] as? Bool ?? false) size \(Int(bounds.width))x\(Int(bounds.height)) name \((info[kCGWindowName as String] as? String)?.count ?? -1) chars")
+        }
+        exit(0)
     }
 
     /// PL.7: a task's four background adds, as `TaskList.add` makes them (a job that does not watch the user, `kind:
@@ -99,7 +235,7 @@ extension AppDelegate {
     /// PH.10: only on a window the test itself made, holding only made-up content, whose title carries `marker` ("Phew
     /// test " and a number). Before the first model call, and before every later look, the capture is cut to that
     /// window and checked (`ContextPacket.notTestWindow`); when it is not that window, nothing is sent and the check
-    /// stops. `--test-pid <pid>` names the test's app, looked at and acted in whatever app is in front; with
+    /// stops. `--test-pid <pid>` names the test's app, a practice app from Tools/PracticeApp (no other app is read), looked at and acted in whatever app is in front; with
     /// `--test-note`, Notes; with neither, nothing is sent. `--test-note` first makes a made-up note titled `marker` and opens it in its own window (no
     /// sidebar, no list). At the end everything scripts made is removed by id (`Hand.removeTestItems`). Logs counts and fixed words
     /// only, never the words, a title or the card's lines. Quits at the end.
@@ -133,6 +269,12 @@ extension AppDelegate {
         let look = { (pid: pid_t) async -> ContextPacket? in
             var why = "none"
             guard let target = NSRunningApplication(processIdentifier: pid), let bundle = target.bundleIdentifier else { return nil }
+            // Only a made-up practice app (Tools/PracticeApp), or Notes holding the test's own note: a wrong `--test-pid`
+            // must not even read another app's window into memory.
+            guard bundle.hasPrefix("com.example.phew-practice") || (bundle == "com.apple.Notes" && arguments.contains("--test-note")) else {
+                shellLog("act check: look refused, not a test app; nothing read")
+                return nil
+            }
             // Up to three tries: while the user switches Spaces the window is briefly off screen and has no picture.
             for _ in 0..<3 {
                 let packet = await Senses.capture(app: target, windowOnly: true).value

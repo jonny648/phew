@@ -37,9 +37,13 @@ Proven live on made-up data: acting in a practice window, clicking on a canvas, 
 
 **Known to be weak, kept for after the MVP (L18):** acting in Dia, Figma and Fusion was never tried; changing, sending and deleting are not built; the research limits were never reached in a live run.
 
-## Current phase: PB Second brain
+## Closed on 15 November: PB Second brain
 
-Memory imported from your other AI tools, by paste and from Claude Code files. Then voice (P6), the MVP test (PM) and GitHub (PG).
+Under Memory in the menu: paste a memory list from Claude, ChatGPT or Gemini and tick what he keeps; import from a project folder (only its `CLAUDE.md` and its Claude Code memory files); undo last import. Verified by the checker on made-up data. Not seen on a real screen yet: the folder window and the panel in use.
+
+## Current phase: P6 Voice
+
+Hold a key, speak, release. The words are written on the device and appear in the ask panel. Then PM, the MVP test on your real work, and PG, GitHub.
 
 ## Decisions waiting for you
 

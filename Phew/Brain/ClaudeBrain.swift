@@ -191,6 +191,14 @@ extension ClaudeBrain {
         do { return try await Importer.sort(memory, provider: provider) } catch { throw BrainError(error) }
     }
 
+    func claudeExport(at url: URL) async -> ClaudeExport {
+        await Task.detached { ClaudeExportReader.read(url) }.value
+    }
+
+    func sortImport(_ export: ClaudeExport, progress: @escaping @Sendable (Int, Int) -> Void) async throws -> ImportSort {
+        do { return try await Importer.sort(export, provider: provider, progress: progress) } catch { throw BrainError(error) }
+    }
+
     /// After every Librarian run started before, like every other write.
     func keepImport(_ candidates: [ImportCandidate]) async throws -> ImportKept {
         guard let store = await map.ready() else { return ImportKept(card: Self.cannotRemember) }

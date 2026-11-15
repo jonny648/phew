@@ -182,6 +182,64 @@ final class ImportPanelTests: XCTestCase {
         XCTAssertEqual(brain.calls, ["lastImport", "undoLastImport", "lastImport"])
     }
 
+    // MARK: Claude's export
+
+    func testExportShowsItsGroupsAndSendsNothingBeforeSort() async {
+        let brain = ImportStubBrain()
+        let model = ImportModel(brain: brain)
+        await model.read(export: URL(fileURLWithPath: "/made-up/claude-memory-2026-11-14.zip"))
+        XCTAssertEqual(model.stage, .export)
+        XCTAssertEqual(model.export?.groups.map(\.name), ["About you", "Preferences", "Areas", "Orbit Lamp", "Tidepool Site"])
+        XCTAssertEqual(model.export?.note, ClaudeExport.skippedLine(1))
+        XCTAssertEqual(brain.calls, ["claudeExport"], "reading sends nothing")
+        XCTAssertTrue(model.canSort)
+        model.sort()
+        XCTAssertEqual(model.stage, .sorting)
+        XCTAssertEqual(model.filesToSort, 10)
+        await until { model.stage == .ticks }
+        XCTAssertEqual(model.sortedFiles, 10)
+        XCTAssertEqual(model.groups.map(\.name), ["About you", "Preferences", "Areas", "Orbit Lamp", "Tidepool Site"])
+        XCTAssertEqual(model.candidates.count, 30)
+        XCTAssertEqual(model.tickedCount, 29, "the planted instruction starts unticked")
+    }
+
+    func testEachGroupTicksAndFoldsOnItsOwn() async {
+        let brain = ImportStubBrain()
+        let model = ImportModel(brain: brain)
+        await model.read(export: URL(fileURLWithPath: "/made-up/export"))
+        model.sort()
+        await until { model.stage == .ticks }
+        model.tick(group: "Orbit Lamp", false)
+        XCTAssertEqual(model.groups.first { $0.name == "Orbit Lamp" }?.ticked, 0)
+        XCTAssertEqual(model.groups.first { $0.name == "Tidepool Site" }?.ticked, 6, "other groups unchanged")
+        model.tick(group: "Preferences", true)
+        XCTAssertEqual(model.groups.first { $0.name == "Preferences" }?.ticked, 6)
+        model.fold("Areas")
+        XCTAssertEqual(model.collapsed, ["Areas"])
+        model.fold("Areas")
+        XCTAssertTrue(model.collapsed.isEmpty)
+        await model.keep()
+        XCTAssertEqual(brain.kept.count, 24)
+        XCTAssertFalse(brain.kept.contains { $0.group == "Orbit Lamp" })
+    }
+
+    func testCancelWhileSortingAnExportStopsTheFilesAndGoesBack() async {
+        let brain = ImportStubBrain(delay: .seconds(5))
+        let model = ImportModel(brain: brain)
+        await model.read(export: URL(fileURLWithPath: "/made-up/export"))
+        model.sort()
+        await until { model.sortedFiles >= 1 }
+        XCTAssertTrue(model.sortingLine.hasPrefix("Sorting, "))
+        XCTAssertTrue(model.sortingLine.hasSuffix(" of 10 files"))
+        model.cancel()
+        XCTAssertEqual(model.stage, .export)
+        let sent = brain.calls.count
+        try? await Task.sleep(for: .milliseconds(1_200))
+        XCTAssertEqual(brain.calls.count, sent, "no file is sent after Cancel")
+        XCTAssertLessThan(brain.calls.filter { $0.hasPrefix("file ") }.count, 10)
+        XCTAssertTrue(model.candidates.isEmpty)
+    }
+
     func testNoPlantedWordInAnyLogLine() async {
         let lines = ImportTests.Logged()
         shellLogTap = { lines.add($0) }
@@ -196,6 +254,12 @@ final class ImportPanelTests: XCTestCase {
         folder.sort()
         await until { folder.stage == .ticks }
         folder.close()
+        let export = ImportModel(brain: brain)
+        await export.read(export: URL(fileURLWithPath: "/made-up/Zorbleflax.zip"))
+        export.sort()
+        await until { export.stage == .ticks }
+        export.tick(group: "Orbit Lamp", false)
+        await export.keep()
         _ = await ImportUndo(brain: brain).undo()
         let failing = ImportModel(brain: ImportStubBrain(failure: .network))
         failing.text = "Zorbleflax again."
@@ -205,7 +269,7 @@ final class ImportPanelTests: XCTestCase {
 
         XCTAssertFalse(lines.lines.isEmpty)
         for line in lines.lines {
-            for word in ["Zorbleflax", "diary", "Orbit", "Lamp", "CLAUDE.md", "made-up", "Kerning", "kerning"] {
+            for word in ["Zorbleflax", "diary", "Orbit", "Lamp", "CLAUDE.md", "made-up", "Kerning", "kerning", "Tidepool", "Brightmoss", ".zip"] {
                 XCTAssertFalse(line.contains(word), "\(word) in a log line")
             }
         }

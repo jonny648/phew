@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import os
 
 @main
@@ -22,7 +23,8 @@ struct PhewApp: App {
             NeverReadEntry(front: delegate.front) { delegate.neverReadFrontApp() }
             Divider()
             Menu("Memory") {
-                Button("Import memory…") { delegate.importMemory() }
+                Button("Import Claude memory…") { delegate.importClaudeMemory() }
+                Button("Paste a memory list…") { delegate.importMemory() }
                 Button("Import from a project folder…") { delegate.importFromFolder() }
                 UndoImportEntry(undo: delegate.importUndo) { delegate.undoLastImport() }
                 Divider()
@@ -199,11 +201,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// `log`: fixed words naming the use, for the log line. `chosen` runs after the front app is active again.
-    private func chooseFolder(_ log: String, message: String, create: Bool, from start: URL?, _ chosen: @escaping (URL) -> Void) {
+    /// `log`: fixed words naming the use, for the log line. `files`: file types that may be chosen besides a folder.
+    /// `chosen` runs after the front app is active again.
+    private func chooseFolder(_ log: String, message: String, create: Bool, from start: URL?, files: [UTType] = [],
+                              _ chosen: @escaping (URL) -> Void) {
         let front = NSWorkspace.shared.frontmostApplication
         let panel = NSOpenPanel()
-        panel.canChooseFiles = false
+        panel.canChooseFiles = !files.isEmpty
+        if !files.isEmpty { panel.allowedContentTypes = files }
         panel.canChooseDirectories = true
         panel.canCreateDirectories = create
         panel.prompt = "Choose"
@@ -219,7 +224,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: Imported memory (PB)
 
-    func importMemory() { showImport(ImportModel(brain: brain), title: "Import memory") }
+    /// The main way in: the system folder window, where the export's folder or its ZIP is chosen; then the panel lists
+    /// its groups. Nothing is sent before Sort.
+    func importClaudeMemory() {
+        chooseFolder("claude export", message: "Choose your Claude memory export: its folder, or the ZIP you downloaded.", create: false,
+                     from: FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first, files: [.zip]) { [unowned self] url in
+            Task {
+                let model = ImportModel(brain: brain)
+                await model.read(export: url)
+                showImport(model, title: "Import Claude memory")
+            }
+        }
+    }
+
+    func importMemory() { showImport(ImportModel(brain: brain), title: "Paste a memory list") }
 
     /// The system folder window first; then the panel lists the files found. Nothing is sent before Sort.
     func importFromFolder() {

@@ -57,6 +57,13 @@ protocol Brain: Sendable {
     func projectMemory(folder: URL) -> ProjectMemory
     /// The files of `projectMemory`, sorted like a paste, one call per file, source Claude Code.
     func sortImport(_ memory: ProjectMemory) async throws -> ImportSort
+    /// Claude's memory export, the main way in: a folder or a `.zip` the user chose, read on this Mac into memory (a
+    /// ZIP through a private temporary folder, deleted before this returns). Sends nothing: show the groups, then call
+    /// `sortImport(_:progress:)` on Sort. `problem` is set when it is not an export.
+    func claudeExport(at url: URL) async -> ClaudeExport
+    /// The export's files, one small-model call per file, a few at once; candidates carry their group. Cancelling the
+    /// task sends nothing more. `progress`: files done and the total, from any thread. Writes nothing.
+    func sortImport(_ export: ClaudeExport, progress: @escaping @Sendable (Int, Int) -> Void) async throws -> ImportSort
     /// Writes only the candidates with `ticked` true, as one import. Errors are `BrainError`.
     func keepImport(_ candidates: [ImportCandidate]) async throws -> ImportKept
     /// The last import while it can be undone, for the menu entry. Nil: the entry is off.
@@ -190,6 +197,8 @@ extension Brain {
     func sortImport(_ text: String, source: ImportSource) async throws -> ImportSort { ImportSort() }
     func projectMemory(folder: URL) -> ProjectMemory { ProjectMemory(projectName: folder.lastPathComponent) }
     func sortImport(_ memory: ProjectMemory) async throws -> ImportSort { ImportSort() }
+    func claudeExport(at url: URL) async -> ClaudeExport { ClaudeExport(problem: ClaudeExport.notExport) }
+    func sortImport(_ export: ClaudeExport, progress: @escaping @Sendable (Int, Int) -> Void) async throws -> ImportSort { ImportSort() }
     func keepImport(_ candidates: [ImportCandidate]) async throws -> ImportKept { ImportKept() }
     func lastImport() async -> ImportInfo? { nil }
     func undoLastImport() async -> String? { nil }

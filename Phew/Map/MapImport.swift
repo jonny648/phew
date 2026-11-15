@@ -41,6 +41,9 @@ struct ImportCandidate: Sendable, Equatable, Identifiable {
     var instruction: Bool
     var ticked: Bool
     var source: ImportSource
+    /// The tick list's group: for Claude's export, "About you", "Preferences", "Areas", "Topics" or a project's name
+    /// (`ClaudeExport.File.group`); "" for a paste or a project folder, shown as one list.
+    var group = ""
 }
 
 /// What one sort gives: the candidates, and when the text was longer than one import reads, how many characters were
@@ -48,7 +51,12 @@ struct ImportCandidate: Sendable, Equatable, Identifiable {
 struct ImportSort: Sendable, Equatable {
     var candidates: [ImportCandidate] = []
     var leftOut = 0
-    var note: String? { leftOut > 0 ? Importer.cutLine : nil }
+    /// Other fixed lines, with counts only: files of an export that could not be sorted.
+    var extra: [String] = []
+    var note: String? {
+        let lines = (leftOut > 0 ? [Importer.cutLine] : []) + extra
+        return lines.isEmpty ? nil : lines.joined(separator: " ")
+    }
 }
 
 /// What `keepImport` wrote. `number` is the import's number (its past question), nil when nothing was ticked.

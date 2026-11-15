@@ -11,6 +11,8 @@ final class ImportModel: ObservableObject {
         case paste
         /// The files of the chosen folder, before anything is sent.
         case files
+        /// Claude's memory export: its groups with counts and sizes, before anything is sent.
+        case export
         case sorting
         case ticks
         /// One line and Done: what Keep wrote, or what "Undo last import" did.
@@ -28,6 +30,13 @@ final class ImportModel: ObservableObject {
     @Published var candidates: [ImportCandidate] = []
     /// The chosen folder's files, read on this Mac; nothing of them is sent before Sort.
     @Published private(set) var memory: ProjectMemory?
+    /// Claude's export, read on this Mac; nothing of it is sent before Sort.
+    @Published private(set) var export: ClaudeExport?
+    /// While an export is sorted: files done, of how many.
+    @Published private(set) var sortedFiles = 0
+    @Published private(set) var filesToSort = 0
+    /// Groups of the tick list folded shut.
+    @Published private(set) var collapsed: Set<String> = []
     /// The fixed line saying the text was cut.
     @Published private(set) var note: String?
     @Published private(set) var problem: String?
@@ -51,12 +60,36 @@ final class ImportModel: ObservableObject {
         switch stage {
         case .paste: !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .files: !(memory?.files.isEmpty ?? true)
+        case .export: !(export?.files.isEmpty ?? true)
         default: false
         }
     }
     var tickedCount: Int { candidates.filter(\.ticked).count }
     var keepTitle: String { tickedCount == 1 ? "Keep 1 fact" : "Keep \(tickedCount) facts" }
     var allTicked: Bool { !candidates.isEmpty && candidates.allSatisfy(\.ticked) }
+    var sortingLine: String { export == nil ? "Sorting into facts…" : "Sorting, \(sortedFiles) of \(filesToSort) files" }
+
+    /// The tick list's groups, in the candidates' order: one group named "" for a paste or a project folder.
+    var groups: [(name: String, count: Int, ticked: Int)] {
+        var out: [(name: String, count: Int, ticked: Int)] = []
+        for candidate in candidates {
+            if let index = out.firstIndex(where: { $0.name == candidate.group }) {
+                out[index].count += 1
+                out[index].ticked += candidate.ticked ? 1 : 0
+            } else {
+                out.append((candidate.group, 1, candidate.ticked ? 1 : 0))
+            }
+        }
+        return out
+    }
+
+    func tick(group: String, _ ticked: Bool) {
+        for index in candidates.indices where candidates[index].group == group { candidates[index].ticked = ticked }
+    }
+
+    func fold(_ group: String) {
+        if collapsed.remove(group) == nil { collapsed.insert(group) }
+    }
 
     /// After the folder window: the folder's allowed files, read on this Mac. Sends nothing.
     func read(folder: URL) {
@@ -65,12 +98,27 @@ final class ImportModel: ObservableObject {
         shellLog("import panel: folder read, \(memory?.files.count ?? 0) files, \(memory?.refused.count ?? 0) refused")
     }
 
+    /// After the folder window: Claude's export (a folder or a ZIP), read on this Mac. Sends nothing.
+    func read(export url: URL) async {
+        let read = await brain.claudeExport(at: url)
+        export = read
+        stage = .export
+        shellLog("import panel: export read, \(read.files.count) files, \(read.groups.count) groups, \(read.skipped) not read, recognised \(read.problem == nil)")
+    }
+
     /// Sort: the one moment the text or the files leave the Mac.
     func sort() {
         guard canSort else { return }
         let back = stage, brain = brain
         let call: @Sendable () async throws -> ImportSort
-        if back == .files, let memory {
+        if back == .export, let export {
+            sortedFiles = 0
+            filesToSort = export.files.count
+            call = { [weak self] in
+                try await brain.sortImport(export) { done, _ in Task { @MainActor in self?.progressed(done) } }
+            }
+            shellLog("import panel: sort asked, \(export.files.count) export files")
+        } else if back == .files, let memory {
             call = { try await brain.sortImport(memory) }
             shellLog("import panel: sort asked, \(memory.files.count) files")
         } else {
@@ -101,8 +149,14 @@ final class ImportModel: ObservableObject {
         guard stage == .sorting else { return }
         work?.cancel()
         work = nil
-        stage = memory == nil ? .paste : .files
+        stage = export != nil ? .export : memory == nil ? .paste : .files
         shellLog("import panel: sort cancelled")
+    }
+
+    /// Progress arrives from the sorter's threads, possibly out of order.
+    private func progressed(_ done: Int) {
+        guard stage == .sorting else { return }
+        sortedFiles = max(sortedFiles, done)
     }
 
     func tickAll(_ ticked: Bool) {
@@ -146,6 +200,8 @@ final class ImportModel: ObservableObject {
         text = ""
         candidates = []
         memory = nil
+        export = nil
+        collapsed = []
         note = nil
     }
 
@@ -198,6 +254,7 @@ struct ImportView: View {
             switch model.stage {
             case .paste: paste
             case .files: files
+            case .export: exportGroups
             case .sorting: sorting
             case .ticks: ticks
             case .line(let line): done(line)
@@ -205,14 +262,16 @@ struct ImportView: View {
         }
         .foregroundStyle(Design.Ink.primary)
         .padding(Design.Space.s20)
-        .frame(width: Design.Size.panelWidth, height: short ? Design.Size.emptyPanelHeight : Design.Size.panelHeight,
-               alignment: .topLeading)
+        .frame(width: Design.Size.panelWidth, height: height, alignment: .topLeading)
     }
 
-    private var short: Bool {
+    /// Short while sorting and for one line; tall for an export's groups and its grouped tick list (about 12 rows).
+    private var height: CGFloat {
         switch model.stage {
-        case .sorting, .line: true
-        default: false
+        case .sorting, .line: Design.Size.emptyPanelHeight
+        case .export: Design.Size.tallPanelHeight
+        case .ticks: model.groups.count > 1 || model.groups.first?.name.isEmpty == false ? Design.Size.tallPanelHeight : Design.Size.panelHeight
+        default: Design.Size.panelHeight
         }
     }
 
@@ -285,11 +344,53 @@ struct ImportView: View {
         }
     }
 
+    /// Claude's export before Sort: the groups, each with its files and size, and the total.
+    private var exportGroups: some View {
+        let export = model.export ?? ClaudeExport()
+        return VStack(alignment: .leading, spacing: Design.Space.s12) {
+            if let problem = export.problem {
+                Text(verbatim: problem)
+                    .font(Design.Text.body)
+                    .foregroundStyle(Design.Ink.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Claude memory").font(Design.Text.strong)
+                    Spacer()
+                    Text(verbatim: "\(Self.files(export.files.count)), \(Self.size(export.totalBytes))")
+                        .font(Design.Text.small)
+                        .foregroundStyle(Design.Ink.secondary)
+                }
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(export.groups) { group in
+                            Row(title: group.name) {
+                                Text(verbatim: "\(Self.files(group.files)), \(Self.size(group.bytes))")
+                                    .font(Design.Text.small)
+                                    .foregroundStyle(Design.Ink.secondary)
+                            }
+                        }
+                    }
+                }
+                if let note = export.note {
+                    Text(verbatim: note).font(Design.Text.small).foregroundStyle(Design.Ink.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            HelpLine(text: ImportModel.filesLine, problem: model.problem)
+            HStack(spacing: Design.Space.s8) {
+                Spacer()
+                Button("Cancel") { model.close() }.buttonStyle(QuietButton())
+                Button("Sort") { model.sort() }.buttonStyle(MainButton()).disabled(!model.canSort)
+            }
+        }
+    }
+
     private var sorting: some View {
         VStack(spacing: Design.Space.s12) {
             HStack(spacing: Design.Space.s8) {
                 PresenceDot(breathing: true)
-                Text("Sorting into facts…").font(Design.Text.body).foregroundStyle(Design.Ink.secondary)
+                Text(verbatim: model.sortingLine).font(Design.Text.body).foregroundStyle(Design.Ink.secondary).monospacedDigit()
             }
             Button("Cancel") { model.cancel() }.buttonStyle(QuietButton())
         }
@@ -306,7 +407,15 @@ struct ImportView: View {
             } else {
                 ScrollView {
                     VStack(spacing: 0) {
-                        ForEach($model.candidates) { $candidate in TickRow(candidate: $candidate) }
+                        ForEach(model.groups, id: \.name) { group in
+                            if !group.name.isEmpty { header(group) }
+                            if !model.collapsed.contains(group.name) {
+                                // Bound through the whole list, never by index: safe when the list empties on Keep.
+                                ForEach($model.candidates) { $candidate in
+                                    if candidate.group == group.name { TickRow(candidate: $candidate) }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -338,7 +447,34 @@ struct ImportView: View {
         }
     }
 
+    /// A group of the tick list: a click on its name folds it; its count; tick or untick the whole group.
+    private func header(_ group: (name: String, count: Int, ticked: Int)) -> some View {
+        let folded = model.collapsed.contains(group.name)
+        return HStack(spacing: Design.Space.s8) {
+            Button { model.fold(group.name) } label: {
+                HStack(spacing: Design.Space.s4) {
+                    Image(systemName: folded ? "chevron.right" : "chevron.down")
+                        .font(Design.Text.small)
+                        .foregroundStyle(Design.Ink.secondary)
+                        .frame(width: 12)
+                    Text(verbatim: group.name).font(Design.Text.strong).lineLimit(1)
+                    Text(verbatim: "\(group.ticked) of \(group.count)").font(Design.Text.small).foregroundStyle(Design.Ink.secondary).monospacedDigit()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(group.name), \(group.ticked) of \(group.count) ticked, \(folded ? "folded" : "open")")
+            Spacer(minLength: 0)
+            Button(group.ticked == group.count ? "Untick all" : "Tick all") { model.tick(group: group.name, group.ticked != group.count) }
+                .buttonStyle(TextButton())
+        }
+        .padding(.top, Design.Space.s8)
+        .frame(minHeight: Design.Size.row)
+        .overlay(alignment: .bottom) { Design.Ink.hairline.frame(height: Design.Size.hairline) }
+    }
+
     static func size(_ bytes: Int) -> String { ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file) }
+    static func files(_ count: Int) -> String { count == 1 ? "1 file" : "\(count) files" }
 }
 
 /// One candidate: its checkbox and sentence, then its tags. Laid out like `Row`.

@@ -77,6 +77,8 @@ enum Design {
         /// A small panel with a list, and the same panel with nothing in it.
         static let panelHeight: CGFloat = 320
         static let emptyPanelHeight: CGFloat = 160
+        /// The import panel for Claude's export and its grouped tick list: about 12 rows, then it scrolls.
+        static let tallPanelHeight: CGFloat = 560
         /// A row of a small panel or of first run, at least.
         static let row: CGFloat = 36
         /// Hit area of any control, at least; the height of a button.

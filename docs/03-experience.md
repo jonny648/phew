@@ -139,3 +139,66 @@ One motion language, one palette built on black and shell white, one type family
 The MVP must solve the main problem: understand and move forward on what is in front of you, with no re-explaining. Looks come after.
 
 Lecture listening, when built, shows a recording notice in the way Granola does. For personal use now this is not a concern.
+
+## 3.10 The conversation card
+
+Design for task PS.10, written and approved by you on 15 November 2026. Built in PS.11. It answers P5.16: today a follow-up is one message, with no way to continue in the card. Background: what other tools do, in `11-direction.md` 11.10.
+
+Your idea: the answer card opens, on a click, into a chat-style card.
+
+### What you see
+
+1. **Closed, as today.** The answer card, 360 points wide, beside the spot. One new line at its bottom, in grey: "Reply…". It shows the card can be continued.
+2. **Opening.** A click anywhere on the card, or Tab, opens it. The same card grows downward. No second window appears and the answer does not jump anywhere.
+3. **Open.** About 400 points wide and up to 520 tall.
+   - Your questions and his answers, oldest at the top, newest at the bottom. Older ones scroll inside the card.
+   - A reply field at the bottom, with the cursor already in it.
+   - Return sends. Shift and Return makes a new line.
+   - A close control at the top right.
+4. **While he answers.** The words appear as they arrive, as today. You can type the next reply meanwhile; it is sent when the answer is done.
+5. **A guide inside a conversation.** When a reply asks to be shown ("show me"), the pointer runs as today. Each step is added to the thread as one short line. The card moves aside if it covers the spot the pointer marks.
+6. **Place and size.** It opens where the answer card already was, and is kept inside the screen. You can drag it. It never opens at a random spot.
+
+### Closing
+
+- Escape, the close control, or the shortcut pressed when the reply field is empty. A guide ending does not close an open conversation.
+- After 10 minutes with no reply the conversation ends and the card closes. Your choice of 15 November.
+- Pressing the shortcut while a conversation is open puts the cursor back in the reply field. It does not open a second card.
+- After closing, the next call starts a fresh card.
+
+### Typing without taking focus
+
+- Phew is never made the active app. The card takes typing the way the input panel already does (`KeyWindow.swift`): it receives keys while the front app stays the active app.
+- When the card closes, the front app has the keyboard back, with no click needed. This is checked by hand in PS.11, because other tools shipped this bug.
+
+### The screen
+
+- The first question reads the screen once, as today.
+- A reply does not reuse that capture. The rule stays: a capture is never kept for a follow-up.
+- Every reply takes a fresh look at the screen, then drops it when the answer is done. Your choice of 15 November: always, with no switch. Each reply is a little slower and costs more than a reply with no look; measured in PS.11.
+- A guide inside the conversation looks and watches as any guide does, and drops what it saw when the guide ends.
+
+### Memory
+
+- The conversation lives in memory only. Nothing of it is written to disk or to a log.
+- Each reply sends the earlier questions and answers as text, plus a fresh recall from the Map. The secrets filter runs on the whole text again before every call, because it leaves the Mac again each time.
+- The limit of 3 turns and 5 minutes (P5.5) is replaced: the conversation keeps its last 8 turns for as long as it is open, at most 10 minutes without a reply. Older turns are dropped, not summarised. First proposal.
+- What lasts after closing is what the Map already keeps: the question as a past question, and the facts the Librarian learned. The Librarian reads each turn as it does today.
+- Each turn is one line in `calls.log`, with numbers only.
+
+### Cost
+
+Each reply resends the earlier turns, so a long conversation costs more per reply. The fixed part of the request and the earlier turns are cached, which makes repeated text cost about a tenth. Measured in PS.11.
+
+### Rules this changes, named
+
+- `02-vision.md` 2.7 "Not a chat app" and 2.2 "with no chat". Reworded in PD.3: Phew is not a chat app you keep open; a conversation starts from what is on your screen and ends when you close it.
+- The P5.5 follow-up limits (3 turns, 5 minutes), replaced as above.
+- "No main window": kept. The conversation is the same small card, non-activating.
+- No privacy rule changes. Keeping whole conversations, or a list to resume them, stays an open decision (`07-decisions.md` 7.2, number 34) and is not built.
+
+### Not in this design
+
+- No list of past conversations, no search in them, no resume.
+- No attachments, no voice inside the card (voice is phase P6).
+- No settings panel for the limits.

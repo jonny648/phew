@@ -85,6 +85,7 @@
 | 15 Nov 2026 | Validation comes first, with no bias toward the idea: research on what users write and on articles that sum up customer feedback, then the competitor map in Figma updated (PD.7, PD.8). What no direction changes is built in parallel | You |
 | 15 Nov 2026 | The conversation card design, its build, and the speed work are one phase: PS Conversation and speed. PD.4 moved there as PS.10 | You |
 | 15 Nov 2026 | The research task (PA) and the second brain (PB) stay in the MVP | You |
+| 15 Nov 2026 | Conversation card design approved (`03-experience.md` 3.10): the answer card grows on a click into a thread with a reply field; it ends after 10 minutes without a reply; every reply takes a fresh look at the screen; nothing of it is saved to disk. Replaces the follow-up limits of P5.5 | You |
 
 ## 7.2 Open
 

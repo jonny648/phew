@@ -15,21 +15,23 @@ final class TextCard: EditPanel {
     let model = CardModel()
     private var task: Task<Void, Never>?
     private var top = NSPoint.zero
-    private var brain: (any Brain)?
-    private var onKeyProblem: ((BrainError) -> Void)?
+    // Internal, not private, except `escapeMonitor`: the guide (TextCardGuide.swift) and following
+    // (TextCardFollowing.swift) extensions set these, and an extension in another file cannot reach private members.
+    var brain: (any Brain)?
+    var onKeyProblem: ((BrainError) -> Void)?
     /// One per step, AppKit screen coordinates: an element's frame, a zero-size rect for a screenshot point, or
     /// nil. All that is kept of the context for the guide, updated by each look; empty when no guide runs.
-    private var targets: [CGRect?] = []
+    var targets: [CGRect?] = []
     /// The guide as the Brain gave it, for the looks that follow the student; empty when no guide runs.
-    private var steps: [GuideStep] = []
-    private(set) var overlay: PointerOverlay?
+    var steps: [GuideStep] = []
+    var overlay: PointerOverlay?
     private var escapeMonitor: Any?
     /// Observes the student's clicks, keys and scrolls in other apps while the guide follows them; nil otherwise.
-    private(set) var actionMonitor: Any?
-    private(set) var rule = FollowRule()
+    var actionMonitor: Any?
+    var rule = FollowRule()
     /// The calm wait before a look, and the look itself (capture and Brain check).
-    private var waitTask: Task<Void, Never>?
-    private var lookTask: Task<Void, Never>?
+    var waitTask: Task<Void, Never>?
+    var lookTask: Task<Void, Never>?
     var lookPending: Bool { waitTask != nil || lookTask != nil }
 
     init() {
@@ -115,143 +117,6 @@ final class TextCard: EditPanel {
         orderOut(nil)
         model.reset()
         shellLog("card closed, phew front \(phewIsFront)")
-    }
-
-    /// A click on a step line: the quiet fallback when following misses. The pointer goes to that step's last known
-    /// place, or rests beside the card.
-    func jump(to step: Int) {
-        guard targets.indices.contains(step), step != model.current else { return }
-        model.current = step
-        pointAtCurrentStep()
-    }
-
-    /// The student clicked, typed or scrolled in another app (the action monitor), or the debug check says so.
-    /// After a calm moment Phew looks again. Events in Phew's own windows never reach a global monitor, so a click
-    /// on the card is not an action.
-    func userActed() {
-        guard actionMonitor != nil, let wait = rule.userActed(at: Date()) else { return }
-        schedule(after: wait)
-    }
-
-    private func startGuide(_ steps: [GuideStep], targets: [CGRect?]) {
-        self.steps = steps
-        self.targets = targets
-        model.current = 0
-        let screen = NSScreen.screens.first { $0.frame.contains(frame.origin) } ?? NSScreen.screens[0]
-        overlay = PointerOverlay(on: screen)
-        // Observe only: the event still reaches the app, and Phew never makes one.
-        actionMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp, .keyUp, .scrollWheel]) { [weak self] _ in
-            self?.userActed()
-        }
-        shellLog("guide started: \(targets.count) steps, \(targets.compactMap { $0 }.count) with a target, following \(actionMonitor != nil)")
-        pointAtCurrentStep()
-    }
-
-    private func schedule(after wait: TimeInterval) {
-        waitTask?.cancel()
-        waitTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(wait))
-            guard !Task.isCancelled else { return }
-            self?.look()
-        }
-    }
-
-    /// Captures the front app (never Phew: it is never front), asks the Brain which step the student is on, applies
-    /// the answer. The packet is dropped when this ends; only the resolved rect stays.
-    private func look() {
-        waitTask = nil
-        guard let brain, !phewIsFront else { return shellLog("guide: look skipped, phew front \(phewIsFront)") }
-        let now = Date(), since = rule.looks > 0 ? Int(now.timeIntervalSince(rule.lastStart) * 1000) : nil
-        guard rule.startLook(at: now) else { return }
-        let from = model.current, steps = steps, look = rule.looks
-        shellLog("guide: look \(look) of \(FollowRule.ceiling) starts on step \(from + 1) of \(steps.count)\(since.map { ", \($0) ms after the last start" } ?? "")")
-        let capture = Senses.capture()
-        lookTask = Task { [weak self] in
-            let packet = await capture.value
-            let captureMS = Int(Date().timeIntervalSince(now) * 1000)
-            guard !Task.isCancelled, let self else { return }
-            let result: GuideProgress
-            do {
-                result = try await brain.progress(steps: steps, current: from, packet: packet)
-            } catch {
-                guard !Task.isCancelled else { return }
-                return lookFailed(BrainError(error))
-            }
-            guard !Task.isCancelled else { return }
-            lookTask = nil
-            let kind = switch result.target { case .element: "element"; case .point: "point"; case nil: "none" }
-            shellLog("guide: look \(look) ended, step \(from + 1) to \(result.current + 1) of \(steps.count), target \(kind), capture \(captureMS) ms, total \(Int(Date().timeIntervalSince(now) * 1000)) ms")
-            apply(result, from: from, packet: packet)
-            guard actionMonitor != nil else { return }  // the guide is done, or stopped
-            if let wait = rule.lookEnded(at: Date()) {
-                schedule(after: wait)
-            } else if rule.exhausted {
-                stopFollowing()
-                shellLog("guide: \(FollowRule.ceiling) looks reached, following stopped")
-            }
-        }
-    }
-
-    /// Moves the guide to what the look saw. Never moves the card.
-    private func apply(_ result: GuideProgress, from: Int, packet: ContextPacket?) {
-        // The student picked a step on the card during the look: their choice wins.
-        guard model.current == from else { return shellLog("guide: look result dropped, a step was picked on the card") }
-        let now = min(max(result.current, 0), targets.count)
-        guard now < targets.count else { return dismiss() }  // every step done: pointer home, card closed
-        let rect = Self.rect(for: result.target, in: packet)
-        if now == from {
-            // No target: the check failed or nothing fits, so the pointer stays where it is.
-            guard let rect, rect != targets[now] else { return }
-        } else {
-            model.current = now
-        }
-        targets[now] = rect
-        pointAtCurrentStep()
-    }
-
-    /// `.noKey` and `.badKey` close the card and ask for the key, as an answer does; anything else only stops
-    /// following, and the guide stays with its step lines.
-    private func lookFailed(_ error: BrainError) {
-        lookTask = nil
-        shellLog("guide: look failed, error \(error), following stopped")
-        guard error == .noKey || error == .badKey else { return stopFollowing() }
-        dismiss()
-        onKeyProblem?(error)
-    }
-
-    private func pointAtCurrentStep() {
-        let step = model.current, count = targets.count, target = targets[step]
-        overlay?.point(at: target, beside: frame) {
-            shellLog("guide: pointer arrived, step \(step + 1) of \(count), \(target == nil ? "beside the card" : target!.isEmpty ? "point ring" : "element ring")")
-        }
-    }
-
-    /// Where a target points, AppKit screen coordinates, measured in the packet it was named in.
-    private static func rect(for target: StepTarget?, in packet: ContextPacket?) -> CGRect? {
-        let mainHeight = NSScreen.screens.first?.frame.height ?? 0
-        return target.flatMap { packet?.screenRect(for: $0) }?.flipped(mainHeight: mainHeight)
-    }
-
-    /// The monitor goes; no look waits or runs. The card and the pointer stay.
-    private func stopFollowing() {
-        actionMonitor.map(NSEvent.removeMonitor)
-        actionMonitor = nil
-        waitTask?.cancel()
-        waitTask = nil
-        lookTask?.cancel()  // the Brain then cancels its request; the packet goes with the task
-        lookTask = nil
-    }
-
-    /// Following stops, the pointer goes home and the overlay lets go; the steps and rects are dropped.
-    private func endGuide() {
-        stopFollowing()
-        rule = FollowRule()
-        steps = []
-        targets = []
-        guard let overlay else { return }
-        overlay.goHome()
-        self.overlay = nil
-        shellLog("guide ended")
     }
 
     // Escape, whatever has focus inside the card (selectable text would turn it into something else).

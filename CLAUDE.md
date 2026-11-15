@@ -50,7 +50,7 @@ These rules are direction, not strict rules (your choice of 14 November). Follow
 | PV | `docs/archive/review.html`, `docs/07-decisions.md` 7.2. The user reads and answers. No code |
 | P5 | `docs/05-map.md`, `docs/05-map-storage.md`, `docs/04-architecture.md` 4.4, `docs/10-research-memory.md` 10.3 |
 | PB | `docs/05-map.md`, `docs/10-research-memory.md` 10.3 |
-| PS | `docs/04-architecture.md` 4.4 and 4.6, `docs/10-research-speed.md` 10.4 |
+| PS | `docs/03-experience.md`, `docs/11-direction.md` 11.10, `docs/04-architecture.md` 4.4 and 4.6, `docs/10-research-speed.md` 10.4 |
 | PA | `docs/03-experience.md` 3.5 and 3.6, `docs/04-architecture.md` 4.4 and 4.6, `docs/05-map.md` 5.11, `docs/10-research-agents.md` 10.2 |
 | P6 | `docs/03-experience.md` 3.3 |
 | PT | The task's own "done when". Manual checks only the user can run |

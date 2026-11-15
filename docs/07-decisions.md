@@ -80,15 +80,24 @@
 | 14 Nov 2026 | Locking the Map (P5.13): design in `05-map-storage.md` 5.12 approved. SQLCipher 4.20.0, two encrypted files (whole Map, sensitive facts) with two keys in the login Keychain, rollback journal. The Map files stay in Time Machine backups. No Touch ID on the sensitive key in the MVP: it goes to the Later list (L15) | You |
 | 14 Nov 2026 | Recently deleted: Delete now wipes at once, with no question | You |
 | 14 Nov 2026 | After the MVP: a large research and analysis phase to lower costs as far as possible without losing capabilities (L16) | You |
+| 15 Nov 2026 | Working direction, final only after validation (PD.3): Phew teaches you the software you work in and collaborates with you on your projects, like an AI model you talk to, but one that sees your screen, points and remembers. First niche, after the MVP: business training on proprietary software, above all old and hard software that new workers must use, with its own logic and maybe its own brand. Wider market: AI companions that collaborate inside projects, for people and for businesses. Collaboration after learning is the answer to "they learn, then stop paying" | You |
+| 15 Nov 2026 | MVP apps: the ones you use. Figma, Dia, Excel, Fusion (taken as Autodesk Fusion), Notes, Reminders, Calendar. Each is researched once before use, so Phew starts with knowledge of it. Done last, after PD and the validation | You |
+| 15 Nov 2026 | Validation comes first, with no bias toward the idea: research on what users write and on articles that sum up customer feedback, then the competitor map in Figma updated (PD.7, PD.8). What no direction changes is built in parallel | You |
+| 15 Nov 2026 | The conversation card design, its build, and the speed work are one phase: PS Conversation and speed. PD.4 moved there as PS.10 | You |
+| 15 Nov 2026 | The research task (PA) and the second brain (PB) stay in the MVP | You |
 
 ## 7.2 Open
 
-Your 33 answers of 14 November are in 7.1. Two decisions wait for later.
+Your 33 answers of 14 November are in 7.1. Two decisions wait for later, and four came from phase PD.
 
 | # | Decision | Needed by |
 |---|---|---|
 | 26 | Which business target to explore first, if any. Academic buyers are removed (7.1) | After the MVP |
 | 27 | Order of the later phases | Retro |
+| 34 | Three wishes from the direction research that touch privacy rules: a follow-up reuses the earlier screen capture; whole chat threads kept per project; "capture by showing". All off for now | After the validation (PD.3) |
+| 35 | A separate brand for the business training product | After the MVP |
+| 36 | Recurring updates of the app knowledge, as the apps change | After the MVP |
+| 37 | Is "Fusion" Autodesk Fusion? Assumed yes | Before the app knowledge phase |
 
 ## 7.3 Parking list
 
@@ -131,6 +140,7 @@ Your 33 answers of 14 November are in 7.1. Two decisions wait for later.
 | 14 Nov 2026 | P5 | Checker pass: P5.5, P5.9, P5.11, P5.15 ticked; nothing broken; rules held. Stage S5 built: "Export the Map…" in the menu, one Markdown file with sensitive facts left out unless ticked, saved only through the system folder window, the front app made active again after. 175 tests pass. P5.9 ticked on made-up live data; your hand test also checks it with real questions. No rule was bent | Your hand tests for P5.2, P5.3, P5.4, P5.6, P5.7, P5.8, P5.9, P5.10, P5.14 |
 | 14 Nov 2026 | P5 | Your hand tests all passed. P5.2, P5.3, P5.4, P5.6, P5.7, P5.8, P5.10 and P5.14 ticked by the checker; P5 complete except two gaps you found, added as P5.16 (a conversation cannot continue in the card) and P5.17 (slower answers). Measured from calls.log: the Guide's first word still comes in about 1.5 s; the extra time is a Map search round, a slower Observer (3.2 s), the wait for the Librarian (about 3.2 s) and 4.5 times more text for the Guide; about 1.7 cents a question instead of 0.9. Your hand tests cost $0.37. Phase PD, Direction and revision, added after P5. GitHub kept for PG, your choice. .gitignore extended, junk removed; no real key in the git history. No rule was bent | PD: direction research, folder, conversation design, new phases |
 | 14 Nov 2026 | PD | PD.1 folder: `05-map.md` split into the model and `05-map-storage.md` (5.12 to 5.14), `10-research.md` split into six `10-research-*.md` files (numbers kept, nothing lost), `review.html` moved to `docs/archive/`, new `docs/README.md` index and `docs/00-now.md`. Every path updated in the docs, CLAUDE.md, README, the roadmap and the map agent; six Swift comments now name `05-map-storage.md` (comments only, no code changed). PD.2 research: `docs/11-direction.md` (four directions, red team, two mixes, competitors refreshed, chat card patterns) and the decision page `docs/direction.html`. You are reading it before choosing; one answer given: the research task (PA) and the second brain (PB) stay in the MVP. 175 tests pass. Rule bent, not a privacy rule: the PD plan said no Swift changes; six comment lines changed to keep paths right | Your choice of direction, app and the three privacy wishes (PD.3) |
+| 15 Nov 2026 | PD, PS | Checker ticked PD.1 and PD.2. A board-style review of vision, mission and values given to you: the vision names no user, the mission is defined by what Phew is not, four of seven values disagree with what is built. You gave your working direction, the MVP apps and "validation first" (7.1). Roadmap: PD.4 moved into PS as PS.10; PS renamed Conversation and speed, with PS.11 (card built) and PS.12 (answer speed); PD.7 (validation) and PD.8 (Figma map) added. Four decisions added to Open (34 to 37). Rule bent, not a privacy rule: work on PS starts while PD is still open, your choice. No code changed | Validation research (PD.7); PS.7 and the conversation card design (PS.10) |
 
 ## 7.5 Your review of 12 November. Input to phase PR
 

@@ -1,0 +1,172 @@
+<title>Phew! four choices</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one reading column. One section per question, one card per option, the recommended one outlined. */
+:root{--paper:#fff;--ink:#15171c;--muted:#5a606c;--rule:#d8dbe1;--tint:#f3f5f9;--pick:#1f5f4a;--warn:#8a4b12;box-sizing:border-box}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--paper:#0f1115;--ink:#e7e9ee;--muted:#9aa1ae;--rule:#2a2e37;--tint:#171a20;--pick:#7fd1b0;--warn:#e2a76a}}
+:root[data-theme="dark"]{color-scheme:dark;--paper:#0f1115;--ink:#e7e9ee;--muted:#9aa1ae;--rule:#2a2e37;--tint:#171a20;--pick:#7fd1b0;--warn:#e2a76a}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;font-size:14px;line-height:1.55}
+main{max-width:92ch;margin:0 auto;padding-block:2rem 4rem;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font-size:1.5rem;margin:0 0 .3rem}
+h2{font-size:1.1rem;margin:0 0 .4rem;text-wrap:balance}
+h3{font-size:1rem;margin:0}
+p{margin:.45rem 0}
+ul{margin:.3rem 0;padding-left:1.3rem}
+li{margin:.15rem 0}
+.meta,.alt{color:var(--muted)}
+.sec{border-top:1px solid var(--rule);margin-top:2.2rem;padding-top:.8rem}
+.box{background:var(--tint);padding:.7rem .95rem;margin:.8rem 0}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,38ch),1fr));gap:1rem;margin-top:.8rem}
+.card{border:1px solid var(--rule);padding:.9rem 1rem;min-width:0;display:flex;flex-direction:column;gap:.35rem}
+.card.pick{border:2px solid var(--pick)}
+.chip{display:inline-block;border:1px solid currentColor;padding:0 .4rem;font-size:.85em;white-space:nowrap}
+.chip.pick{color:var(--pick)}
+.chip.warn{color:var(--warn)}
+.lab{color:var(--muted);margin:.3rem 0 0}
+.toc{list-style:none;padding:0}
+.toc a{color:inherit}
+</style>
+
+<main>
+<h1>Phew! four choices</h1>
+<p class="meta">Phase PD, task PD.3. 15 November 2026. The four questions you have to answer, each option in plain words.</p>
+<ul class="toc">
+<li><a href="#q1">1. Which one job should Phew do?</a></li>
+<li><a href="#q2">2. Which app should he teach first?</a></li>
+<li><a href="#q3">3. Prove it first, or build now?</a></li>
+<li><a href="#q4">4. Three privacy wishes: allow any?</a></li>
+</ul>
+<div class="box">Already answered by you: the research task (PA) and the second brain (PB) both stay in the MVP.</div>
+
+<section class="sec" id="q1">
+<h2>1. Which one job should Phew do in the MVP?</h2>
+<p>Why it matters: you found Phew too general. This choice decides who he is for, what the docs say, and what gets built next.</p>
+<div class="cards">
+<article class="card pick">
+<h3>Mix 1: teach one pro app</h3>
+<span><span class="chip pick">Recommended</span></span>
+<p>You open a professional Mac app and do your real work. You ask "how do I…", Phew points at each step and checks you did it. He remembers what you can now do alone, so he never teaches it twice.</p>
+<p class="lab">Good</p>
+<ul><li>Uses exactly what is built: the guide, following your clicks, the Map.</li><li>The Map becomes the product: your record of mastery. No rival keeps one.</li><li>People already pay for software training.</li></ul>
+<p class="lab">Risk</p>
+<ul><li>People learn the app, then stop paying.</li><li>Pointing must be right about 95% of the time in a dense app. Not proven yet.</li></ul>
+<p class="lab">If you pick it</p>
+<ul><li>New work: chat card, skill tracking in the Map, teaching method, progress panel.</li><li>Then question 2 matters.</li></ul>
+</article>
+<article class="card">
+<h3>Mix 2: pick up a project</h3>
+<span><span class="chip">Fallback</span></span>
+<p>You come back to a project and ask "where was I?". Phew answers from the Map: what you did, what is next, what is due. Then he points at the next step in the real app.</p>
+<p class="lab">Good</p>
+<ul><li>Also uses everything built.</li><li>Closest to what Phew is today, so less new work.</li></ul>
+<p class="lab">Risk</p>
+<ul><li>Crowded: Littlebird, Claude Cowork and Siri already do "remember my work".</li><li>No evidence that projects stall because people don't know the next click.</li><li>Our rule "looks only when called" makes him know less than rivals that watch all day.</li></ul>
+<p class="lab">If you pick it</p>
+<ul><li>New work: chat card, "Park" (save where you stopped), a blocked/waiting state.</li><li>Question 2 does not apply.</li></ul>
+</article>
+<article class="card">
+<h3>Keep it general</h3>
+<span><span class="chip warn">Weakest</span></span>
+<p>No single job. Phew stays "a companion that knows your projects": explain, guide, remember, research.</p>
+<p class="lab">Good</p>
+<ul><li>No docs to rewrite. The roadmap stays as it is.</li></ul>
+<p class="lab">Risk</p>
+<ul><li>It is the vagueness you flagged yourself.</li><li>At least 14 products point, several free. The big platforms ship memory. Nothing sets Phew apart.</li></ul>
+<p class="lab">If you pick it</p>
+<ul><li>Only the chat card and the speed work are added.</li></ul>
+</article>
+</div>
+</section>
+
+<section class="sec" id="q2">
+<h2>2. If Mix 1: which app should Phew teach first?</h2>
+<p>Why it matters: the MVP is tuned and tested on one app. A good app has many self-taught learners, no built-in assistant from its maker, and an interface Phew can read.</p>
+<div class="cards">
+<article class="card pick">
+<h3>Test 2 or 3 apps first</h3>
+<span><span class="chip pick">Recommended</span></span>
+<p>We record about 30 common tasks in DaVinci Resolve, Final Cut Pro and one more. We keep the app where Phew points right about 95% of the time.</p>
+<p class="lab">Good</p><ul><li>The choice rests on a measurement, not a guess.</li></ul>
+<p class="lab">Cost</p><ul><li>A few days and a few dollars of API. You need the apps installed.</li></ul>
+</article>
+<article class="card">
+<h3>DaVinci Resolve</h3>
+<p>Video editing. Free to download. About 5.5M users (unofficial).</p>
+<p class="lab">Good</p><ul><li>Demand is proven: a tutor for it charges $39 a month, and keeps no record of what you learned.</li></ul>
+<p class="lab">Risk</p><ul><li>That rival is already there.</li><li>It draws parts of its own interface, so pointing may lean on the screenshot.</li></ul>
+</article>
+<article class="card">
+<h3>Final Cut Pro</h3>
+<p>Apple's video editor. Every user is on a Mac.</p>
+<p class="lab">Good</p><ul><li>Native Mac app: usually the easiest for Phew to read.</li></ul>
+<p class="lab">Risk</p><ul><li>Paid app. No user count found.</li><li>Apple may put its own assistant in it. Not verified.</li></ul>
+</article>
+<article class="card">
+<h3>An app you use daily</h3>
+<p>You name it. You are user zero, so an app you really work in gives the most honest test.</p>
+<p class="lab">Good</p><ul><li>You test it every day without extra effort.</li></ul>
+<p class="lab">Risk</p><ul><li>Weak picks from the research: Logic Pro and Adobe apps (their makers added assistants), Figma (Phew cannot read its canvas).</li><li>Blender is hard: it draws its whole interface itself.</li></ul>
+</article>
+</div>
+</section>
+
+<section class="sec" id="q3">
+<h2>3. Prove the direction first, or build now?</h2>
+<p>Why it matters: the new parts take weeks. If pointing is not accurate enough in the chosen app, they are built on sand.</p>
+<div class="cards">
+<article class="card">
+<h3>Proof first</h3>
+<p>Next phase is a short test with today's build. You use Phew in the candidate app, each guide is logged right or wrong. Building starts only if accuracy holds.</p>
+<p class="lab">Good</p><ul><li>Cheapest way to find out the direction is wrong.</li></ul>
+<p class="lab">Cost</p><ul><li>The build waits about two weeks. The test needs your time.</li></ul>
+</article>
+<article class="card">
+<h3>Design and build now</h3>
+<p>Go straight to the chat card design and the new phases. Accuracy is tested later, inside the build.</p>
+<p class="lab">Good</p><ul><li>Fastest visible progress.</li></ul>
+<p class="lab">Risk</p><ul><li>If accuracy fails later, part of the work is thrown away.</li></ul>
+</article>
+<article class="card pick">
+<h3>Both in parallel</h3>
+<span><span class="chip pick">Recommended</span></span>
+<p>You run the test by hand. Meanwhile I design the chat card and rewrite the phases, on paper only. The chat card is needed in every direction, so that work is never wasted. Nothing direction-specific is built until the test result is in.</p>
+<p class="lab">Good</p><ul><li>No waiting, and no wasted code.</li></ul>
+<p class="lab">Cost</p><ul><li>You do two things in the same weeks: test, and approve designs.</li></ul>
+</article>
+</div>
+</section>
+
+<section class="sec" id="q4">
+<h2>4. Three privacy wishes from the research: allow any?</h2>
+<p>Why it matters: each wish makes Phew more capable and bends one of your privacy rules. You can tick several, or none.</p>
+<div class="cards">
+<article class="card pick">
+<h3>None</h3>
+<span><span class="chip pick">Recommended</span></span>
+<p>The rules stay. A follow-up question takes a fresh look at the screen. A chat lives in memory and is gone when it closes. Nothing is recorded.</p>
+<p class="lab">Why</p><ul><li>"Looks only when called, keeps nothing extra" is rare in the market now. It is a selling point.</li><li>Each wish can still be added later, after real use shows it is missed.</li></ul>
+</article>
+<article class="card">
+<h3>Reuse the capture</h3>
+<p>Today: you ask a follow-up, Phew looks at the screen again. With this: he reuses the picture and text from your first question.</p>
+<p class="lab">Gain</p><ul><li>Follow-ups a little faster and cheaper.</li></ul>
+<p class="lab">Bends</p><ul><li>"A capture is never kept for a follow-up." Your screen content stays in memory for the whole chat.</li></ul>
+</article>
+<article class="card">
+<h3>Keep chat threads</h3>
+<p>Today: a chat is forgotten when it ends; only the facts the Map learns remain. With this: whole chats are saved per project and you can reopen them.</p>
+<p class="lab">Gain</p><ul><li>You can resume yesterday's conversation.</li></ul>
+<p class="lab">Bends</p><ul><li>"Nothing on disk holds a question or an answer." Your full words and his answers would be stored (encrypted, on the Mac).</li></ul>
+</article>
+<article class="card">
+<h3>Capture by showing</h3>
+<p>You do a process once while Phew records it. Later he teaches it back, to you or to a junior.</p>
+<p class="lab">Gain</p><ul><li>Opens the studio business path: a senior shows, juniors learn.</li></ul>
+<p class="lab">Bends</p><ul><li>"He reads the screen only when called" and "captures live in memory only". A recording must be stored.</li><li>Large new feature. Not needed for Mix 1's MVP.</li></ul>
+</article>
+</div>
+</section>
+
+<p class="alt" style="margin-top:2rem">Sources and full reasoning: <code>docs/11-direction.md</code>, sections 11.7 to 11.10.</p>
+</main>

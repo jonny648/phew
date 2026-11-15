@@ -1,6 +1,6 @@
 # Where Phew is now
 
-Updated on 14 November 2026. One page. The details are in the docs linked at the end.
+Updated on 15 November 2026. One page. The details are in the docs linked at the end.
 
 ## What Phew does today
 
@@ -22,7 +22,7 @@ Not built yet: importing memory from other AI tools (PB), the faster guide (PS),
 
 ## What is still open from P5
 
-- **P5.16 Conversation.** A follow-up is one message only. You cannot continue in the card. It is designed in PD.4 and built later.
+- **P5.16 Conversation.** A follow-up is one message only. You cannot continue in the card. Designed and built in phase PS (PS.10, PS.11).
 - **P5.17 Speed.** Answers are slower with the Map: about 1.7 cents a question instead of 0.9, and a Map search adds a whole round. The speed phase sets a target and meets it.
 
 ## The current phase: PD Direction and revision
@@ -32,13 +32,18 @@ Phew is too general today. This phase picks one specific job for him.
 1. **PD.1** Tidy the folder: docs index, this page, long docs split, finished pages archived.
 2. **PD.2** Research 3 to 4 specific jobs Phew could do. Written in `11-direction.md`.
 3. **PD.3** You choose the direction.
-4. **PD.4** The conversation designed: the answer card opens into a chat-style card. You approve it.
+4. **PD.7 and PD.8** Your working direction validated from what users write, and the competitor map in Figma updated.
 5. **PD.5** The phases after P5 rewritten for the chosen job. You approve them.
 6. **PD.6** Phase closed: the checker finds no doc that disagrees with your choices.
 
+## Also running: PS Conversation and speed
+
+Started on 15 November beside PD, because it is needed whatever the direction: the conversation card, faster answers with the Map, and the faster guide.
+
 ## Decisions waiting for you
 
-- **Choose the direction (PD.3).** The research recommends: Phew teaches you one professional Mac app while you do real work in it, and remembers what you have mastered. If you agree, you also choose which app. See `11-direction.md` 11.8.
+- **Confirm the direction (PD.3), after the validation.** Your working direction of 15 November: Phew teaches you the software you work in and collaborates with you on your projects. First niche after the MVP: business training on proprietary software. See `07-decisions.md` 7.1.
+- **Approve the conversation card design (PS.10).**
 - **Which business target to explore first, if any** (decision 26). Needed after the MVP.
 - **Order of the later phases** (decision 27). Needed at the retro.
 

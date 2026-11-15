@@ -22,9 +22,9 @@ Since 14 November, after your P5 hand test, the phases after PD are open to chan
 | | PR Research and review | Product restated, market and tools researched, MVP re-scoped. No code | lead | Written 13 to 14 Nov. Ticked at the end of PV |
 | | PV Your review | You read everything on one page, understand it, and answer the open decisions. No code | lead, checker | Answered and approved 14 Nov |
 | 1 | P5 Map | Memory of your projects, recall at any time, follow-up questions. Starts with research on encrypting the Map. Recently deleted | map, brain, senses, shell | Built 14 Nov; your hand tests passed |
-| 1b | PD Direction and revision | Folder tidied, one specific job chosen after research, the conversation card designed, the phases after P5 rewritten. No product code | lead, research workflow, checker | |
+| 1b | PD Direction and revision | Folder tidied, one specific job chosen after research and validation, the phases after P5 rewritten. No product code | lead, research workflow, checker | |
 | 2 | PB Second brain | Memory imported from your other AI tools, by paste and from Claude Code files. Claude Code files also read when an answer needs them | map, shell, brain | |
-| 3 | PS Guide speed | The guide stops feeling slow, and costs half. Pause removed, "Never read this app" list | shell, senses, brain | |
+| 1c | PS Conversation and speed | Started 15 Nov beside PD. The answer card opens into a conversation, answers with the Map get faster, the guide stops feeling slow and costs half. Pause removed, "Never read this app" list | shell, senses, brain | |
 | 4 | PA Agents | He researches tasks alone, several at once, and reports. Reports saved as PDF | brain, shell | |
 | 5 | P6 Voice | Hold key and speak, in Italian and English | senses | |
 | 6 | PT Manual testing | Checks only you can run: InDesign, Acrobat, Figma Slides | checker | |

@@ -316,4 +316,15 @@ final class ClaudeExportTests: XCTestCase {
         func add(_ done: Int, _ total: Int) { lock.withLock { seen.append([done, total]) } }
         var last: [Int]? { lock.withLock { seen.max { $0[0] < $1[0] } } }
     }
+
+    func testALeftoverUnpackFolderIsRemovedAtLaunch() throws {
+        let temp = FileManager.default.temporaryDirectory.appending(path: "phew-sweep-\(UUID().uuidString)")
+        let left = temp.appending(path: "PhewClaudeExport-made-up"), other = temp.appending(path: "Other")
+        for folder in [left, other] { try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true) }
+        defer { try? FileManager.default.removeItem(at: temp) }
+        ClaudeExportReader.sweep(temp)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: left.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: other.path), "only Phew's own unpack folders")
+    }
+
 }

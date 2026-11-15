@@ -185,6 +185,12 @@ enum ClaudeExportReader {
 
     /// Checked before unpacking (entry count, unpacked size, no entry outside the folder), unpacked by `ditto` into a
     /// private temporary folder, checked again on disk, read like a folder, then the temporary folder is deleted.
+    /// An unpack folder left by a run that was killed mid-unpack holds the export's text: removed at launch.
+    static func sweep(_ temporary: URL = FileManager.default.temporaryDirectory) {
+        for url in (try? FileManager.default.contentsOfDirectory(at: temporary, includingPropertiesForKeys: nil)) ?? []
+        where url.lastPathComponent.hasPrefix("PhewClaudeExport-") { try? FileManager.default.removeItem(at: url) }
+    }
+
     static func unzip(_ zip: URL, into temporary: URL) -> ClaudeExport {
         guard let names = run("/usr/bin/zipinfo", ["-1", zip.path]), let totals = run("/usr/bin/zipinfo", ["-t", zip.path]) else {
             return ClaudeExport(problem: ClaudeExport.notExport)

@@ -159,6 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var hotKey = HotKey { [unowned self] in shortcut() }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        ClaudeExportReader.sweep()
         hotKey.install()
         // Re-install once Accessibility is granted, so the shortcut works without a relaunch.
         setup.onAccessibilityGranted = { [unowned self] in hotKey.install() }

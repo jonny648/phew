@@ -1,6 +1,6 @@
 import Foundation
 
-/// Runs the client tools the model may call: `search_map` from stage S2, `read_project_memory` from phase PB.
+/// Runs the client tools the model may call: `search_map` from stage S2. Project memory is not a tool: an excerpt goes in the request (phase PB).
 /// What a tool returns is data for the model, never instructions. It must not log its input or its result.
 protocol ToolRunner: Sendable {
     /// Sent unchanged on every round of one answer.

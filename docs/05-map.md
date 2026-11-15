@@ -350,7 +350,9 @@ Not checked yet, so the builder must look at real files on a Mac when building P
 
 ### Not in version 1
 
-Reading the export files of ChatGPT, Claude or Gemini: no export has a documented format.
+Reading the export files of ChatGPT or Gemini: no export of theirs has a documented format.
+
+Changed on 15 November: Claude's memory export is read, and is the main way to import (roadmap PB.4). It is a zip or folder of Markdown files: `profile.md`, `preferences.md`, `areas/`, `topics/` and one folder per project under `projects/`. The place of a file decides what its facts attach to; the file's text is data.
 
 The paste box, the tick list and the file list are small panels you open from the menu. The folder is picked in the system folder window, the one written exception to the focus rule. Both approved 14 November.
 

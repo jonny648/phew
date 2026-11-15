@@ -5,6 +5,9 @@ protocol Brain: Sendable {
     /// Errors are `BrainError`; `.noKey` means the Shell should ask for the API key.
     func answer(_ question: String, packet: ContextPacket?) -> AsyncThrowingStream<BrainEvent, Error>
 
+    /// The same, with what only the Shell knows of Phew's own state, for questions about himself (PS.14).
+    func answer(_ question: String, packet: ContextPacket?, state: ShellState) -> AsyncThrowingStream<BrainEvent, Error>
+
     /// During a guide, after the user acts: looks at a fresh `packet` and says which of `steps` the user is on
     /// now, starting from `current` (0-based), so the guide moves on by itself. A refusal or a bad answer from this
     /// check does not end the guide: it returns `current` with no target. Key, network and rate errors throw
@@ -26,6 +29,9 @@ protocol Brain: Sendable {
 }
 
 extension Brain {
+    func answer(_ question: String, packet: ContextPacket?, state: ShellState) -> AsyncThrowingStream<BrainEvent, Error> {
+        answer(question, packet: packet)
+    }
     func forgetTurns() {}
     func recentlyDeleted() async -> [DeletedItem] { [] }
     func restore(_ id: Int64) async -> Bool { false }

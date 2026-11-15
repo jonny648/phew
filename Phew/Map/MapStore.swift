@@ -167,6 +167,16 @@ actor MapStore {
         return try (count("main"), count("s"))
     }
 
+    /// How many projects and facts the Map holds now, for Phew's knowledge of himself (PS.14): current things and
+    /// Notes in both files, not Me, nothing superseded or in Recently deleted. Numbers only.
+    func counts() -> (projects: Int, facts: Int) {
+        let row = try? db.query("""
+            SELECT coalesce(sum(class = 'Project'), 0) AS projects, count(*) AS facts FROM all_nodes
+            WHERE class != 'Me' AND valid_to IS NULL AND deleted = ''
+            """).first
+        return (Int(row?.int("projects") ?? 0), Int(row?.int("facts") ?? 0))
+    }
+
     // MARK: - Nodes
 
     /// Writes a thing or a Note to the file its sensitive mark names. Returns the new id.

@@ -15,11 +15,15 @@ struct ClaudeBrain: Brain {
     static let cannotRemember = "My memory isn't available right now, so nothing was stored."
 
     func answer(_ question: String, packet: ContextPacket?) -> AsyncThrowingStream<BrainEvent, Error> {
+        answer(question, packet: packet, state: ShellState())
+    }
+
+    func answer(_ question: String, packet: ContextPacket?, state: ShellState) -> AsyncThrowingStream<BrainEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
                     // The packet was filtered by Senses; the typed question is filtered here, before any call.
-                    try await run(SecretsFilter.clean(question), packet: packet) { continuation.yield($0) }
+                    try await run(SecretsFilter.clean(question), packet: packet, state: state) { continuation.yield($0) }
                     continuation.yield(.done)
                     continuation.finish()
                 } catch {
@@ -63,7 +67,7 @@ struct ClaudeBrain: Brain {
 
     // MARK: One request
 
-    private func run(_ question: String, packet: ContextPacket?, emit: (BrainEvent) -> Void) async throws {
+    private func run(_ question: String, packet: ContextPacket?, state: ShellState, emit: (BrainEvent) -> Void) async throws {
         let start = Date()
         // Side by side, so together they cost one small-model round trip. The Map is read by code, no model call.
         async let routing = Conductor.route(question, packet: packet, provider: provider)
@@ -82,8 +86,10 @@ struct ClaudeBrain: Brain {
         let earlier = memory.turns
         let (store, lines) = await recalled
         shellLog("brain: route \(route), text \(packet?.visibleText.count ?? 0) chars after the observer, \(earlier.count) earlier turns, map \(store == nil ? "off" : "on") with \(lines.isEmpty ? 0 : lines.split(separator: "\n").count) lines, ready in \(Int(Date().timeIntervalSince(start) * 1000)) ms")
+        let held = await store?.counts()
+        let about = SelfKnowledge.live(state, turn: earlier.count + 1, projects: held?.projects, facts: held?.facts)
         var explanation = "", steps: [GuideStep] = []
-        try await Guide.answer(question, packet: packet, route: route, earlier: earlier, recall: lines,
+        try await Guide.answer(question, packet: packet, route: route, earlier: earlier, recall: lines, about: about,
                                tools: tools ?? store.map(MapSearch.init), provider: provider) { event in
             if case .text(let piece) = event { explanation += piece }
             if case .steps(let given) = event { steps = given }

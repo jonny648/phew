@@ -47,7 +47,9 @@ enum Guide {
         week", search once, with since set to the first day of that period and no class: it returns the past \
         questions of that period. Then answer from what it returns. When a result ends with "These are all the \
         matches.", nothing more is there: do not search again.
-        """
+
+
+        """ + SelfKnowledge.text
 
     static let schema = #"""
         {"type":"object","properties":{"explanation":{"type":"string"},"steps":{"type":"array","items":{"type":"object","properties":{"instruction":{"type":"string"},"element":{"type":["string","null"]},"point":{"anyOf":[{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"additionalProperties":false},{"type":"null"}]}},"required":["instruction","element","point"],"additionalProperties":false}}},"required":["explanation","steps"],"additionalProperties":false}
@@ -67,12 +69,14 @@ enum Guide {
     /// `earlier`: the kept turns, text only. `tools`: the Map search (and later project memory); nil, none.
     /// `recall`: the Map's lines for this question (`docs/05-map.md` 5.11), for this request only: never kept in a
     /// turn, so a follow-up gets its own fresh recall or none.
+    /// `about`: the live facts of `SelfKnowledge.live`, in their `<self>` block; nil, none.
     static func answer(_ question: String, packet: ContextPacket?, route: Route, earlier: [Turn] = [], recall: String? = nil,
-                       tools: (any ToolRunner)? = nil, provider: any ModelProvider, emit: (BrainEvent) -> Void) async throws {
+                       about: String? = nil, tools: (any ToolRunner)? = nil, provider: any ModelProvider,
+                       emit: (BrainEvent) -> Void) async throws {
         let shot = packet?.screenshot.flatMap(ScreenshotSize.init(png:))
         var json = "", stop = "", shown = false
         var explanation = ExplanationStream()
-        let request = request(question, packet: packet, route: route, shot: shot, earlier: earlier, recall: recall)
+        let request = request(question, packet: packet, route: route, shot: shot, earlier: earlier, recall: recall, about: about)
         for try await event in ToolLoop.stream(request, runner: tools, provider: provider) {
             switch event {
             case .text(let piece):
@@ -102,14 +106,16 @@ enum Guide {
     }
 
     static func request(_ question: String, packet: ContextPacket?, route: Route, shot: ScreenshotSize?,
-                        earlier: [Turn] = [], recall: String? = nil) -> ModelRequest {
+                        earlier: [Turn] = [], recall: String? = nil, about: String? = nil) -> ModelRequest {
         let task = route == .guide ? "Route: guide. Explain briefly, then give the steps." : "Route: explain. Leave the steps empty."
         let screen = packet.map { context($0, shot: shot) } ?? "No screen context."
         // An empty recall adds nothing, like an empty list in 5.11.
         let map = recall.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : [mapBlock($0)] } ?? []
         // The whole history leaves the Mac again with every reply, so it is filtered again every time (3.10).
         let history = earlier.map { Turn(question: SecretsFilter.clean($0.question), answer: SecretsFilter.clean($0.answer)) }
-        return ModelRequest(agent: "guide", tier: .main, system: system, text: (map + [screen, task, asked(question)]).joined(separator: "\n\n"),
+        // The live facts sit in the user turn, after the fixed system prompt, so the system prompt never changes.
+        let me = about.map { [$0] } ?? []
+        return ModelRequest(agent: "guide", tier: .main, system: system, text: (map + me + [screen, task, asked(question)]).joined(separator: "\n\n"),
                             image: shot == nil ? nil : packet?.screenshot, schema: schema, maxTokens: 8192, earlier: history)
     }
 

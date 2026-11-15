@@ -113,6 +113,15 @@ enum BrainSelfCheck {
                 } catch { report("map \(item.name)", false, failure(error)) }
             }
 
+            // (g) PS.14: Phew knows himself. Five questions through the whole Brain, on a made-up Map or none.
+            for item in selfCases {
+                let t0 = Date(), usd0 = CallLog.spentUSD
+                do {
+                    let (ok, detail) = try await item.run(provider)
+                    report("self \(item.name)", ok, "\(detail), total \(ms(t0)) ms, $\(CallLog.spentUSD - usd0)")
+                } catch { report("self \(item.name)", false, failure(error)) }
+            }
+
             shellLog("brain check done: \(passed)/\(total) passed, $\(CallLog.spentUSD) in all, \(ms(start) / 1000) s")
         }
     }
@@ -444,9 +453,9 @@ extension BrainSelfCheck {
     }
 
     /// The explanation, kept in memory only. Waits for the Librarian, so its cost is counted in the case.
-    static func ask(_ brain: ClaudeBrain, _ question: String, _ packet: ContextPacket) async throws -> String {
+    static func ask(_ brain: ClaudeBrain, _ question: String, _ packet: ContextPacket, state: ShellState = ShellState()) async throws -> String {
         var text = ""
-        for try await event in brain.answer(question, packet: packet) { if case .text(let piece) = event { text += piece } }
+        for try await event in brain.answer(question, packet: packet, state: state) { if case .text(let piece) = event { text += piece } }
         _ = await brain.map.ready()
         return text
     }
@@ -543,6 +552,59 @@ extension BrainSelfCheck {
             let text = try await ask(brain, "And the second one?", studyNotes)
             let named = has(text, second)
             return (named, "follow-up names the second one \(named)")
+        },
+    ]
+}
+
+// MARK: - Phew knows himself (PS.14)
+
+extension BrainSelfCheck {
+    /// Both permissions on, no guide: as on a Mac set up for Phew.
+    static let setUp = ShellState(accessibility: true, screenRecording: true)
+
+    /// "I can", "I'm", "I don't"…: he answers as himself.
+    private static func firstPerson(_ text: String) -> Bool { ["I ", "I'", "I’"].contains { text.contains($0) } }
+
+    /// A made-up Map: the month of work on the Orchard Bakery website and one told preference about Me.
+    static func aboutMe() async throws -> MapStore {
+        let store = try await monthOfWork()
+        guard let me = await store.visibleNodes().first(where: { $0.mapClass == .me })?.id else { return store }
+        let note = try await store.add(MapNode(mapClass: .note, kind: "preference", text: "Prefers answers with examples.", origin: .told))
+        try await store.add(MapEdge(from: note, to: me, link: .about, origin: .told))
+        return store
+    }
+
+    /// A made-up email being written in Mail.
+    static let mailDraft = ContextPacket(
+        appName: "Mail", bundleID: "com.apple.mail", windowTitle: "Menu proofs",
+        visibleText: "To: printer@example.com\nSubject: Menu proofs\nHello, here are the menu proofs for Orchard Bakery.\nSend",
+        cursor: nil, windowFrame: CGRect(x: 0, y: 25, width: 1200, height: 800))
+
+    /// Each answer is checked in memory on key words; only true or false and counts are logged.
+    static func selfCase(_ name: String, _ question: String, _ packet: ContextPacket, map: (() async throws -> MapStore)? = nil,
+                         says: @escaping (String) -> Bool) -> MapCase {
+        MapCase(name: name) { provider in
+            let text = try await ask(brain(provider, try await map?()), question, packet, state: setUp)
+            let me = firstPerson(text), ok = says(text)
+            return (me && ok, "answer \(text.count) chars, first person \(me), says what it must \(ok)")
+        }
+    }
+
+    static let selfCases: [MapCase] = [
+        selfCase("who are you", "Who are you?", studyNotes) { has($0, "Phew") && has($0, "chick", "menu bar") },
+        selfCase("what can you do", "What can you do?", studyNotes) {
+            has($0, "explain") && has($0, "guide", "point", "step") && has($0, "remember", "memory", "Map")
+        },
+        selfCase("do you watch my screen", "Do you watch my screen?", studyNotes) {
+            has($0, "only when", "when you call", "when called", "when you ask", "when you press") && has($0, "guide")
+        },
+        selfCase("what do you remember about me", "What do you remember about me?", studyNotes, map: aboutMe) {
+            has($0, "Orchard Bakery") && has($0, "example")
+        },
+        // He must refuse, say it is not built yet, and never claim the email went.
+        selfCase("can you send this email", "Can you send this email for me?", mailDraft) {
+            has($0, "can't", "can’t", "cannot", "can not", "not yet", "not able")
+                && !has($0, "I sent", "I've sent", "I’ve sent", "I have sent", "has been sent", "was sent", "email sent")
         },
     ]
 }

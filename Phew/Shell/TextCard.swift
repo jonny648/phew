@@ -92,8 +92,10 @@ final class TextCard: EditPanel {
 
     /// One turn: the question on the card, the capture awaited, the Brain's answer played in. The packet goes when
     /// this task ends; only the targets' rects stay for the guide.
-    private func answer(_ question: String, capture: Task<ContextPacket?, Never>?) {
+    private func answer(_ question: String, capture: Task<ContextPacket?, Never>?, guiding: Bool = false) {
         guard let brain else { return }
+        // PS.14: Phew's own state for questions about himself. States only, never words.
+        let state = ShellState(accessibility: AXIsProcessTrusted(), screenRecording: CGPreflightScreenCaptureAccess(), guideRunning: guiding)
         idleTask?.cancel()
         idleTask = nil
         model.begin(question)
@@ -105,7 +107,7 @@ final class TextCard: EditPanel {
                 let packet = await capture?.value
                 guard !Task.isCancelled else { return }
                 if let packet, packet.neverRead { self?.model.note = CardModel.neverReadNote(packet.appName) }
-                for try await event in brain.answer(question, packet: packet) {
+                for try await event in brain.answer(question, packet: packet, state: state) {
                     self?.model.apply(event)
                     if case .steps(let steps) = event, !steps.isEmpty {
                         self?.startGuide(steps, targets: steps.map { Self.rect(for: $0.target, in: packet) })
@@ -141,9 +143,10 @@ final class TextCard: EditPanel {
         model.queued = false
         guard !reply.isEmpty else { return }
         model.draft = ""
+        let guiding = !steps.isEmpty
         endGuide()  // a guide of the turn before stops; this reply may start its own
         shellLog("card: reply sent, \(reply.count) characters, turn \(model.history.count + 2), phew front \(phewIsFront)")
-        answer(reply, capture: Senses.capture())
+        answer(reply, capture: Senses.capture(), guiding: guiding)
     }
 
     /// A click on the closed card: the same panel grows into the thread, with the cursor in the reply field.

@@ -1,8 +1,9 @@
 import AppKit
+import QuartzCore
 import SwiftUI
 
 /// Phew's look, the tokens of docs/15-design.md 15.4. Change a value here and it changes everywhere.
-/// Only what is in use so far; the pointer, the menu and the small panels add theirs when they are restyled.
+/// Only what is in use so far; the menu and the small panels add theirs when they are restyled.
 enum Design {
     enum Text {
         /// The ask field only.
@@ -14,6 +15,10 @@ enum Design {
         static let strong = Font.body.weight(.semibold)
         /// Footers, notes, the question line on the card.
         static let small = Font.subheadline
+        /// Heading of a consent screen.
+        static let title = Font.title3.weight(.semibold)
+        /// Key caps, the "can't be undone" tag.
+        static let tag = Font.caption2.weight(.medium)
     }
 
     enum Ink {
@@ -29,7 +34,11 @@ enum Design {
                 ? NSColor(srgbRed: 1, green: 0x6B / 255, blue: 0x35 / 255, alpha: 1)  // #FF6B35
                 : NSColor(srgbRed: 0xF2 / 255, green: 0x54 / 255, blue: 0x1B / 255, alpha: 1)  // #F2541B
         })
+        /// The pointer and the ring: one value in both modes, since they sit on the user's app, not on Phew's.
+        static let accentOnScreen = Color(nsColor: onScreen)
+        static let onScreen = NSColor(srgbRed: 0xF2 / 255, green: 0x54 / 255, blue: 0x1B / 255, alpha: 1)  // #F2541B
         /// On a small symbol only.
+        static let ok = Color(nsColor: .systemGreen)
         static let problem = Color(nsColor: .systemRed)
     }
 
@@ -38,6 +47,8 @@ enum Design {
     }
 
     enum Radius {
+        /// Key caps, tags, buttons.
+        static let chip: CGFloat = 6
         /// Your message in a thread, text fields in panels.
         static let bubble: CGFloat = 10
         /// The ask panel and the card.
@@ -54,13 +65,18 @@ enum Design {
         static let bar: CGFloat = 36
         static let dot: CGFloat = 8
         static let hairline: CGFloat = 0.5
-        /// Hit area of any control, at least.
+        /// The footer while he acts.
+        static let actingBar: CGFloat = 44
+        /// Consent screens.
+        static let consentWidth: CGFloat = 440
+        /// Hit area of any control, at least; the height of a button.
         static let control: CGFloat = 28
     }
 
     enum Motion {
-        /// The system's Reduce Motion setting.
-        static var reduce: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+        /// The system's Reduce Motion setting, or the debug checks' `--debug-reduce-motion`.
+        static var reduce: Bool { forceReduce || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+        static var forceReduce = false
         /// Opacity 0 to 1, ease-out, with scale 0.98 to 1 (opacity only with Reduce Motion).
         static let appear: TimeInterval = 0.16
         static let appearScale: CGFloat = 0.98
@@ -71,8 +87,23 @@ enum Design {
         /// ease-out of the same length, with no overshoot.
         static let growDuration: TimeInterval = 0.35
         static let growCurve = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1)
-        /// One 1.6 s cycle, opacity 1 to 0.4 and back: thinking.
-        static let breathe = Animation.easeInOut(duration: 0.8).repeatForever(autoreverses: true)
+        /// One 1.6 s cycle, opacity 1 to 0.4 and back (on the pointer also scale 1 to 1.12): thinking, looking, acting.
+        static let breatheHalf: TimeInterval = 0.8
+        static let breathe = Animation.easeInOut(duration: breatheHalf).repeatForever(autoreverses: true)
+        /// The pointer between spots: a spring, response 0.5, damping 0.9, as Core Animation takes it.
+        static func travel() -> CASpringAnimation {
+            let spring = CASpringAnimation(keyPath: "position")
+            spring.mass = 1
+            spring.stiffness = 158
+            spring.damping = 22.6
+            spring.duration = spring.settlingDuration
+            return spring
+        }
+        /// Each action he takes: the pointer 1 to 0.88 to 1; the ring fills with accent at 25% over `pressFill`.
+        static let press: TimeInterval = 0.18
+        static let pressFill: TimeInterval = 0.3
+        /// A step or action marked done: opacity 0 to 1, scale 0.6 to 1 (opacity only with Reduce Motion).
+        static let tick: TimeInterval = 0.12
     }
 }
 
@@ -107,6 +138,49 @@ private struct SurfaceStyle: ViewModifier {
             .clipShape(shape)
             .overlay(shape.strokeBorder(high ? Design.Ink.secondary : Design.Ink.hairline,
                                         lineWidth: high ? 1 : Design.Size.hairline))
+    }
+}
+
+/// The tick of a done step or action, in `ok`, played in with `tick` when it first shows.
+struct TickMark: View {
+    @State private var shown = false
+
+    var body: some View {
+        Image(systemName: "checkmark")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Design.Ink.ok)
+            .opacity(shown ? 1 : 0)
+            .scaleEffect(shown || Design.Motion.reduce ? 1 : 0.6)
+            .onAppear { withAnimation(.easeOut(duration: Design.Motion.tick)) { shown = true } }
+            .accessibilityLabel("Done")
+    }
+}
+
+/// The main button: ink fill, panel text (black on light, white on dark). The accent is never a button.
+struct MainButton: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(Design.Text.strong)
+            .foregroundStyle(Color(nsColor: .windowBackgroundColor))
+            .padding(.horizontal, Design.Space.s16)
+            .frame(minHeight: Design.Size.control)
+            .background(Design.Ink.primary, in: RoundedRectangle(cornerRadius: Design.Radius.chip))
+            .opacity(configuration.isPressed ? 0.8 : 1)
+            .contentShape(Rectangle())
+    }
+}
+
+/// A quiet button on `fill`: Stop, Not now.
+struct QuietButton: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(Design.Text.strong)
+            .foregroundStyle(Design.Ink.primary)
+            .padding(.horizontal, Design.Space.s12)
+            .frame(minHeight: Design.Size.control)
+            .background(Design.Ink.fill, in: RoundedRectangle(cornerRadius: Design.Radius.chip))
+            .opacity(configuration.isPressed ? 0.7 : 1)
+            .contentShape(Rectangle())
     }
 }
 

@@ -248,4 +248,60 @@ final class ActJobTests: XCTestCase {
         let request = try XCTUnwrap(provider.requests.first { $0.agent == "guide" })
         XCTAssertTrue(request.text.contains("Route: guide."))
     }
+
+    // MARK: The consent screen and the "Let Phew act" switch (PH.3)
+
+    func testConsentOffByDefaultAndAsks() async {
+        defaults.removeObject(forKey: Hand.allowedKey)  // never set
+        let consent = ActConsent(defaults: defaults)
+        XCTAssertFalse(consent.allowed)
+        XCTAssertTrue(consent.asks, "the first act request shows the screen")
+        let (run, _, job, _) = make([reply("press", element: "e1")])
+        let outcome = await run.run("Make it bold", job: job) { _ in }
+        XCTAssertEqual(outcome, .ended(.off), "nothing acts until Allow")
+        XCTAssertEqual(fake.sentCount, 0)
+    }
+
+    func testConsentNotNowLeavesItOffAndAsksAgain() {
+        defaults.removeObject(forKey: Hand.allowedKey)
+        let consent = ActConsent(defaults: defaults)
+        consent.answer(false)
+        XCTAssertFalse(consent.allowed)
+        XCTAssertTrue(consent.asks, "the screen comes back next time")
+        XCTAssertNil(defaults.object(forKey: Hand.allowedKey), "Not now writes nothing")
+    }
+
+    func testConsentAllowTurnsItOn() async {
+        defaults.removeObject(forKey: Hand.allowedKey)
+        let consent = ActConsent(defaults: defaults)
+        consent.answer(true)
+        XCTAssertTrue(consent.allowed)
+        XCTAssertFalse(consent.asks)
+        XCTAssertTrue(hand().allowed)
+        let (run, _, job, _) = make([reply("press", element: "e1"), reply("done", text: "Made it bold.")])
+        let outcome = await run.run("Make it bold", job: job) { _ in }
+        XCTAssertEqual(outcome, .done("Made it bold."))
+        XCTAssertEqual(fake.sentCount, 1)
+    }
+
+    func testSwitchOffRefusesAndDoesNotAskAgain() async {
+        let consent = ActConsent(defaults: defaults)
+        consent.answer(true)
+        defaults.set(false, forKey: Hand.allowedKey)  // what the menu's switch writes when turned off
+        XCTAssertFalse(consent.allowed)
+        XCTAssertFalse(consent.asks, "the user has seen the screen: the menu is the way back on")
+        let (run, _, job, _) = make([reply("press", element: "e1")])
+        let outcome = await run.run("Make it bold", job: job) { _ in }
+        XCTAssertEqual(outcome, .ended(.off))
+        XCTAssertEqual(fake.sentCount, 0)
+    }
+
+    func testRowsListEachActionAsItHappens() async {
+        let (made, _, job, _) = make([reply("press", element: "e1"), reply("done", text: "Done.")])
+        var run = made
+        var events: [String] = []
+        run.starting = { events.append("start \($0)") }
+        _ = await run.run("Make it bold", job: job) { events.append("done \($0)") }
+        XCTAssertEqual(events, ["start Pressing Bold", "done Pressed Bold"])
+    }
 }

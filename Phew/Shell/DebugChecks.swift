@@ -5,7 +5,10 @@ import AppKit
 extension AppDelegate {
     func runDebugChecks() {
         let arguments = CommandLine.arguments
+        // Every motion takes its Reduce Motion form, without touching the system setting.
+        if arguments.contains("--debug-reduce-motion") { Design.Motion.forceReduce = true }
         if arguments.contains("--debug-open-panel") { Task { await checkPanel() } }
+        if arguments.contains("--debug-consent") { Task { await checkConsent() } }
         // Senses: captures the front app, with a screenshot, into the debug files.
         // An optional bundle id after the flag reads that running app instead, without bringing it forward.
         if let flag = arguments.firstIndex(of: "--debug-capture") {
@@ -24,22 +27,91 @@ extension AppDelegate {
         }
     }
 
+    /// PH.3 without a model call or an action: a stand-in Brain that routes to act, the real card and the real consent
+    /// screen, with the switch in a throwaway defaults suite (never the user's own defaults). Not now: he guides, the
+    /// suite stays empty. Asked again: the screen comes back; Allow: the suite turns on and the job runs (the stand-in
+    /// says done at once, so nothing is pressed). Then the menu's switch off: no screen, a guide with the fixed line.
+    /// The job takes one look at the front app, in memory only: put a made-up window in front. Logs states only.
+    private func checkConsent() async {
+        try? await Task.sleep(for: .seconds(1))
+        NSApp.deactivate()
+        guard await Self.madeUpFront() else { return }
+        let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        let name = "PhewDebugConsent.\(UUID().uuidString)"
+        guard let suite = UserDefaults(suiteName: name) else { return }
+        let realConsent = card.consent, realBrain = brain
+        card.consent = ActConsent(defaults: suite)
+        brain = ActStubBrain()
+        func state(_ moment: String) {
+            let panel = card.consentPanel.panel
+            shellLog("consent check \(moment): screen visible=\(panel?.isVisible ?? false) key=\(panel?.isKeyWindow ?? false) nonactivating=\(panel?.styleMask.contains(.nonactivatingPanel) ?? false) width=\(Int(panel?.frame.width ?? 0)) waiting=\(card.consentChoice != nil) card visible=\(card.isVisible) note=\(card.model.note == TextCard.actingOff) steps=\(card.model.steps.count) rows=\(card.model.actions.count) summary=\(!card.model.text.isEmpty) allowed=\(card.consent.allowed) asks=\(card.consent.asks) stored=\(suite.persistentDomain(forName: name)?[Hand.allowedKey].map { "\($0)" } ?? "nothing") userDefaultsSet=\(UserDefaults.standard.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "")?[Hand.allowedKey] != nil) appActive=\(NSRunningApplication.current.isActive) phewFront=\(phewIsFront) frontUnchanged=\(NSWorkspace.shared.frontmostApplication?.processIdentifier == front)")
+        }
+        let visible = NSScreen.screens.first?.visibleFrame ?? .zero
+        for allow in [false, true] {
+            capture = Task<ContextPacket?, Never> { nil }
+            anchor = NSPoint(x: visible.minX + 20, y: visible.minY + 320)
+            ask("Made-up request")
+            await until { self.card.consentChoice != nil }
+            try? await Task.sleep(for: .seconds(2))
+            state("\(allow ? "second ask" : "first ask"), screen up")
+            // So the real Hand sees the Allow, in memory only (the argument domain).
+            if allow { UserDefaults.standard.setVolatileDomain([Hand.allowedKey: true], forName: UserDefaults.argumentDomain) }
+            card.consentChoice?(allow)  // what the button calls
+            await until { !self.card.answering }
+            try? await Task.sleep(for: .seconds(2))
+            state(allow ? "after Allow" : "after Not now")
+            card.dismiss()
+            try? await Task.sleep(for: .seconds(1))
+        }
+        // Emptied, not removed: the argument domain is read by every defaults object, the suite too, and stays.
+        UserDefaults.standard.setVolatileDomain([:], forName: UserDefaults.argumentDomain)
+        suite.set(false, forKey: Hand.allowedKey)  // what the menu's switch writes when turned off
+        capture = Task<ContextPacket?, Never> { nil }
+        ask("Made-up request")
+        await until { !self.card.answering }
+        try? await Task.sleep(for: .seconds(2))
+        state("switch off")
+        card.dismiss()
+        suite.removePersistentDomain(forName: name)
+        card.consent = realConsent
+        brain = realBrain
+        shellLog("consent check done: card visible=\(card.isVisible) screen gone=\(card.consentPanel.panel == nil) phewFront=\(phewIsFront)")
+    }
+
     /// PH.5 live: `--debug-act "<words>"` asks Phew the words, through the real ask path, about the app in front, with
     /// acting on for this process only: in memory (the argument domain), never written to the user's defaults. Real
     /// model calls and real actions in the front app: run it only on a made-up window or a made-up note. The user's own
-    /// click or key stops the job. Logs counts and fixed words only, never the words or the card's lines. Quits at the end.
+    /// click or key stops the job. With `--debug-stop-after <n>`, Stop is pressed (what the card's button calls) once
+    /// n actions are ticked. Logs counts and fixed words only, never the words or the card's lines. Quits at the end.
     private func checkAct(_ words: String) async {
         UserDefaults.standard.setVolatileDomain([Hand.allowedKey: true], forName: UserDefaults.argumentDomain)
+        let arguments = CommandLine.arguments
+        let stopAfter = arguments.firstIndex(of: "--debug-stop-after").flatMap { arguments.dropFirst($0 + 1).first }.flatMap { Int($0) }
         try? await Task.sleep(for: .seconds(2))
         NSApp.deactivate()
+        guard await Self.madeUpFront() else { exit(1) }  // nothing of a real app goes to the model
         let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
-        shellLog("act check: allowed=\(Hand.shared.allowed) accessibility=\(AXIsProcessTrusted()) phewFront=\(phewIsFront)")
+        shellLog("act check: allowed=\(Hand.shared.allowed) asks=\(card.consent.asks) accessibility=\(AXIsProcessTrusted()) phewFront=\(phewIsFront)")
         capture = Senses.capture()
         let visible = NSScreen.screens.first?.visibleFrame ?? .zero
         anchor = NSPoint(x: visible.minX + 20, y: visible.minY + 320)  // out of the way, bottom left
         ask(words)
-        for _ in 0..<2400 where card.isVisible && (card.answering || card.model.thinking) { try? await Task.sleep(for: .milliseconds(100)) }
-        shellLog("act check done: lines=\(card.model.text.split(separator: "\n").count) problem=\(card.model.problem != nil) note=\(card.model.note != nil) steps=\(card.model.steps.count) frontUnchanged=\(NSWorkspace.shared.frontmostApplication?.processIdentifier == front) phewFront=\(phewIsFront) $\(CallLog.spentUSD)")
+        var seen = 0, stopped: Date?
+        for _ in 0..<2400 where card.isVisible && (card.answering || card.model.thinking) {
+            let rows = card.model.actions
+            if rows.count != seen {
+                seen = rows.count
+                // Each row as it appears: its state and the footer, never its words.
+                shellLog("act check: row \(rows.count) \(rows.last.map { "\($0.state)" } ?? "") acting=\(card.model.acting) footer stop=\(card.model.acting) closeHidden=\(card.model.acting)")
+            }
+            if let stopAfter, stopped == nil, rows.filter({ $0.state == .done }).count >= stopAfter, card.model.acting {
+                stopped = Date()
+                card.handJob?.stop()  // what the footer's Stop button calls
+                shellLog("act check: Stop pressed after \(stopAfter) actions")
+            }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        shellLog("act check done: rows=\(card.model.actions.count) done=\(card.model.actions.filter { $0.state == .done }.count) failed=\(card.model.actions.filter { $0.state == .failed }.count) acting=\(card.model.acting) summary=\(!card.model.text.isEmpty) ended=\(card.model.ended != nil) problem=\(card.model.problem != nil) note=\(card.model.note != nil) steps=\(card.model.steps.count)\(stopped.map { " stop to end \(Int(Date().timeIntervalSince($0) * 1000)) ms" } ?? "") frontUnchanged=\(NSWorkspace.shared.frontmostApplication?.processIdentifier == front) phewFront=\(phewIsFront) $\(CallLog.spentUSD)")
         try? await Task.sleep(for: .seconds(2))
         card.dismiss()
         exit(0)
@@ -328,6 +400,19 @@ extension AppDelegate {
         brain = realBrain
     }
 
+    /// With `--debug-require-front <bundle id>`: true only once that app (a made-up window) is in front, waited for
+    /// up to 15 s; logged and false otherwise, so the check stops before any look. True without the flag.
+    static func madeUpFront() async -> Bool {
+        let arguments = CommandLine.arguments
+        guard let flag = arguments.firstIndex(of: "--debug-require-front"), let wanted = arguments.dropFirst(flag + 1).first else { return true }
+        for _ in 0..<150 where NSWorkspace.shared.frontmostApplication?.bundleIdentifier != wanted {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        let ok = NSWorkspace.shared.frontmostApplication?.bundleIdentifier == wanted
+        if !ok { shellLog("debug check stopped: the made-up app is not in front") }
+        return ok
+    }
+
     /// Polls `done` every 50 ms, for at most 10 s.
     private func until(_ done: () -> Bool) async {
         for _ in 0..<200 where !done() { try? await Task.sleep(for: .milliseconds(50)) }
@@ -400,6 +485,32 @@ struct FakeBrain: Brain {
         let next = min(max(current + (confirms ? 1 : 0), 0), steps.count)
         return GuideProgress(current: next, target: next < steps.count ? steps[next].target : nil)
     }
+}
+
+/// A stand-in Brain for the consent check: every request is on the act route. With acting off it is a made-up guide
+/// of two steps with no target; on, the job is done at once, so nothing is ever pressed.
+struct ActStubBrain: Brain {
+    func answer(_ question: String, packet: ContextPacket?) -> AsyncThrowingStream<BrainEvent, Error> {
+        answer(question, packet: packet, state: ShellState())
+    }
+
+    func answer(_ question: String, packet: ContextPacket?, state: ShellState) -> AsyncThrowingStream<BrainEvent, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield(.route(.act))
+            if !state.acting {
+                continuation.yield(.text("A made-up guide instead."))
+                continuation.yield(.steps([GuideStep(instruction: "Fake step 1."), GuideStep(instruction: "Fake step 2.")]))
+            }
+            continuation.yield(.done)
+            continuation.finish()
+        }
+    }
+
+    func progress(steps: [GuideStep], current: Int, packet: ContextPacket?) async throws -> GuideProgress {
+        try await FakeBrain().progress(steps: steps, current: current, packet: packet)
+    }
+
+    func nextAction(_ request: String, packet: ContextPacket?, done: [String]) async throws -> NextAction { .done("Made-up job done.") }
 }
 
 /// A stand-in Brain for Recently deleted: two made-up forgets. Restore and Delete now remove the item and record

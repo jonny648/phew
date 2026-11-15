@@ -4,6 +4,8 @@ import os
 @main
 struct PhewApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+    /// The "Let Phew act" switch: nil until Allow on the consent screen (PH.3), then the menu shows it.
+    @AppStorage(Hand.allowedKey) private var allowed: Bool?
 
     // No main window (hard rule): the menu bar item is the only scene.
     var body: some Scene {
@@ -11,15 +13,29 @@ struct PhewApp: App {
             Button("API Key…") { delegate.keyWindow.show() }
             Button("Recently deleted…") { delegate.showRecentlyDeleted() }
             Button("Export the Map…") { delegate.showExport() }
+            if let allowed {
+                // Off: he guides instead, and the consent screen is not shown again; this is the way back on.
+                Toggle("Let Phew act", isOn: Binding(get: { allowed }, set: { self.allowed = $0 }))
+            }
             Button("Never read this app") { delegate.neverReadFrontApp() }
             Button("Never-read apps…") { delegate.showNeverRead() }
             Divider()
             Button("About and licences") { delegate.menuPanel.show(title: "About Phew", AboutView()) }
             Button("Quit Phew") { NSApp.terminate(nil) }
         } label: {
-            Image(systemName: "cursorarrow.rays")
-                .accessibilityLabel("Phew")
+            MenuIcon(model: delegate.card.model)
         }
+    }
+}
+
+/// The menu bar icon (15.5 D), a template symbol: resting, or acting for the whole job. It never animates.
+/// The research count and the waiting result arrive with phase PA.
+private struct MenuIcon: View {
+    @ObservedObject var model: CardModel
+
+    var body: some View {
+        Image(systemName: model.acting ? "cursorarrow.motionlines" : "cursorarrow.rays")
+            .accessibilityLabel(model.acting ? "Phew, acting" : "Phew")
     }
 }
 

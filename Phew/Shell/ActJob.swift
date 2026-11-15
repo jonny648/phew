@@ -14,6 +14,8 @@ struct ActJob {
     let capture: () async -> ContextPacket?
     /// Before each action, where it acts, screen points with a top-left origin: the card moves out of its way.
     var aside: (CGRect) -> Void = { _ in }
+    /// Before each action, its line as it happens ("Pressing Bold"): the card lists it at once (15.5 B).
+    var starting: (String) -> Void = { _ in }
 
     enum Outcome: Equatable {
         case done(String)
@@ -44,6 +46,7 @@ struct ActJob {
                 guard let packet, let step = Self.step(kind, target: target, menu: menu, text: text, packet: packet, pid: pid) else {
                     return .stuck(Self.noTarget)
                 }
+                starting(Self.line(step, doing: true))
                 if kind != .pick { aside(step.frame) }
                 let hand = hand
                 // Off the main thread: an app that hangs blocks for at most `Hand.timeout`.
@@ -76,14 +79,15 @@ struct ActJob {
     /// A Mac command whose name ends in an ellipsis opens a window or sheet: the next step takes it as expected.
     static func opens(_ name: String) -> Bool { name.hasSuffix("…") || name.hasSuffix("...") }
 
-    /// One plain line for the card (docs/13-hand.md 13.4): a fixed word and the control's name. Memory only, never logged.
-    static func line(_ step: HandStep) -> String {
+    /// One plain line for the card (docs/13-hand.md 13.4): a fixed word and the control's name. `doing`: while it
+    /// happens ("Pressing Bold"). Memory only, never logged.
+    static func line(_ step: HandStep, doing: Bool = false) -> String {
         let name = step.name.isEmpty ? nil : step.name
         switch step.kind {
-        case .press: return "Pressed \(name ?? "a control")"
-        case .set: return "Typed \(step.text.count) character\(step.text.count == 1 ? "" : "s") in \(name ?? "a field")"
-        case .pick: return "Picked \(step.menuPath.joined(separator: " > "))"
-        case .click: return "Clicked \(name ?? "a spot")"
+        case .press: return "\(doing ? "Pressing" : "Pressed") \(name ?? "a control")"
+        case .set: return "\(doing ? "Typing" : "Typed") \(step.text.count) character\(step.text.count == 1 ? "" : "s") in \(name ?? "a field")"
+        case .pick: return "\(doing ? "Picking" : "Picked") \(step.menuPath.joined(separator: " > "))"
+        case .click: return "\(doing ? "Clicking" : "Clicked") \(name ?? "a spot")"
         }
     }
 

@@ -42,6 +42,11 @@ final class TextCard: EditPanel {
     var lookTask: Task<Void, Never>?
     /// The job of the act route while the Hand works (TextCardActing.swift); nil otherwise.
     var handJob: HandJob?
+    /// The "Let Phew act" switch; the debug check gives it a throwaway defaults suite.
+    var consent = ActConsent()
+    /// The consent screen, and its answer while it waits; nil otherwise.
+    let consentPanel = MenuPanel()
+    var consentChoice: ((Bool) -> Void)?
     var lookPending: Bool { waitTask != nil || lookTask != nil }
     /// True while an answer streams in.
     var answering: Bool { task != nil }
@@ -59,6 +64,7 @@ final class TextCard: EditPanel {
             model: model,
             onClose: { [weak self] in self?.dismiss() },
             onStep: { [weak self] in self?.jump(to: $0) },
+            onStop: { [weak self] in self?.handJob?.stop() },
             // Next turn of the run loop: resizing the window inside SwiftUI's layout pass would nest layouts.
             onHeight: { [weak self] height in DispatchQueue.main.async { self?.fit(height: height) } }))
         host.sizingOptions = []  // the card sets its own frame, top-left fixed
@@ -92,12 +98,16 @@ final class TextCard: EditPanel {
     /// this task ends; only the targets' rects stay for the guide.
     private func answer(_ question: String, capture: Task<ContextPacket?, Never>?, guiding: Bool = false) {
         guard let brain else { return }
+        let consent = consent
         // PS.14: Phew's own state for questions about himself. States only, never words.
+        // `acting` is also true while the consent screen was never answered: the Brain then stops at the act route,
+        // so the screen can ask before any guide is made.
         let state = ShellState(accessibility: AXIsProcessTrusted(), screenRecording: CGPreflightScreenCaptureAccess(), guideRunning: guiding,
-                               acting: Hand.shared.allowed)
+                               acting: consent.allowed || consent.asks)
         idleTask?.cancel()
         idleTask = nil
         model.begin(question)
+        let asked = NSWorkspace.shared.frontmostApplication  // the app the user asked in: a job works there only
         task = Task { [weak self] in
             let start = Date()
             var failure: BrainError?
@@ -106,19 +116,33 @@ final class TextCard: EditPanel {
                 let packet = await capture?.value
                 guard !Task.isCancelled else { return }
                 if let packet, packet.neverRead { self?.model.note = CardModel.neverReadNote(packet.appName) }
-                var acts = false
-                for try await event in brain.answer(question, packet: packet, state: state) {
-                    self?.model.apply(event)
-                    if case .route(.act) = event {
-                        acts = true
-                        // The consent screen (PH.5's own task) goes here; until then, with acting off, a guide.
-                        if !state.acting { self?.model.note = Self.actingOff }
+                /// Plays one answer into the card; true when it is on the act route.
+                @MainActor func play(_ state: ShellState) async throws -> Bool {
+                    var acts = false
+                    for try await event in brain.answer(question, packet: packet, state: state) {
+                        self?.model.apply(event)
+                        if case .route(.act) = event {
+                            acts = true
+                            if !state.acting { self?.model.note = Self.actingOff }  // with acting off, a guide
+                        }
+                        if case .steps(let steps) = event, !steps.isEmpty {
+                            self?.startGuide(steps, targets: steps.map { Self.rect(for: $0.target, in: packet) })
+                        }
                     }
-                    if case .steps(let steps) = event, !steps.isEmpty {
-                        self?.startGuide(steps, targets: steps.map { Self.rect(for: $0.target, in: packet) })
+                    return acts
+                }
+                if try await play(state), state.acting {
+                    // PH.3: the first time, the consent screen. Not now: shown as a guide, as with acting off.
+                    let go = consent.allowed ? true : await self?.askConsent() ?? false
+                    guard !Task.isCancelled else { return }
+                    if go {
+                        await self?.act(question, in: asked)
+                    } else {
+                        var off = state
+                        off.acting = false
+                        _ = try await play(off)
                     }
                 }
-                if acts && state.acting { await self?.act(question) }
             } catch {
                 failure = BrainError(error)
             }
@@ -193,6 +217,7 @@ final class TextCard: EditPanel {
     /// the active app.
     func dismiss() {
         handJob?.stop()  // Stop: Escape, the close control and closing the card end a job within a second
+        consentChoice?(false)  // a consent screen still up means Not now
         task?.cancel()
         task = nil
         idleTask?.cancel()
@@ -237,7 +262,8 @@ final class TextCard: EditPanel {
         }
         super.sendEvent(event)
         // A click anywhere on the closed card opens the thread; after the click, so a step line still jumps.
-        if event.type == .leftMouseUp && !onClose { openThread() }
+        // Not while he acts: a click on Stop must not take the keyboard.
+        if event.type == .leftMouseUp && !onClose && !model.acting { openThread() }
     }
 
     /// Puts the top-left corner where it is now, so the card grows and shrinks downward (`grow`), kept on screen:
@@ -301,6 +327,17 @@ final class CardModel: ObservableObject {
         var question: String
         var answer: String
         var steps: [String]
+        /// A past job, folded to one line ("4 actions in Notes"); empty when there was none.
+        var job = ""
+    }
+
+    /// One action of a job, a row on the card (15.5 B): under way, ticked, or not done.
+    struct Action: Equatable {
+        enum State { case now, done, failed }
+        var line: String
+        var state = State.now
+        /// The "can't be undone" tag. A seam: nothing sets it yet (docs/13-hand.md 13.5, the class is not built).
+        var cannotUndo = false
     }
 
     /// The turn being answered now.
@@ -321,6 +358,12 @@ final class CardModel: ObservableObject {
     @Published var draft = ""
     /// Return was pressed while he answered: the draft goes when the answer is done.
     @Published var queued = false
+    /// A job runs: the rows, the app it works in, and the Stop footer. Memory only; gone when the card closes.
+    @Published var acting = false
+    @Published var actions: [Action] = []
+    @Published var actingApp = ""
+    /// The user stopped the job: one plain line in `ink2`, no symbol.
+    @Published var ended: String?
     private(set) var pieces = 0
     private var started = false
 
@@ -336,12 +379,18 @@ final class CardModel: ObservableObject {
     /// A new turn: the one on the card moves up into the thread, and the card thinks again.
     func begin(_ question: String) {
         if started {
-            history.append(Exchange(question: self.question, answer: problem ?? text, steps: steps))
+            let job = actions.isEmpty ? "" : "\(actions.count) action\(actions.count == 1 ? "" : "s") in \(actingApp.isEmpty ? "the app" : actingApp)"
+            history.append(Exchange(question: self.question, answer: problem ?? ended ?? text, steps: steps, job: job))
             history = Array(history.suffix(Self.keptTurns - 1))
         }
         started = true
         self.question = question
         thinking = true; text = ""; steps = []; current = 0; problem = nil; note = nil; pieces = 0
+        acting = false; actions = []; actingApp = ""; ended = nil
+    }
+
+    func startActing(in app: String) {
+        acting = true; actions = []; actingApp = app; ended = nil
     }
 
     static func neverReadNote(_ app: String) -> String {
@@ -351,6 +400,7 @@ final class CardModel: ObservableObject {
     func reset() {
         question = ""; thinking = true; text = ""; steps = []; current = 0; problem = nil; note = nil; pieces = 0
         history = []; open = false; draft = ""; queued = false; started = false
+        acting = false; actions = []; actingApp = ""; ended = nil
     }
 }
 
@@ -359,14 +409,16 @@ private struct CardView: View {
     @ObservedObject var model: CardModel
     let onClose: () -> Void
     let onStep: (Int) -> Void
+    let onStop: () -> Void
     let onHeight: (CGFloat) -> Void
     @State private var bodyHeight: CGFloat = 0
     @State private var footerHeight: CGFloat = 0
 
     /// Thinking on the closed card: the header alone, the dot breathing. The never-read note may come first.
-    private var hasBody: Bool { model.open || !model.thinking || model.note != nil }
-    /// "Reply…" once there is an answer or a problem; the reply field whenever the thread is open.
-    private var hasFooter: Bool { model.open || !model.thinking }
+    /// While he acts (the dot breathes then too) the rows are the body.
+    private var hasBody: Bool { model.open || !model.thinking || model.note != nil || !model.actions.isEmpty }
+    /// "Reply…" once there is an answer or a problem; the reply field whenever the thread is open; Stop while he acts.
+    private var hasFooter: Bool { model.open || !model.thinking || model.acting }
     private var height: CGFloat {
         Design.Size.bar + (hasBody ? bodyHeight : 0) + (hasFooter ? footerHeight : 0)
     }
@@ -384,7 +436,8 @@ private struct CardView: View {
                         .padding(.bottom, Design.Space.s16)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bodyHeight = $0 }
                 }
-                .defaultScrollAnchor(model.open ? .bottom : .top)  // the thread keeps the newest in view
+                // The thread and the action list keep the newest in view.
+                .defaultScrollAnchor(model.open || !model.actions.isEmpty ? .bottom : .top)
             }
             if hasFooter {
                 footer.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { footerHeight = $0 }
@@ -417,6 +470,10 @@ private struct CardView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close")
+            // Hidden while he acts: Stop in the footer is the one way to end the job from the card. Escape still works.
+            .opacity(model.acting ? 0 : 1)
+            .allowsHitTesting(!model.acting)
+            .accessibilityHidden(model.acting)
         }
         .padding(.leading, Design.Space.s16)
         .padding(.trailing, Design.Space.s4)
@@ -434,8 +491,8 @@ private struct CardView: View {
                         asked(earlier.question)
                         if !earlier.answer.isEmpty { answerText(earlier.answer) }
                         // A past guide folds to one line, so the thread stays readable.
-                        if !earlier.steps.isEmpty {
-                            Text(verbatim: "Guide, \(earlier.steps.count) step\(earlier.steps.count == 1 ? "" : "s")")
+                        if !earlier.steps.isEmpty || !earlier.job.isEmpty {
+                            Text(verbatim: earlier.job.isEmpty ? "Guide, \(earlier.steps.count) step\(earlier.steps.count == 1 ? "" : "s")" : earlier.job)
                                 .font(Design.Text.body)
                                 .foregroundStyle(Design.Ink.secondary)
                         }
@@ -454,7 +511,23 @@ private struct CardView: View {
     private var footer: some View {
         VStack(spacing: 0) {
             Rectangle().fill(Design.Ink.hairline).frame(height: Design.Size.hairline)
-            if model.open {
+            if model.acting {
+                // Pinned for the whole job: Stop never moves and never scrolls away (15.3, principle 6).
+                HStack(spacing: Design.Space.s8) {
+                    let count = model.actions.count
+                    Text(verbatim: "Working in \(model.actingApp.isEmpty ? "the app" : model.actingApp) · \(count) action\(count == 1 ? "" : "s")")
+                        .font(Design.Text.small)
+                        .foregroundStyle(Design.Ink.secondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Button(action: onStop) {
+                        Label("Stop", systemImage: "stop.fill")
+                    }
+                    .buttonStyle(QuietButton())
+                }
+                .padding(.horizontal, Design.Space.s16)
+                .frame(maxWidth: .infinity, minHeight: Design.Size.actingBar, maxHeight: Design.Size.actingBar)
+            } else if model.open {
                 VStack(alignment: .leading, spacing: Design.Space.s4) {
                     TextField("Reply…", text: $model.draft, axis: .vertical)
                         .textFieldStyle(.plain)
@@ -471,13 +544,49 @@ private struct CardView: View {
                 .frame(maxWidth: .infinity, minHeight: Design.Size.bar, alignment: .leading)
             } else {
                 // The whole closed card opens the thread on a click (TextCard.sendEvent).
-                Text("Reply…")
-                    .font(Design.Text.body)
-                    .foregroundStyle(Design.Ink.tertiary)
-                    .padding(.horizontal, Design.Space.s16)
-                    .frame(maxWidth: .infinity, minHeight: Design.Size.bar, alignment: .leading)
+                HStack {
+                    if !model.steps.isEmpty {
+                        Text(verbatim: "Step \(min(model.current + 1, model.steps.count)) of \(model.steps.count)")
+                            .font(Design.Text.small)
+                            .foregroundStyle(Design.Ink.secondary)
+                        Spacer(minLength: 0)
+                    }
+                    Text("Reply…")
+                        .font(Design.Text.body)
+                        .foregroundStyle(Design.Ink.tertiary)
+                }
+                .padding(.horizontal, Design.Space.s16)
+                .frame(maxWidth: .infinity, minHeight: Design.Size.bar, alignment: .leading)
             }
         }
+    }
+
+    /// A guide step (15.5 B): done, a tick then the text in `ink2`; current, a 2-point accent bar at the left edge
+    /// and the text in `strong`; coming, its number in `ink3` and the text in `ink2`.
+    private func stepRow(_ index: Int, _ step: String) -> some View {
+        let current = index == model.current, done = index < model.current
+        return HStack(alignment: .firstTextBaseline, spacing: Design.Space.s8) {
+            Group {
+                if done {
+                    TickMark()
+                } else {
+                    Text(verbatim: "\(index + 1)").monospacedDigit()
+                        .foregroundStyle(current ? Design.Ink.primary : Design.Ink.tertiary)
+                }
+            }
+            .frame(width: Design.Space.s16, alignment: .leading)
+            Text(verbatim: step)
+                .multilineTextAlignment(.leading)
+                .foregroundStyle(current ? Design.Ink.primary : Design.Ink.secondary)
+        }
+        .font(current ? Design.Text.strong : Design.Text.body)
+        .lineSpacing(Design.Text.bodySpacing)
+        .padding(.leading, Design.Space.s8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .leading) {
+            if current { Rectangle().fill(Design.Ink.accent).frame(width: 2) }
+        }
+        .contentShape(Rectangle())
     }
 
     private func answerText(_ text: String) -> some View {
@@ -507,22 +616,39 @@ private struct CardView: View {
         if let note = model.note {
             Text(verbatim: note).font(Design.Text.small).foregroundStyle(Design.Ink.secondary)
         }
+        // The job's rows, added at the bottom as each action happens; the summary or the reason comes under them.
+        ForEach(Array(model.actions.enumerated()), id: \.offset) { _, action in
+            HStack(spacing: Design.Space.s8) {
+                Group {
+                    switch action.state {
+                    case .now: ProgressView().controlSize(.mini)
+                    case .done: TickMark()
+                    case .failed: Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(Design.Ink.problem)
+                    }
+                }
+                .frame(width: Design.Space.s16)
+                Text(verbatim: action.line)
+                    .font(action.state == .now ? Design.Text.strong : Design.Text.body)
+                    .foregroundStyle(action.state == .done ? Design.Ink.secondary : Design.Ink.primary)
+                if action.cannotUndo {
+                    Text("can't be undone")
+                        .font(Design.Text.tag)
+                        .foregroundStyle(Design.Ink.secondary)
+                        .padding(.horizontal, Design.Space.s4)
+                        .padding(.vertical, 2)
+                        .background(Design.Ink.fill, in: RoundedRectangle(cornerRadius: Design.Radius.chip))
+                }
+            }
+        }
         if !model.text.isEmpty { answerText(model.text) }
         // No Next button: the guide follows the student. A step line jumps to that step.
-        // Step looks (done, current, coming) and "Step 2 of 5" come with the guide's pass, PX.4.
         ForEach(Array(model.steps.enumerated()), id: \.offset) { index, step in
-            Button { onStep(index) } label: {
-                HStack(alignment: .firstTextBaseline, spacing: Design.Space.s8) {
-                    Text(verbatim: "\(index + 1).").monospacedDigit()
-                    Text(verbatim: step).multilineTextAlignment(.leading)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .font(index == model.current ? Design.Text.strong : Design.Text.body)
-            .foregroundStyle(index == model.current ? Design.Ink.primary : Design.Ink.secondary)
-            .accessibilityAddTraits(index == model.current ? .isSelected : [])
+            Button { onStep(index) } label: { stepRow(index, step) }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(index == model.current ? .isSelected : [])
+        }
+        if let ended = model.ended {
+            Text(verbatim: ended).font(Design.Text.body).foregroundStyle(Design.Ink.secondary)
         }
         if let problem = model.problem {
             HStack(alignment: .firstTextBaseline, spacing: Design.Space.s8) {

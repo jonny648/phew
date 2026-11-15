@@ -29,6 +29,20 @@ final class MenuPanel {
         panel?.close()
         panel = nil
     }
+
+    /// Closes with `leave`: opacity to 0, then gone.
+    func fadeOut() {
+        guard let panel else { return }
+        self.panel = nil
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = Design.Motion.leave
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            panel.animator().alphaValue = 0
+        }, completionHandler: {
+            panel.contentView = nil
+            panel.close()
+        })
+    }
 }
 
 // MARK: - Recently deleted

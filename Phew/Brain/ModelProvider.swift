@@ -21,19 +21,25 @@ struct Model: Sendable {
     let id: String
     /// USD per million tokens. `cacheWrite` is the 5-minute write.
     let input, output, cacheWrite, cacheRead: Double
+    /// USD per web search: $10 per 1,000 (docs: web search tool, usage and pricing). A page read costs tokens only.
+    static let perSearch = 0.01
 
     func cost(_ usage: Usage) -> Double {
         (Double(usage.input) * input + Double(usage.output) * output
             + Double(usage.cacheWrite) * cacheWrite + Double(usage.cacheRead) * cacheRead) / 1_000_000
+            + Double(usage.searches) * Self.perSearch
     }
 }
 
 struct Usage: Sendable, Equatable {
     var input = 0, output = 0, cacheWrite = 0, cacheRead = 0
+    /// Web searches and page reads Anthropic ran in this reply (`usage.server_tool_use`): the Runner's only.
+    var searches = 0, fetches = 0
 
     static func + (a: Usage, b: Usage) -> Usage {
         Usage(input: a.input + b.input, output: a.output + b.output,
-              cacheWrite: a.cacheWrite + b.cacheWrite, cacheRead: a.cacheRead + b.cacheRead)
+              cacheWrite: a.cacheWrite + b.cacheWrite, cacheRead: a.cacheRead + b.cacheRead,
+              searches: a.searches + b.searches, fetches: a.fetches + b.fetches)
     }
 }
 
@@ -60,8 +66,15 @@ struct ModelRequest: Sendable {
     /// Tool rounds, append-only: the model's reply exactly as received, then the user turn with the tool results.
     var after: [ModelMessage] = []
     var tools: [ToolSpec] = []
+    /// Anthropic's own tools (web search, web fetch), each one JSON object sent as it is after `tools`. The Runner's only.
+    var serverTools: [String] = []
     /// Sent only with tools. Always at most one call per reply.
     var toolChoice = ToolChoice.auto
+    /// A cache mark on the last tool results, so each round reads the rounds before it from the cache (the Runner's
+    /// rounds carry whole web pages). Off for the Guide, whose two rounds at most were measured without it.
+    var cacheRounds = false
+    /// The task this call works for, for calls.log only (PA.5). Nil outside a task.
+    var task: Int? = nil
 }
 
 /// One earlier question and its answer, as text.

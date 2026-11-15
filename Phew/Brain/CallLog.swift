@@ -22,6 +22,8 @@ enum CallLog {
         var msTotal: Int
         var stop: String?
         var error: String?
+        /// The task number for a Runner call (PA.5); absent outside a task.
+        var task: Int? = nil
     }
 
     static func line(_ request: ModelRequest, usage: Usage, msFirst: Int?, msTotal: Int, stop: String?, error: String?,
@@ -30,7 +32,7 @@ enum CallLog {
         return Line(ts: date.ISO8601Format(), agent: request.agent, tier: request.tier.rawValue, model: model.id,
                     inputTokens: usage.input, outputTokens: usage.output, cacheWriteTokens: usage.cacheWrite,
                     cacheReadTokens: usage.cacheRead, usd: (model.cost(usage) * 1_000_000).rounded() / 1_000_000,
-                    msFirstToken: msFirst, msTotal: msTotal, stop: stop, error: error)
+                    msFirstToken: msFirst, msTotal: msTotal, stop: stop, error: error, task: request.task)
     }
 
     static func encode(_ line: Line) -> Data {
@@ -57,6 +59,18 @@ enum CallLog {
             } else {
                 try? data.write(to: url)
             }
+        }
+    }
+
+    /// What one task cost so far, in USD, summed from its lines in calls.log (PA.5). Waits for writes still queued.
+    static func cost(ofTask task: Int) -> Double {
+        let url = url
+        return queue.sync {
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            return text.split(separator: "\n").compactMap { try? decoder.decode(Line.self, from: Data($0.utf8)) }
+                .filter { $0.task == task }.reduce(0) { $0 + $1.usd }
         }
     }
 

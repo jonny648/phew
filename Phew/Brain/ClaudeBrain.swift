@@ -132,3 +132,16 @@ struct ClaudeBrain: Brain {
         emit(.text(outcome.askBack ?? outcome.card))
     }
 }
+
+// MARK: Tasks (phase PA)
+
+extension ClaudeBrain {
+    /// The Runner with the Map search when the Map is open (addresses left out of its lines), and the web.
+    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?) -> AsyncThrowingStream<TaskEvent, Error> {
+        let injected = tools, map = map
+        return Runner.stream(words, packet: packet, number: number, folder: folder, tools: {
+            let search: (any ToolRunner)? = if let injected { injected } else { await map.now().map { MapSearch(store: $0, forRunner: true) } }
+            return search.map(RunnerTools.init)
+        }, provider: provider)
+    }
+}

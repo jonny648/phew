@@ -92,6 +92,13 @@ struct ClaudeProvider: ModelProvider {
         for message in request.after {
             messages.append(["role": message.role, "content": try JSONSerialization.jsonObject(with: message.content)])
         }
+        // The third breakpoint: the last tool results, when they end the request. Only a user turn: the model's own
+        // blocks (thinking among them) go back exactly as they came.
+        if request.cacheRounds, let last = messages.indices.last, messages[last]["role"] as? String == "user",
+           var blocks = messages[last]["content"] as? [[String: Any]], !blocks.isEmpty {
+            blocks[blocks.count - 1]["cache_control"] = ephemeral
+            messages[last]["content"] = blocks
+        }
         var body: [String: Any] = [
             "model": request.tier.model.id,
             "max_tokens": request.maxTokens,
@@ -100,12 +107,12 @@ struct ClaudeProvider: ModelProvider {
             "messages": messages,
             "output_config": output,
         ]
-        if !request.tools.isEmpty {
+        if !request.tools.isEmpty || !request.serverTools.isEmpty {
             // The same tools on every round, so the thinking blocks sent back stay valid; `none` forces the answer.
             body["tools"] = try request.tools.map { tool in
                 ["name": tool.name, "description": tool.description, "strict": true,
                  "input_schema": try JSONSerialization.jsonObject(with: Data(tool.schema.utf8))]
-            }
+            } + request.serverTools.map { try JSONSerialization.jsonObject(with: Data($0.utf8)) }
             // `none` takes no other field: with `disable_parallel_tool_use` the API answers 400 (live, 14 Nov).
             body["tool_choice"] = request.toolChoice == .none ? ["type": "none"]
                 : ["type": request.toolChoice.rawValue, "disable_parallel_tool_use": true]

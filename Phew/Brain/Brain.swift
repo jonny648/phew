@@ -1,3 +1,5 @@
+import Foundation
+
 /// The only door from Shell and Senses into the Brain, so it can move to a backend later.
 protocol Brain: Sendable {
     /// `question` may be empty: then Phew explains what is under the cursor. Events arrive in this order:
@@ -32,6 +34,13 @@ protocol Brain: Sendable {
 
     /// The Map as one Markdown document (P5.10), sensitive facts only when asked. Nil when there is no Map to read.
     func exportMap(includeSensitive: Bool) async -> String?
+
+    /// A research task on the task route (PA.1): the Runner works alone from `words`, the one screen read made when
+    /// the task was given (`packet`, dropped when the task ends), the Map and the web, then the report is saved as a
+    /// new PDF in `folder` (nil: Downloads) with a Markdown copy in Phew's storage. Events: `.searching` and
+    /// `.reading` counts and `.writing` while it works, then `.done` with the report. Cancelling the stream is Stop:
+    /// within 2 seconds, nothing saved, no event after. `number` names the task in calls.log. Errors are `BrainError`.
+    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?) -> AsyncThrowingStream<TaskEvent, Error>
 }
 
 extension Brain {
@@ -136,5 +145,12 @@ extension BrainError {
         case is DecodingError: self = .badOutput
         default: self = .network  // URLError and cancellation
         }
+    }
+}
+
+extension Brain {
+    /// A Brain without agents runs no task.
+    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?) -> AsyncThrowingStream<TaskEvent, Error> {
+        AsyncThrowingStream { $0.finish(throwing: BrainError.failed(status: 0)) }
     }
 }

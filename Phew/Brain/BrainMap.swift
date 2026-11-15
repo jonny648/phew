@@ -90,10 +90,18 @@ actor BrainMap {
 struct MapSearch: ToolRunner {
     static let complete = "These are all the matches."
     let store: MapStore
+    /// For the Runner: web addresses are left out of every line (5.11), so no address from the Map reaches it.
+    let forRunner: Bool
     var tools: [ToolSpec] { [.searchMap] }
 
+    init(store: MapStore) { self.init(store: store, forRunner: false) }
+    init(store: MapStore, forRunner: Bool) {
+        self.store = store
+        self.forRunner = forRunner
+    }
+
     func run(_ name: String, input: Data) async throws -> String {
-        var out = name == ToolSpec.searchMap.name ? await store.searchMap(input: input) : ""
+        var out = name == ToolSpec.searchMap.name ? await store.searchMap(input: input, forRunner: forRunner) : ""
         if !out.isEmpty, out.split(separator: "\n").count < 10 { out += "\n" + Self.complete }
         return out
     }

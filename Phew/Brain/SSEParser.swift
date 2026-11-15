@@ -36,11 +36,17 @@ struct SSEParser {
                 blocks[index]?["signature"] = delta["signature"]
             case "input_json_delta":
                 toolInput[index, default: ""] += delta["partial_json"] as? String ?? ""
+            case "citations_delta":
+                // Web search sources on the report's text: kept, so the block goes back as it came.
+                guard let citation = delta["citation"] else { break }
+                let cited = blocks[index]?["citations"] as? [Any] ?? []
+                blocks[index]?["citations"] = cited + [citation]
             default:
                 break
             }
         case "content_block_stop":
-            if blocks[index]?["type"] as? String == "tool_use" {
+            // A server tool's input (the search words, the page address) streams the same way and goes back with it.
+            if ["tool_use", "server_tool_use"].contains(blocks[index]?["type"] as? String ?? "") {
                 let json = toolInput[index] ?? ""
                 // Strict tools: the input matches its schema. Anything unreadable is not run.
                 let input: Any? = json.isEmpty ? [String: Any]() : try? JSONSerialization.jsonObject(with: Data(json.utf8))
@@ -114,5 +120,9 @@ extension Usage {
         output = fields["output_tokens"] as? Int ?? output
         cacheWrite = fields["cache_creation_input_tokens"] as? Int ?? cacheWrite
         cacheRead = fields["cache_read_input_tokens"] as? Int ?? cacheRead
+        if let server = fields["server_tool_use"] as? [String: Any] {
+            searches = server["web_search_requests"] as? Int ?? searches
+            fetches = server["web_fetch_requests"] as? Int ?? fetches
+        }
     }
 }

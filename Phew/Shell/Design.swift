@@ -19,6 +19,8 @@ enum Design {
         static let title = Font.title3.weight(.semibold)
         /// Key caps, the "can't be undone" tag.
         static let tag = Font.caption2.weight(.medium)
+        /// Licence text.
+        static let mono = Font.system(size: 12, design: .monospaced)
     }
 
     enum Ink {
@@ -67,8 +69,16 @@ enum Design {
         static let hairline: CGFloat = 0.5
         /// The footer while he acts.
         static let actingBar: CGFloat = 44
-        /// Consent screens.
+        /// Consent screens and first run.
         static let consentWidth: CGFloat = 440
+        /// Small panels opened from the menu; the licences are wider.
+        static let panelWidth: CGFloat = 420
+        static let licenceWidth: CGFloat = 560
+        /// A small panel with a list, and the same panel with nothing in it.
+        static let panelHeight: CGFloat = 320
+        static let emptyPanelHeight: CGFloat = 160
+        /// A row of a small panel or of first run, at least.
+        static let row: CGFloat = 36
         /// Hit area of any control, at least; the height of a button.
         static let control: CGFloat = 28
     }
@@ -158,6 +168,8 @@ struct TickMark: View {
 
 /// The main button: ink fill, panel text (black on light, white on dark). The accent is never a button.
 struct MainButton: ButtonStyle {
+    @Environment(\.isEnabled) private var enabled
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(Design.Text.strong)
@@ -165,7 +177,7 @@ struct MainButton: ButtonStyle {
             .padding(.horizontal, Design.Space.s16)
             .frame(minHeight: Design.Size.control)
             .background(Design.Ink.primary, in: RoundedRectangle(cornerRadius: Design.Radius.chip))
-            .opacity(configuration.isPressed ? 0.8 : 1)
+            .opacity(!enabled ? 0.35 : configuration.isPressed ? 0.8 : 1)
             .contentShape(Rectangle())
     }
 }
@@ -181,6 +193,97 @@ struct QuietButton: ButtonStyle {
             .background(Design.Ink.fill, in: RoundedRectangle(cornerRadius: Design.Radius.chip))
             .opacity(configuration.isPressed ? 0.7 : 1)
             .contentShape(Rectangle())
+    }
+}
+
+/// A key cap, as the shortcut is written: `tag` on `fill`, radius 6.
+struct Keycap: View {
+    let key: String
+
+    var body: some View {
+        Text(key)
+            .font(Design.Text.tag)
+            .foregroundStyle(Design.Ink.secondary)
+            .padding(.horizontal, Design.Space.s4)
+            .padding(.vertical, 2)
+            .background(Design.Ink.fill, in: RoundedRectangle(cornerRadius: Design.Radius.chip))
+    }
+}
+
+/// A row of a small panel (15.5 E): its text in `body`, an optional second line in `small`, `ink2`, its controls on
+/// the right, a hairline under it. At least 36 high.
+struct Row<Trailing: View>: View {
+    let title: String
+    var detail: String?
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: Design.Space.s12) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(verbatim: title).font(Design.Text.body).foregroundStyle(Design.Ink.primary).lineLimit(2)
+                if let detail { Text(verbatim: detail).font(Design.Text.small).foregroundStyle(Design.Ink.secondary) }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            trailing
+        }
+        .padding(.vertical, Design.Space.s4)
+        .frame(minHeight: Design.Size.row)
+        .overlay(alignment: .bottom) { Design.Ink.hairline.frame(height: Design.Size.hairline) }
+    }
+}
+
+/// A plain text button in `ink2`: the second, rarer action of a row ("Delete now"), so it does not look equal to the first.
+struct TextButton: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(Design.Text.body)
+            .foregroundStyle(Design.Ink.secondary)
+            .frame(minHeight: Design.Size.control)
+            .opacity(configuration.isPressed ? 0.6 : 1)
+            .contentShape(Rectangle())
+    }
+}
+
+/// The help line of a small panel in `small`, `ink2`; a problem takes its place, with the `problem` symbol.
+struct HelpLine: View {
+    let text: String
+    var problem: String?
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: Design.Space.s4) {
+            if problem != nil { Image(systemName: "exclamationmark.circle").foregroundStyle(Design.Ink.problem) }
+            Text(verbatim: problem ?? text).fixedSize(horizontal: false, vertical: true)
+        }
+        .font(Design.Text.small)
+        .foregroundStyle(problem == nil ? Design.Ink.secondary : Design.Ink.primary)
+    }
+}
+
+/// The body of a small panel with a list (15.5 E): the rows, then the help line at the bottom, 420 by 320. Empty:
+/// one line in `body`, `ink2`, with the help line under it in the middle, and the panel shrinks to 160 high.
+struct PanelList<Rows: View>: View {
+    let isEmpty: Bool
+    let emptyLine: String
+    let help: String
+    var problem: String?
+    @ViewBuilder var rows: Rows
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Design.Space.s12) {
+            if isEmpty {
+                VStack(spacing: Design.Space.s4) {
+                    Text(verbatim: emptyLine).font(Design.Text.body).foregroundStyle(Design.Ink.secondary)
+                    HelpLine(text: help, problem: problem).multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView { VStack(spacing: 0) { rows } }
+                HelpLine(text: help, problem: problem)
+            }
+        }
+        .padding(Design.Space.s20)
+        .frame(width: Design.Size.panelWidth, height: isEmpty ? Design.Size.emptyPanelHeight : Design.Size.panelHeight,
+               alignment: .topLeading)
     }
 }
 

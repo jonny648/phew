@@ -2,11 +2,14 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// A small panel opened from the menu bar menu: Recently deleted, Export the Map, About and licences. Non-activating like the
-/// other panels, and it becomes key only if a click needs it (selecting text), so the front app keeps the focus.
+/// A small panel opened from the menu bar menu: Recently deleted, Export the Map, Never-read apps, About Phew.
+/// Non-activating like the other panels, and it becomes key only if a click needs it (selecting text),
+/// so the front app keeps the focus. It opens centred the first time and where the user left it after that (15.5 E).
 @MainActor
 final class MenuPanel {
     private(set) var panel: NSPanel?
+    /// Top-left corner of each panel when it last closed, for this run.
+    private var places: [String: NSPoint] = [:]
 
     func show(title: String, _ view: some View) {
         close()
@@ -17,14 +20,16 @@ final class MenuPanel {
         panel.becomesKeyOnlyIfNeeded = true  // buttons work without the panel taking key
         panel.level = .floating  // Phew is never active, so a normal panel would sink behind the front app
         panel.contentView = NSHostingView(rootView: view)
-        panel.setContentSize(panel.contentView?.fittingSize ?? NSSize(width: 400, height: 320))
-        panel.center()
+        let size = panel.contentView?.fittingSize ?? NSSize(width: Design.Size.panelWidth, height: Design.Size.panelHeight)
+        panel.setContentSize(size)
+        if let place = places[title] { panel.setFrame(topLeft: place, size: panel.frame.size) } else { panel.center() }
         panel.orderFrontRegardless()
         self.panel = panel
         shellLog("menu panel shown: \(title), key \(panel.isKeyWindow), phew front \(phewIsFront)")
     }
 
     func close() {
+        remember()
         panel?.contentView = nil
         panel?.close()
         panel = nil
@@ -33,6 +38,7 @@ final class MenuPanel {
     /// Closes with `leave`: opacity to 0, then gone.
     func fadeOut() {
         guard let panel else { return }
+        remember()
         self.panel = nil
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = Design.Motion.leave
@@ -42,6 +48,11 @@ final class MenuPanel {
             panel.contentView = nil
             panel.close()
         })
+    }
+
+    private func remember() {
+        guard let panel else { return }
+        places[panel.title] = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
     }
 }
 
@@ -90,38 +101,17 @@ struct DeletedView: View {
     @ObservedObject var list: DeletedList
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if list.items.isEmpty {
-                Text(list.loaded ? "Nothing in Recently deleted." : "Loading…")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(list.items) { row($0) }
-                    }
+        PanelList(isEmpty: list.items.isEmpty, emptyLine: list.loaded ? "Nothing in Recently deleted." : "Loading…",
+                  help: "Forgotten things wait here for 30 days, then they are wiped for good.", problem: list.problem) {
+            ForEach(list.items) { item in
+                Row(title: item.label, detail: DeletedList.daysLeftText(item.daysLeft)) {
+                    Button("Delete now") { Task { await list.deleteNow(item.id) } }.buttonStyle(TextButton())
+                    Button("Restore") { Task { await list.restore(item.id) } }.buttonStyle(QuietButton())
                 }
+                .disabled(list.busy)
             }
-            Text(list.problem ?? "Forgotten things wait here for 30 days, then they are wiped for good.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
         }
-        .padding(20)
-        .frame(width: 420, height: 320, alignment: .topLeading)
         .task { await list.refresh() }
-    }
-
-    private func row(_ item: DeletedItem) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.label).lineLimit(2)
-                Text(DeletedList.daysLeftText(item.daysLeft)).font(.footnote).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button("Restore") { Task { await list.restore(item.id) } }
-            Button("Delete now") { Task { await list.deleteNow(item.id) } }
-        }
-        .disabled(list.busy)
     }
 }
 
@@ -130,17 +120,17 @@ struct DeletedView: View {
 struct AboutView: View {
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Phew keeps the Map encrypted with SQLCipher Community Edition.")
-                Text(Self.sqlcipherNotice)
-                    .font(.system(.footnote, design: .monospaced))
-                Text(Self.sqliteNotice).font(.footnote)
+            VStack(alignment: .leading, spacing: Design.Space.s12) {
+                Text("Phew keeps the Map encrypted with SQLCipher Community Edition.").font(Design.Text.body)
+                Text(Self.sqlcipherNotice).font(Design.Text.mono)
+                Text(Self.sqliteNotice).font(Design.Text.small).foregroundStyle(Design.Ink.secondary)
             }
+            .foregroundStyle(Design.Ink.primary)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(20)
-        .frame(width: 560, height: 420)
+        .padding(Design.Space.s20)
+        .frame(width: Design.Size.licenceWidth, height: 420)
     }
 
     /// Verbatim from https://www.zetetic.net/sqlcipher/license/SQLCIPHER_COMMUNITY_EDITION_LICENSE.txt
@@ -184,6 +174,8 @@ final class MapExporter: ObservableObject {
     @Published var includeSensitive = false
     @Published private(set) var busy = false
     @Published private(set) var status: String?
+    /// The status is a failure: shown as a problem.
+    @Published private(set) var failed = false
     let brain: any Brain
     /// Asks where to save and writes the text there. The file's name when saved, nil when cancelled.
     let save: @MainActor (String) async throws -> String?
@@ -198,7 +190,9 @@ final class MapExporter: ObservableObject {
         guard !busy else { return }
         busy = true
         defer { busy = false }
+        failed = false
         guard let text = await brain.exportMap(includeSensitive: includeSensitive) else {
+            failed = true
             status = "The Map isn't available right now, so nothing was saved."
             return shellLog("map export: no map")
         }
@@ -207,6 +201,7 @@ final class MapExporter: ObservableObject {
             status = saved.map { "Saved as \($0)." }
             shellLog("map export: saved \(saved != nil), sensitive \(includeSensitive), lines \(text.split(separator: "\n").count)")
         } catch {
+            failed = true
             status = "Could not save the file. Please try again."
             shellLog("map export: write failed")
         }
@@ -237,20 +232,24 @@ struct ExportView: View {
     @ObservedObject var exporter: MapExporter
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Design.Space.s12) {
             Text("Save the Map as one Markdown file you can read. The file is not encrypted, and forgetting something later does not change it.")
+                .font(Design.Text.body)
+                .lineSpacing(Design.Text.bodySpacing)
                 .fixedSize(horizontal: false, vertical: true)
-            Toggle("Include sensitive facts", isOn: $exporter.includeSensitive)
+            Row(title: "Include sensitive facts") {
+                Toggle("Include sensitive facts", isOn: $exporter.includeSensitive).labelsHidden().toggleStyle(.switch)
+            }
             HStack {
                 Spacer()
                 Button("Export…") { Task { await exporter.export() } }
+                    .buttonStyle(MainButton())
                     .disabled(exporter.busy)
             }
-            Text(exporter.status ?? "It is saved only where you choose.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            HelpLine(text: exporter.status ?? "It is saved only where you choose.", problem: exporter.failed ? exporter.status : nil)
         }
-        .padding(20)
-        .frame(width: 400, alignment: .leading)
+        .foregroundStyle(Design.Ink.primary)
+        .padding(Design.Space.s20)
+        .frame(width: Design.Size.panelWidth, alignment: .leading)
     }
 }

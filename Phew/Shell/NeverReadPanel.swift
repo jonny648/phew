@@ -24,30 +24,13 @@ struct NeverReadView: View {
     @ObservedObject var model: NeverReadModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if model.apps.isEmpty {
-                Text("No apps on the list.")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(model.apps) { app in
-                            HStack {
-                                Text(app.name).lineLimit(1)
-                                Spacer()
-                                Button("Remove") { model.remove(app.bundleID) }
-                            }
-                        }
-                    }
+        PanelList(isEmpty: model.apps.isEmpty, emptyLine: "No apps on the list.",
+                  help: "Phew never reads the screen of these apps. Use “Never read” in the menu to add the app in front.") {
+            ForEach(model.apps) { app in
+                Row(title: app.name) {
+                    Button("Remove") { model.remove(app.bundleID) }.buttonStyle(QuietButton())
                 }
             }
-            Text("Phew never reads the screen of these apps. Use “Never read this app” in the menu to add the app in front.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(20)
-        .frame(width: 360, height: 260, alignment: .topLeading)
     }
 }

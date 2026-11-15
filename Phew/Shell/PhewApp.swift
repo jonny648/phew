@@ -10,19 +10,59 @@ struct PhewApp: App {
     // No main window (hard rule): the menu bar item is the only scene.
     var body: some Scene {
         MenuBarExtra {
-            Button("API Key…") { delegate.keyWindow.show() }
-            Button("Recently deleted…") { delegate.showRecentlyDeleted() }
-            Button("Export the Map…") { delegate.showExport() }
+            // 15.5 D, as far as built: no Working, Ready or Reports yet.
+            Button { delegate.shortcut() } label: {
+                Text("Ask Phew")
+                Text("right ⌥ + right ⌘")  // shown as the entry's second line: the shortcut has no key equivalent
+            }
+            Divider()
             // Off: he guides instead.
             Toggle("Let Phew act", isOn: $allowed)
-            Button("Never read this app") { delegate.neverReadFrontApp() }
-            Button("Never-read apps…") { delegate.showNeverRead() }
+            NeverReadEntry(front: delegate.front) { delegate.neverReadFrontApp() }
             Divider()
-            Button("About and licences") { delegate.menuPanel.show(title: "About Phew", AboutView()) }
+            Menu("Memory") {
+                Button("Recently deleted…") { delegate.showRecentlyDeleted() }
+                Button("Export the Map…") { delegate.showExport() }
+                Button("Never-read apps…") { delegate.showNeverRead() }
+            }
+            Divider()
+            Button("API Key…") { delegate.setup.showKey() }
+            Button("About Phew") { delegate.menuPanel.show(title: "About Phew", AboutView()) }
             Button("Quit Phew") { NSApp.terminate(nil) }
         } label: {
             MenuIcon(model: delegate.card.model)
         }
+    }
+}
+
+/// "Never read Notes": names the app in front, which keeps the front while the menu is open.
+private struct NeverReadEntry: View {
+    @ObservedObject var front: FrontApp
+    let action: () -> Void
+
+    var body: some View {
+        Button(front.name.map { "Never read \($0)" } ?? "Never read this app", action: action).disabled(front.name == nil)
+    }
+}
+
+/// The name of the app in front, never Phew's own. A label only.
+@MainActor
+final class FrontApp: ObservableObject {
+    @Published private(set) var name: String?
+    private var observer: Any?
+
+    init() {
+        update(NSWorkspace.shared.frontmostApplication)
+        observer = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            MainActor.assumeIsolated { self?.update(app) }
+        }
+    }
+
+    private func update(_ app: NSRunningApplication?) {
+        guard let app, app != .current else { return }  // the folder window makes Phew active for a moment
+        name = app.localizedName
     }
 }
 
@@ -43,10 +83,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var brain: any Brain = ClaudeBrain()
     let panel = InputPanel()
     let card = TextCard()
-    let keyWindow = KeyWindow()
-    /// Recently deleted, Export the Map, Never read or About: one small panel at a time.
+    /// First run, and the key row alone from "API Key…".
+    let setup = SetupPanel()
+    /// Recently deleted, Export the Map, Never-read apps or About: one small panel at a time.
     let menuPanel = MenuPanel()
-    private let permissions = PermissionsWindow()
+    let front = FrontApp()
     /// The context read at the shortcut, kept only until the question is asked or the panel closes without one.
     var capture: Task<ContextPacket?, Never>?
     /// The ask panel's top-left corner: the card opens there, in its place.
@@ -56,10 +97,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         hotKey.install()
         // Re-install once Accessibility is granted, so the shortcut works without a relaunch.
-        permissions.showIfMissing(onAccessibilityGranted: { [unowned self] in hotKey.install() })
+        setup.onAccessibilityGranted = { [unowned self] in hotKey.install() }
         #if DEBUG
         runDebugChecks()
+        // Made-up states only: no look at the Keychain or the permissions.
+        if CommandLine.arguments.contains("--debug-first-run") { return }
         #endif
+        setup.showAtLaunch()
     }
 
     /// The conversation's turns do not outlive the app (closing the card also forgets them).
@@ -85,10 +129,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func showNeverRead() {
-        menuPanel.show(title: "Never read", NeverReadView(model: NeverReadModel()))
+        menuPanel.show(title: "Never-read apps", NeverReadView(model: NeverReadModel()))
     }
 
-    private func shortcut() {
+    /// The shortcut, and "Ask Phew" in the menu.
+    func shortcut() {
         // The panel is already open: a second capture would read Phew's own panel.
         guard !panel.isOpen else { return }  // not `isVisible`: it may still be fading out
         // 3.10: while a conversation is open the shortcut goes back to its reply field; no second card.
@@ -105,7 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// An empty question is fine: the Brain then explains what is under the cursor.
     func ask(_ question: String) {
         card.show(at: anchor, question: question, capture: capture, brain: brain) { [unowned self] error in
-            keyWindow.show(rejected: error == .badKey)  // the student asks again himself once the key is saved
+            setup.showKey(rejected: error == .badKey)  // the student asks again himself once the key is saved
         }
         capture = nil
     }

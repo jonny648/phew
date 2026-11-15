@@ -44,9 +44,6 @@ final class TextCard: EditPanel {
     var handJob: HandJob?
     /// The "Let Phew act" switch; the debug check gives it a throwaway defaults suite.
     var consent = ActConsent()
-    /// The consent screen, and its answer while it waits; nil otherwise.
-    let consentPanel = MenuPanel()
-    var consentChoice: ((Bool) -> Void)?
     var lookPending: Bool { waitTask != nil || lookTask != nil }
     /// True while an answer streams in.
     var answering: Bool { task != nil }
@@ -100,10 +97,8 @@ final class TextCard: EditPanel {
         guard let brain else { return }
         let consent = consent
         // PS.14: Phew's own state for questions about himself. States only, never words.
-        // `acting` is also true while the consent screen was never answered: the Brain then stops at the act route,
-        // so the screen can ask before any guide is made.
         let state = ShellState(accessibility: AXIsProcessTrusted(), screenRecording: CGPreflightScreenCaptureAccess(), guideRunning: guiding,
-                               acting: consent.allowed || consent.asks)
+                               acting: consent.allowed)
         idleTask?.cancel()
         idleTask = nil
         model.begin(question)
@@ -131,17 +126,9 @@ final class TextCard: EditPanel {
                     }
                     return acts
                 }
-                if try await play(state), state.acting {
-                    // PH.3: the first time, the consent screen. Not now: shown as a guide, as with acting off.
-                    let go = consent.allowed ? true : await self?.askConsent() ?? false
-                    guard !Task.isCancelled else { return }
-                    if go {
-                        await self?.act(question, in: asked)
-                    } else {
-                        var off = state
-                        off.acting = false
-                        _ = try await play(off)
-                    }
+                // With acting off the Brain gave a guide with the fixed line; with it on, he does the job.
+                if try await play(state), state.acting, !Task.isCancelled {
+                    await self?.act(question, in: asked)
                 }
             } catch {
                 failure = BrainError(error)
@@ -217,7 +204,6 @@ final class TextCard: EditPanel {
     /// the active app.
     func dismiss() {
         handJob?.stop()  // Stop: Escape, the close control and closing the card end a job within a second
-        consentChoice?(false)  // a consent screen still up means Not now
         task?.cancel()
         task = nil
         idleTask?.cancel()

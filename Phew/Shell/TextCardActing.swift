@@ -5,7 +5,7 @@ import SwiftUI
 /// Each action is a row on the card as it happens, ticked when it lands; the pointer presses on the spot and the ring
 /// stays there; the footer holds Stop. Then the summary, or the plain reason he stopped. Stop is the footer's button,
 /// Escape or closing the card (`dismiss`), and the user's own click or key anywhere (`Hand.begin`).
-/// The first time, the consent screen asks first (PH.3). Split out of TextCard.swift; the stored state stays on `TextCard`.
+/// Split out of TextCard.swift; the stored state stays on `TextCard`.
 extension TextCard {
     /// One fixed line above a guide given instead of acting, while acting is off.
     static let actingOff = "Acting is off, so here is how to do it."
@@ -79,34 +79,9 @@ extension TextCard {
         case .failed(let error): model.problem = Self.sentence(for: error)
         }
     }
-
-    /// The consent screen (15.5 F, text of docs/13-hand.md 13.8), and the user's choice: true for Allow, which turns
-    /// acting on. Escape (the card closes), the close button and Not now mean Not now: nothing is written, so the
-    /// screen comes back next time. Non-activating: the front app keeps the keyboard; neither button answers Return.
-    func askConsent() async -> Bool {
-        await withCheckedContinuation { continuation in
-            var observer: Any?
-            let choose: (Bool) -> Void = { [weak self] allow in
-                guard let self, consentChoice != nil else { return }
-                consentChoice = nil
-                observer.map(NotificationCenter.default.removeObserver)
-                if allow { consent.answer(true) }
-                shellLog("consent: \(allow ? "allow" : "not now"), phew front \(phewIsFront)")
-                consentPanel.fadeOut()
-                continuation.resume(returning: allow)
-            }
-            consentChoice = choose
-            consentPanel.show(title: "", ConsentView(onAllow: { choose(true) }, onNotNow: { choose(false) }))
-            observer = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: consentPanel.panel,
-                                                              queue: .main) { _ in MainActor.assumeIsolated { choose(false) } }
-            shellLog("consent: shown, key \(consentPanel.panel?.isKeyWindow ?? false), phew front \(phewIsFront)")
-        }
-    }
 }
 
-/// The "Let Phew act" switch (PH.3), `Hand.allowedKey` in the defaults. Off when never set. Allow on the consent
-/// screen turns it on; Not now writes nothing, so the screen comes back. Once set, true or false, the screen is not
-/// shown again: the menu's switch is the way back on.
+/// The "Let Phew act" switch, `Hand.allowedKey` in the defaults: on when never set, off only from the menu.
 struct ActConsent {
     var defaults: UserDefaults = .standard
 
@@ -114,35 +89,4 @@ struct ActConsent {
     /// The consent screen is never shown since 15 November (the user's word: no Allow to press). Acting is on
     /// unless the menu's switch is off.
     var asks: Bool { false }
-
-    func answer(_ allow: Bool) { if allow { defaults.set(true, forKey: Hand.allowedKey) } }
-}
-
-/// One shape for the consent screens, 440 wide (15.5 F). The acting text exactly as approved in docs/13-hand.md 13.8.
-struct ConsentView: View {
-    let onAllow: () -> Void
-    let onNotNow: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Design.Space.s12) {
-            Text("Phew can do things for you.")
-                .font(Design.Text.title)
-                .padding(.bottom, Design.Space.s4)
-            Text("When you ask, he clicks, types and picks menus in your apps by himself, and lists what he did. He never types passwords, pays, or changes system settings. Stop always works.")
-            Text("Text on a web page or in a document can mislead him. He may then do a wrong thing, including sending or deleting.")
-            HStack(spacing: Design.Space.s8) {
-                Spacer()
-                Button("Not now", action: onNotNow).buttonStyle(QuietButton())
-                Button("Allow", action: onAllow).buttonStyle(MainButton())
-            }
-            .padding(.top, Design.Space.s12)
-        }
-        .font(Design.Text.body)
-        .lineSpacing(Design.Text.bodySpacing)
-        .foregroundStyle(Design.Ink.primary)
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(Design.Space.s24)
-        .frame(width: Design.Size.consentWidth)
-        .background(Color(nsColor: .windowBackgroundColor))  // `panel`
-    }
 }

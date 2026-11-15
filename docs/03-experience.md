@@ -60,7 +60,7 @@ The screen's text. You approved it on 14 November. Lines were then brought in li
 >
 > What leaves your Mac: your task, what he saw on your screen, the facts from his memory and the parts of the project's Claude Code files that the task needs are sent to Claude, the model made by Anthropic. The web search and the reading of pages run at Anthropic too. The words he searches for can include names from your screen or his memory. Passwords, keys and card numbers are removed before anything is sent.
 >
-> What he changes on your Mac: nothing, except new files. He saves each report as a new PDF in the folder you chose, or in Downloads, and keeps a copy for himself. He never overwrites or deletes a file.
+> What he changes on your Mac: he saves each report as a new PDF in the folder you chose, or in Downloads, and keeps a copy for himself. He never overwrites or deletes a file. He can also act for the task in the background, in your notes, reminders, calendar and sheets, without taking your screen. Anything that cannot be undone, or that leaves your Mac, waits in the menu bar for one confirm.
 >
 > Each task has a limit on searches, pages and cost. A mark in the menu bar shows he is working. Each task has its own Stop. The result waits in the menu bar until you open it.
 >
@@ -68,7 +68,7 @@ The screen's text. You approved it on 14 November. Lines were then brought in li
 
 After Allow the screen is not shown again. After Not now the task does not start, agents stay off, and the screen comes back the next time you give a task.
 
-One line of this text is older than your decisions of 15 November: "What he changes on your Mac: nothing, except new files." An agent may now also act in the background, in the narrow way described in 3.6. The text above is the one you approved, so it is left as it is; a new wording of that line is yours to approve before agents act (phase PA). Acting has its own short consent screen, in 3.6.
+The line "What he changes on your Mac" was rewritten on 15 November, on your word that he must act. An agent acts in the background in the narrow way described in 3.6. Acting with you in the app has its own short consent screen, in 3.6.
 
 ## 3.6 What he may do alone: consent levels
 

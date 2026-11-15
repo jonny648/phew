@@ -104,7 +104,6 @@ Your 33 answers of 14 November are in 7.1. Two decisions wait for later, and fou
 | 37 | Is "Fusion" Autodesk Fusion? Taken as yes on 15 November, by the written recommendation. Say if it is another | Any time |
 | 39 | Acting design: taken on 15 November by the written recommendation: 40 actions per job and 20 per minute as a runaway brake; the action log does not name the app. Say if you want another | Any time |
 | 41 | The first group of users to aim at, the cost of giving Phew to 10 people, and what success means for you (`14-company.md` 14.6) | After the MVP |
-| 42 | Two texts you approved before 15 November no longer match "he acts": the research consent line "What he changes on your Mac: nothing, except new files" (`03-experience.md` 3.5), and two values in `02-vision.md` 2.4 ("He acts only after you say so", "He does not take work away to do it out of your sight"). New wording is yours to approve | Before phase PA |
 | 40 | Which of the cheap tests in `12-validation.md` 12.6 to run, and when: accuracy on 20 tasks per app, reading the sources that would not load, interviews, a paying test | PD.3 |
 
 ## 7.3 Parking list
@@ -162,6 +161,7 @@ Your 33 answers of 14 November are in 7.1. Two decisions wait for later, and fou
 | 15 Nov 2026 | PS | You said every hand test passes. Ticked on your word: PS.1, PS.2, PS.3, PS.4, PS.6, PS.8, PS.9, PS.11, and with them P5.16 and P5.17. Rule bent, named: protocol rule 3 says a tick follows a check by the checker; these tasks need a person at the screen, so your word stands in for it. PS.5, PS.15 and PS.16 are not ticked yet. You approved the plan to close PS and PD and to merge PH and PX into one phase, "Hand and look", with no review or test asked of you. |
 | 15 Nov 2026 | PH | Roadmap: PH Hand and PX Look and feel joined into one phase, "PH Hand and look", 13 tasks, ids kept, so the acting surfaces are built once in their final look. "You decide" and "your hand review" removed from its tasks, by your word. The later phases move up one place in the order. Decisions 37 and 39 taken by the written recommendation. |
 | 15 Nov 2026 | PD | `03-experience.md` 3.4 to 3.6 and 3.9 brought in line with "he acts from your words". `04-architecture.md` 4.4 now says the Observer runs only when the screen text is over 4,000 characters (decided 15 Nov for speed), and Hand is in the MVP. The brain builder's rules follow `CLAUDE.md`. Two approved texts that no longer match are left as they are and listed as decision 42. |
+| 15 Nov 2026 | PD | Decision 42 closed by your word "he must act": the research consent line now says an agent can act in the background and that what cannot be undone or leaves the Mac waits for one confirm; the two values in `02-vision.md` 2.4 now read "works with you, you decide" by what you ask, and "does when asked, shows when asked". |
 
 ## 7.5 Your review of 12 November. Input to phase PR
 

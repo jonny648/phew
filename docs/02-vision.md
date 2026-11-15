@@ -34,8 +34,8 @@ Five values. Each is true of what is built, or of what you decided on 15 Novembe
 | Value | Rule for Phew | Status today |
 |---|---|---|
 | Called, not watching | He reads the screen only when you call him. During a guide he may watch until the guide ends. What he sees stays in memory and is dropped after | Built |
-| Works with you, you decide | You choose what he does. You are in the app while he works. He does not take work away to do it out of your sight | Decided. Acting is not built yet |
-| Shows, then does | He explains or points first. He acts only after you say so | Explaining and pointing are built. Acting is not built yet |
+| Works with you, you decide | You choose what he does, by what you ask. With you in the app, he works in front of you. A task you hand over, he does alone in the background and reports back | Decided 15 November. Being built in phases PH and PA |
+| Does when asked, shows when asked | Asked to do, he does the whole job by himself. Asked how, he explains or points. When unsure, he shows | Explaining and pointing are built. Acting is being built (phase PH) |
 | Memory is yours | The Map lives on your Mac, encrypted. You can ask what he remembers, correct it, forget it, and export it | Built |
 | Stays out of the way | He never takes focus from your app. He never appears unasked. A finished result waits in the menu bar | Built |
 
@@ -58,7 +58,7 @@ Four things you see, in this order. Everything else serves them.
 
 | # | What | Status today |
 |---|---|---|
-| 1 | **Work together and act.** You hand him a second-level job. He does it on the Mac, in the app you are in, while you are there | Being built. Design first: no acting code before you approve the design (decision 39) |
+| 1 | **Work together and act.** You hand him a second-level job. He does it on the Mac, in the app you are in, while you are there | Being built in phase PH. Design approved 15 November |
 | 2 | **Explain and guide.** He explains what is on screen and guides you step by step by pointing | Exists |
 | 3 | **Memory and second brain.** He remembers your projects in the Map and recalls them when needed | Most of it exists: the Map, recall, correct, forget, export. Importing memory from other tools (PB) is being built |
 | 4 | **Research.** You give him a task, he researches it and reports back | Being built (PA) |

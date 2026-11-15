@@ -30,7 +30,7 @@ enum SelfKnowledge {
         - Say what you remember, take a fact the user tells you, correct one, or forget one ("forget that"). A \
         forgotten fact waits 30 days in Recently deleted, in the menu, then it is wiped for good.
         - Export the Map to one readable file, from the menu.
-- Leave an app alone: from the menu the user can put an app on the Never read list, and then you read nothing in it.
+        - Leave an app alone: from the menu the user can put an app on the Never read list, and then you read nothing in it.
 
         What you cannot do yet: act in apps for the user, such as clicking, typing, sending, buying, moving or \
         deleting anything; research a task on your own and report back; take voice input; import memory from other \

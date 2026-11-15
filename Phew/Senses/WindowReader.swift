@@ -23,8 +23,8 @@ enum WindowReader {
     static let cursorBudget: TimeInterval = 0.015
     static let cursorCap = 300
 
-    /// The element under the mouse, read synchronously: it must be the user's app, not Phew's panel.
-    /// Also returns the mouse point. `pid` is the app being read, used only by the debug point.
+    /// The element under the mouse, read synchronously: only when it belongs to the app being read (`pid`), never to
+    /// Phew's panel or to another app lying under the mouse (`readsCursor`). Also returns the mouse point.
     static func elementUnderCursor(pid: pid_t) -> (element: CursorElement?, point: CGPoint) {
         let systemWide = AXUIElementCreateSystemWide()
         AXUIElementSetMessagingTimeout(systemWide, 0.1)  // global for Phew: a hung app costs at most 0.1 s per call
@@ -38,7 +38,7 @@ enum WindowReader {
         guard let element = hit else { return (nil, point) }
         var owner: pid_t = 0
         AXUIElementGetPid(element, &owner)
-        guard owner != getpid() else { return (nil, point) }
+        guard readsCursor(owner: owner, of: pid) else { return (nil, point) }
 
         let a = attributes(element)
         // Password field: its frame lets Phew point at it; nothing else is read.
@@ -59,6 +59,10 @@ enum WindowReader {
         }
         return (cursor, point)
     }
+
+    /// The hit test is system-wide: the element under the mouse is read only when its owner is the app being read,
+    /// and never Phew. Another app's text (a terminal, an app on the Never read list) must not ride in on it.
+    static func readsCursor(owner: pid_t, of pid: pid_t) -> Bool { owner == pid && owner != getpid() }
 
     /// Focused window of the app (else main, else frontmost): title, frame, the open document's path or address,
     /// its visible text and the elements Phew can point at, both in reading order.

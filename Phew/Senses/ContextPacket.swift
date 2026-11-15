@@ -139,5 +139,24 @@ extension ContextPacket {
         let shot = dir.appending(path: "shot-\(bundleID).png")
         if let screenshot { try? screenshot.write(to: shot) } else { try? FileManager.default.removeItem(at: shot) }
     }
+
+    /// PH.10: a live acting test may send a look only at a window the test itself made, holding only made-up content.
+    /// Its title carries the test's made-up marker ("Phew test " and a number), the picture is that window and nothing
+    /// around it, and it lists no rows (no sidebar, no list of other notes or files). It comes from the test's own app
+    /// (`app`, a bundle id), and an element under the mouse lies inside that window. Nil when the look may go;
+    /// otherwise one fixed word saying why not, for the log.
+    func notTestWindow(marker: String, app: String) -> String? {
+        guard marker.range(of: #"^Phew test [0-9]{3,}"#, options: .regularExpression) != nil else { return "marker" }
+        guard bundleID == app else { return "app" }  // the test's own app, never the one the user has in front
+        if neverRead { return "neverRead" }
+        guard windowTitle.contains(marker) else { return "title" }
+        guard screenshot != nil, let shot = screenshotFrame, let window = windowFrame,
+              abs(shot.minX - window.minX) <= 4, abs(shot.minY - window.minY) <= 4,
+              abs(shot.width - window.width) <= 4, abs(shot.height - window.height) <= 4 else { return "picture" }
+        if pointables.contains(where: { $0.role == "AXRow" }) { return "list" }
+        // The element under the mouse rides along only from inside that window (the same app may have others open).
+        if let cursor, !(cursor.frame.map { window.insetBy(dx: -4, dy: -4).contains($0) } ?? false) { return "cursor" }
+        return nil
+    }
 }
 #endif

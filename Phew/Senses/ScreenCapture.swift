@@ -14,18 +14,22 @@ enum ScreenCapture {
     /// PNG of the picture `picksWindow` chooses, and where it sits on screen (screen points, top-left origin,
     /// Accessibility coordinates). One pixel per point, so frame origin + picture pixel = screen point.
     /// Phew's own windows are left out. Nil without Screen Recording permission or on failure.
-    static func picture(pid: pid_t, windowFrame: CGRect?, mouse: CGPoint) async -> (png: Data, frame: CGRect)? {
+    /// `windowOnly` (live acting tests, PH.10): the front window wherever the mouse is, and never the whole display.
+    static func picture(pid: pid_t, windowFrame: CGRect?, mouse: CGPoint, windowOnly: Bool = false) async -> (png: Data, frame: CGRect)? {
         guard CGPreflightScreenCaptureAccess() else { return nil }
         do {
             // Off-screen windows too: Phew's panel or card, still being ordered in, must be listed to be left out.
             let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: false)
             let filter: SCContentFilter, origin: CGPoint
             // SCWindow frames use the same top-left origin as Accessibility.
-            if picksWindow(mouse: mouse, windowFrame: windowFrame), let frame = windowFrame,
-               let window = content.windows.filter({ $0.isOnScreen && $0.owningApplication?.processID == pid && $0.windowLayer == 0 })
+            if windowOnly || picksWindow(mouse: mouse, windowFrame: windowFrame), let frame = windowFrame,
+               // windowOnly: also on another Space, as a test's window is while the user works in a full-screen app.
+               let window = content.windows.filter({ ($0.isOnScreen || windowOnly) && $0.owningApplication?.processID == pid && $0.windowLayer == 0 })
                    .min(by: { gap($0.frame, frame) < gap($1.frame, frame) }) {
                 filter = SCContentFilter(desktopIndependentWindow: window)  // that window only, nothing on top
                 origin = window.frame.origin
+            } else if windowOnly {
+                return nil
             } else {
                 var id: CGDirectDisplayID = 0, count: UInt32 = 0
                 CGGetDisplaysWithPoint(mouse, 1, &id, &count)  // global display coordinates: top-left origin too

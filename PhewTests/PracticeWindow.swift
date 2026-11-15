@@ -47,6 +47,8 @@ final class PracticeWindow: NSObject {
             bar.addItem(top)
         }
         NSApp.mainMenu = bar
+        // The Hand finds a target by a hit test at its point: a window the user brings up over it would hide it (PH.9).
+        window.level = .floating
         window.orderFrontRegardless()  // in front without making the test process the active app
     }
 

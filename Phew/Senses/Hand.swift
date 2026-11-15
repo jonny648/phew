@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
+import EventKit
 
 /// One action Phew is asked to make, as the look saw its target. Coordinates are Accessibility ones (top-left origin).
 struct HandStep: Sendable {
@@ -14,6 +15,8 @@ struct HandStep: Sendable {
         case pick
         /// One click at the centre of `frame`, only where no named control exists (a canvas). No drag.
         case click
+        /// The app's own scripting or the system's reminders and calendar access (`script`), behind the app.
+        case script
     }
 
     var kind: Kind
@@ -30,6 +33,54 @@ struct HandStep: Sendable {
     var text = ""
     /// The job calls for a window or sheet after this step (a Save dialog): the next step takes it as expected.
     var opensWindow = false
+    /// For `script`: what it makes. Held in memory only, never logged.
+    var script: HandScript? = nil
+}
+
+/// What a script makes in Notes, Reminders, Calendar or Excel (docs/13-hand.md 13.2, methods 3 and 4). It works behind
+/// the app: nothing is clicked, nothing comes to the front, and it only adds. Each is read back after.
+enum HandScript: Sendable, Equatable {
+    /// Notes: a new note in the default folder, `title` its first line.
+    case note(title: String, body: String)
+    /// Notes: lines added at the end of the note this job made.
+    case append(text: String)
+    /// Reminders, through EventKit: a new reminder in the default list. `due` with or without a time.
+    case reminder(title: String, due: DateComponents?)
+    /// Calendar, through EventKit: a new event, no guests, in the default calendar.
+    case event(title: String, start: Date, end: Date)
+    /// Excel: a new empty workbook.
+    case workbook
+    /// Excel: cells of the workbook this job made, from `top` ("B2") right and down, as typed (a leading = is a formula).
+    case cells(top: String, rows: [[String]])
+
+    /// The app it acts in, for the Never list.
+    var app: String {
+        switch self {
+        case .note, .append: "com.apple.Notes"
+        case .reminder: "com.apple.reminders"
+        case .event: "com.apple.iCal"
+        case .workbook, .cells: "com.microsoft.Excel"
+        }
+    }
+
+    /// Characters written, for actions.log.
+    var chars: Int {
+        switch self {
+        case let .note(title, body): title.count + body.count
+        case let .append(text): text.count
+        case let .reminder(title, _), let .event(title, _, _): title.count
+        case .workbook: 0
+        case let .cells(_, rows): rows.joined().reduce(0) { $0 + $1.count }
+        }
+    }
+}
+
+/// Something a script made, by the id the app gave back at creation. Memory only.
+struct HandMade: Sendable, Equatable {
+    /// A fixed word: note, reminder, event, workbook.
+    var kind: String
+    var id: String
+    var title = ""
 }
 
 /// How an action ended: `done`, or why not, in one fixed word (written to actions.log as is).
@@ -46,6 +97,8 @@ enum HandEnd: String, Sendable, CaseIterable {
     case gone, moved, surprise, frontChanged
     /// The app refused, did not answer within `timeout`, or the read-back does not show the change.
     case failed, timeout, checkFailed
+    /// macOS has not let Phew script that app or use reminders or the calendar.
+    case noAccess
     /// Stop, or the user's own click or key.
     case stopped, userInput
 }
@@ -67,6 +120,8 @@ final class HandJob: @unchecked Sendable {  // state under `lock`
     fileprivate var dialogs: [pid_t: Int] = [:]
     fileprivate var windowExpected = false
     fileprivate var monitors: [Any] = []
+    /// What this job's scripts made, oldest first: `append` and `cells` act only on these.
+    fileprivate(set) var made: [HandMade] = []
 
     fileprivate init(number: Int) { self.number = number }
 
@@ -76,9 +131,14 @@ final class HandJob: @unchecked Sendable {  // state under `lock`
     func stop() { finish(.stopped) }
 
     /// A mouse or key event seen while the job runs: the user's own ends the job. Phew's own clicks carry `Hand.mark`.
+    /// Not while a script runs: it works behind the app, so the user's clicks cannot race it, and the click that
+    /// answers macOS's one-time "Phew wants to…" question must not end the job it was asked for (measured, PH.6).
     func seen(_ event: CGEvent) {
-        if !Hand.isOwn(event) { finish(.userInput) }
+        if !Hand.isOwn(event), !lock.withLock({ scripting }) { finish(.userInput) }
     }
+
+    fileprivate var scripting = false  // under `lock`
+    fileprivate func script(_ on: Bool) { lock.withLock { scripting = on } }
 
     fileprivate func finish(_ end: HandEnd) { lock.withLock { if ended == nil { ended = end } } }
 }
@@ -98,6 +158,9 @@ protocol HandSurface {
     func dialogs(_ pid: pid_t) -> Int
     /// The action itself, once. Returns done, failed or timeout.
     func send(_ step: HandStep, to element: AnyObject?) -> HandEnd
+    /// A script, once, then read back. `made`: what this job made before. Ends `stopped` as soon as `stop` says so.
+    /// Returns how it ended and, when it made something, what.
+    func run(_ script: HandScript, made: [HandMade], stop: @escaping () -> Bool) -> (HandEnd, HandMade?)
 }
 
 /// An element as read at the moment of acting. `value` is never read from a secure field.
@@ -120,6 +183,9 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     static let perMinute = 20
     /// The longest Phew waits for an app to take one action: Stop then still ends the job within a second.
     static let timeout: Float = 0.5
+    /// The longest a script may take. Long enough for macOS's one-time "Phew wants to control…" question and an app's
+    /// cold start; Stop still ends the job within a second (the script is cut, though the app may finish what it got).
+    static let scriptTimeout: TimeInterval = 60
     /// A target whose frame moved more than this, in points, is no longer where the look saw it.
     static let tolerance: CGFloat = 4
     /// Written into every event Phew posts, so the user's own clicks and keys are told apart from his.
@@ -133,6 +199,11 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     private let lock = NSLock()
     private var recent: [Date] = []
     private var jobs = 0
+    #if DEBUG
+    /// Every script run in this process, how it ended and what it made: for the live tests' report and clean-up
+    /// (`removeTestItems`). Memory only.
+    private(set) var ranHere: [(script: HandScript, end: HandEnd, made: HandMade?)] = []
+    #endif
 
     /// Tests pass a throwaway defaults suite, a fake surface or clock, and may stand in for Phew's own pid.
     init(defaults: UserDefaults = .standard, surface: HandSurface = AXSurface(), list: NeverReadList = .shared,
@@ -192,13 +263,14 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         }
         ActionLog.record(ActionLog.line(job: job.number, step: job.steps, kind: step.kind, role: role, ended: end,
                                         marked: marked, ms: Int(Date().timeIntervalSince(start) * 1000),
-                                        chars: step.kind == .set && end == .done ? step.text.count : 0))
+                                        chars: end != .done ? 0 : step.kind == .set ? step.text.count : step.script?.chars ?? 0))
         return HandResult(end: end, marked: marked)
     }
 
     /// Under `lock`. Every guard, then the action.
     private func check(_ step: HandStep, job: HandJob, role: inout String, marked: inout Bool) -> HandEnd {
         guard allowed else { return .off }
+        if step.kind == .script { return script(step.script, job: job) }
         // The Never list, first the app, before anything of it is read.
         if let end = NeverList.refusal(bundleID: surface.bundleID(step.pid), pid: step.pid, ownPID: ownPID,
                                        secureInput: surface.secureInput(), list: list) { return end }
@@ -212,10 +284,8 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         if let end = NeverList.refusal(role: seen?.role ?? "", subrole: seen?.subrole ?? "",
                                        focusedSecure: surface.focusedIsSecure(step.pid), texts: texts) { return end }
         marked = NeverList.careful(name: step.kind == .pick ? step.menuPath.last ?? "" : step.name, texts: texts)
-        // The ceilings.
         let time = now()
-        recent.removeAll { time.timeIntervalSince($0) >= 60 }
-        if let end = Self.ceiling(actedInJob: job.acted, recent: recent, now: time) { return end }
+        if let end = brake(job, time) { return end }
         // What is there now against what the look saw.
         guard surface.frontPID() == step.pid else { return .frontChanged }
         let dialogs = surface.dialogs(step.pid)
@@ -237,6 +307,33 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         return .done
     }
 
+    /// Under `lock`. The ceilings.
+    private func brake(_ job: HandJob, _ time: Date) -> HandEnd? {
+        recent.removeAll { time.timeIntervalSince($0) >= 60 }
+        return Self.ceiling(actedInJob: job.acted, recent: recent, now: time)
+    }
+
+    /// Under `lock`. A script: the Never list for the app it acts in (it is not the front app, and no control is
+    /// involved), the ceilings, then the script, read back by the surface. Nothing on screen is compared.
+    private func script(_ script: HandScript?, job: HandJob) -> HandEnd {
+        guard let script else { return .failed }
+        if let end = NeverList.refusal(bundleID: script.app, pid: 0, ownPID: ownPID, secureInput: surface.secureInput(),
+                                       list: list) { return end }
+        let time = now()
+        if let end = brake(job, time) { return end }
+        if let end = job.end { return end }
+        job.acted += 1
+        recent.append(time)
+        job.script(true)
+        let (end, made) = surface.run(script, made: job.made, stop: { job.end != nil })
+        job.script(false)
+        if let made { job.made.append(made) }
+        #if DEBUG
+        ranHere.append((script, end, made))
+        #endif
+        return end
+    }
+
     /// Same role, same name when both have one, frame within `tolerance`.
     private func matches(_ seen: HandSeen, _ step: HandStep) -> Bool {
         if !step.role.isEmpty, seen.role != step.role { return false }
@@ -253,7 +350,11 @@ struct AXSurface: HandSurface {
     var front: () -> pid_t? = { NSWorkspace.shared.frontmostApplication?.processIdentifier }
 
     func frontPID() -> pid_t? { front() }
-    func bundleID(_ pid: pid_t) -> String? { NSRunningApplication(processIdentifier: pid)?.bundleIdentifier }
+    /// The own process through `.current`: a lookup by pid came back nil for a moment in a just-launched test host
+    /// (PH.9). In the product Phew's own pid is refused before this matters (`ownApp`).
+    func bundleID(_ pid: pid_t) -> String? {
+        (pid == getpid() ? NSRunningApplication.current : NSRunningApplication(processIdentifier: pid))?.bundleIdentifier
+    }
     func secureInput() -> Bool { IsSecureEventInputEnabled() }
 
     func focusedIsSecure(_ pid: pid_t) -> Bool {
@@ -331,6 +432,8 @@ struct AXSurface: HandSurface {
                 event.postToPid(step.pid)
             }
             return .done
+        case .script:
+            return .failed  // scripts go through `run`
         }
         switch result {
         case .success: return .done
@@ -374,3 +477,283 @@ struct AXSurface: HandSurface {
         CFGetTypeID(object) == AXValueGetTypeID() && AXValueGetValue(object as! AXValue, type, out)
     }
 }
+
+// MARK: - Scripts: Notes and Excel through their own scripting, Reminders and Calendar through EventKit
+
+extension AXSurface {
+    /// One store for the process, as Apple advises.
+    fileprivate static let store = EKEventStore()
+
+    func run(_ script: HandScript, made: [HandMade], stop: @escaping () -> Bool) -> (HandEnd, HandMade?) {
+        switch script {
+        case let .note(title, body):
+            let (end, out) = Self.osascript(Self.makeNote, [Self.html([title] + body.components(separatedBy: .newlines))], stop: stop)
+            let lines = out.components(separatedBy: "\n")
+            guard end == .done, let id = lines.first, !id.isEmpty else { return (end == .done ? .failed : end, nil) }
+            let note = HandMade(kind: "note", id: id, title: title)
+            return (lines.dropFirst().joined() == title.trimmingCharacters(in: .whitespaces) ? .done : .checkFailed, note)
+        case let .append(text):
+            guard let note = made.last(where: { $0.kind == "note" }) else { return (.gone, nil) }
+            let lines = text.components(separatedBy: .newlines)
+            guard let last = lines.last(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) else { return (.failed, nil) }
+            let (end, out) = Self.osascript(Self.appendNote, [note.id, Self.html(lines), last.trimmingCharacters(in: .whitespaces)], stop: stop)
+            return (end == .done && out != "ok" ? .checkFailed : end, nil)
+        case let .reminder(title, due):
+            guard Self.access(.reminder, stop: stop) else { return (stop() ? .stopped : .noAccess, nil) }
+            let reminder = EKReminder(eventStore: Self.store)
+            reminder.title = title
+            guard let list = Self.store.defaultCalendarForNewReminders() else { return (.failed, nil) }
+            reminder.calendar = list
+            if let due {
+                reminder.dueDateComponents = due
+                // A due time also reminds, as one set in Reminders does.
+                if due.hour != nil, let date = Calendar.current.date(from: due) { reminder.addAlarm(EKAlarm(absoluteDate: date)) }
+            }
+            do { try Self.store.save(reminder, commit: true) } catch { return (.failed, nil) }
+            let made = HandMade(kind: "reminder", id: reminder.calendarItemIdentifier, title: title)
+            let back = Self.store.calendarItem(withIdentifier: made.id) as? EKReminder
+            let sameDue = back?.dueDateComponents.flatMap(Calendar.current.date(from:)) == due.flatMap(Calendar.current.date(from:))
+            return (back?.title == title && sameDue ? .done : .checkFailed, made)
+        case let .event(title, start, end):
+            guard Self.access(.event, stop: stop) else { return (stop() ? .stopped : .noAccess, nil) }
+            let event = EKEvent(eventStore: Self.store)
+            event.title = title
+            event.startDate = start
+            event.endDate = end
+            guard let calendar = Self.store.defaultCalendarForNewEvents else { return (.failed, nil) }
+            event.calendar = calendar
+            do { try Self.store.save(event, span: .thisEvent, commit: true) } catch { return (.failed, nil) }
+            guard let id = event.eventIdentifier else { return (.checkFailed, nil) }
+            let back = Self.store.event(withIdentifier: id)
+            return (back?.title == title && back?.startDate == start ? .done : .checkFailed, HandMade(kind: "event", id: id, title: title))
+        case .workbook:
+            let (end, name) = Self.osascript(Self.makeWorkbook, [], stop: stop)
+            guard end == .done else { return (end, nil) }
+            return name.isEmpty ? (.checkFailed, nil) : (.done, HandMade(kind: "workbook", id: name))
+        case let .cells(top, rows):
+            guard let book = made.last(where: { $0.kind == "workbook" }) else { return (.gone, nil) }
+            let width = rows.map(\.count).max() ?? 0
+            guard let range = Hand.range(top: top, rows: rows.count, columns: width) else { return (.failed, nil) }
+            let values = rows.flatMap { $0 + Array(repeating: "", count: width - $0.count) }
+            let (end, out) = Self.osascript(Self.fillCells, [book.id, range, String(width)] + values, stop: stop)
+            guard end == .done else { return (end, nil) }
+            return (Hand.sameCells(out.components(separatedBy: "\u{1F}"), values) ? .done : .checkFailed, nil)
+        }
+    }
+
+    /// Asks macOS once, the first time, and waits for the user's answer, or Stop, at most `Hand.scriptTimeout`.
+    private static func access(_ type: EKEntityType, stop: () -> Bool) -> Bool {
+        if EKEventStore.authorizationStatus(for: type) == .notDetermined {
+            let answered = DispatchSemaphore(value: 0)
+            let done: EKEventStoreRequestAccessCompletionHandler = { _, _ in answered.signal() }
+            if type == .reminder { store.requestFullAccessToReminders(completion: done) } else { store.requestFullAccessToEvents(completion: done) }
+            let deadline = Date() + Hand.scriptTimeout
+            while answered.wait(timeout: .now() + 0.05) == .timedOut, !stop(), Date() < deadline {}
+        }
+        return EKEventStore.authorizationStatus(for: type) == .fullAccess
+    }
+
+    /// Lines as Notes' HTML, each in its own block, every sign escaped: the words stay text.
+    static func html(_ lines: [String]) -> String {
+        lines.map { line in
+            let text = line.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;")
+            return "<div>\(text.isEmpty ? "<br>" : text)</div>"
+        }.joined()
+    }
+
+    /// Runs one of the fixed scripts below with `args` as its run handler's list, so no word ever becomes script code.
+    /// Returns its output, trimmed. The error text is dropped unread, but for macOS's "not allowed" number.
+    static func osascript(_ source: String, _ args: [String], stop: () -> Bool) -> (HandEnd, String) {
+        let process = Process()
+        process.executableURL = URL(filePath: "/usr/bin/osascript")
+        process.arguments = source.split(separator: "\n").flatMap { ["-e", String($0)] } + args
+        let out = Pipe(), err = Pipe()
+        process.standardOutput = out
+        process.standardError = err
+        do { try process.run() } catch { return (.failed, "") }
+        let deadline = Date() + Hand.scriptTimeout
+        while process.isRunning {
+            if stop() { process.terminate(); return (.stopped, "") }
+            if Date() > deadline { process.terminate(); return (.timeout, "") }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        guard process.terminationStatus == 0 else {
+            let error = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            #if DEBUG
+            // Only the error's number and the script line it hit, never its words (they can quote a value).
+            let number = error.firstMatch(of: /\((-?[0-9]+)\)\s*$/).map { String($0.1) } ?? "none"
+            let at = error.firstMatch(of: /([0-9]+):[0-9]+: execution error/).map { String($0.1) } ?? "?"
+            shellLog("script failed: error \(number) at char \(at)")
+            #endif
+            return (error.contains("-1743") ? .noAccess : .failed, "")
+        }
+        return (.done, String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    static let makeNote = """
+        on run argv
+        tell application id "com.apple.Notes"
+        set n to make new note with properties {body:item 1 of argv}
+        return (id of n) & linefeed & (name of n)
+        end tell
+        end run
+        """
+    static let appendNote = """
+        on run argv
+        tell application id "com.apple.Notes"
+        set n to note id (item 1 of argv)
+        set body of n to (body of n) & (item 2 of argv)
+        if plaintext of n contains (item 3 of argv) then return "ok"
+        return "differs"
+        end tell
+        end run
+        """
+    static let makeWorkbook = """
+        on run argv
+        tell application id "com.microsoft.Excel"
+        set w to make new workbook
+        return name of w
+        end tell
+        end run
+        """
+    /// argv: the workbook's name, the range, the row width, then every value row by row. Returns what the cells hold.
+    static let fillCells = """
+        on run argv
+        tell application id "com.microsoft.Excel"
+        set r to range (item 2 of argv) of worksheet 1 of workbook (item 1 of argv)
+        set n to (item 3 of argv) as integer
+        set vals to items 4 thru -1 of argv
+        if (count of vals) is 1 then
+        set formula of r to item 1 of vals
+        else
+        set rowsList to {}
+        repeat with i from 1 to (count of vals) by n
+        set end of rowsList to items i thru (i + n - 1) of vals
+        end repeat
+        set formula of r to rowsList
+        end if
+        set held to formula of r
+        end tell
+
+        """ + readBack + "\nend run"
+    /// `held`, what Excel's cells hold, as one text, cell by cell: rows of cells, or one value for one cell. Not named
+    /// `back`: that is an AppleScript word (the last item), and the read-back failed with -1700.
+    static let readBack = """
+        if class of held is not list then set held to {held}
+        set flat to {}
+        repeat with rw in held
+        if class of rw is list then
+        repeat with c in rw
+        set end of flat to (c as text)
+        end repeat
+        else
+        set end of flat to (rw as text)
+        end if
+        end repeat
+        set AppleScript's text item delimiters to (ASCII character 31)
+        return flat as text
+        """
+}
+
+extension Hand {
+    /// "B2" and a size as an Excel range ("B2:D5"). Nil for anything but a plain cell address.
+    static func range(top: String, rows: Int, columns: Int) -> String? {
+        let top = top.uppercased().trimmingCharacters(in: .whitespaces)
+        guard rows > 0, columns > 0, top.range(of: #"^[A-Z]{1,3}[1-9][0-9]{0,6}$"#, options: .regularExpression) != nil else { return nil }
+        let letters = top.prefix { $0.isLetter }
+        guard let row = Int(top.dropFirst(letters.count)) else { return nil }
+        let column = letters.unicodeScalars.reduce(0) { $0 * 26 + Int($1.value) - 64 }
+        let last = column + columns - 1, lastRow = row + rows - 1
+        guard last <= 16_384, lastRow <= 1_048_576 else { return nil }
+        var name = "", n = last
+        while n > 0 { name = String(UnicodeScalar(UInt8(65 + (n - 1) % 26))) + name; n = (n - 1) / 26 }
+        return rows == 1 && columns == 1 ? top : "\(top):\(name)\(lastRow)"
+    }
+
+    /// What the cells hold against what was written: the same text, or the same number written another way ("3.50").
+    static func sameCells(_ back: [String], _ written: [String]) -> Bool {
+        back.count == written.count && zip(back, written).allSatisfy { a, b in
+            a == b || (Double(a).map { $0 == Double(b) } ?? false)
+        }
+    }
+
+    #if DEBUG
+    /// Live tests only, never a job's action: removes exactly what scripts made in this process, each by the id its
+    /// app gave back at creation, never by a name. Returns the kinds removed and those that could not be.
+    func removeTestItems() -> (removed: [String], failed: [String]) {
+        var removed: [String] = [], failed: [String] = []
+        for made in lock.withLock({ ranHere.compactMap(\.made) }) {
+            if AXSurface.remove(made) { removed.append(made.kind) } else { failed.append(made.kind) }
+        }
+        lock.withLock { ranHere = [] }
+        return (removed, failed)
+    }
+
+    /// Live tests only: shows a note this process made in its own window (no sidebar, no list), in front.
+    func showTestNote(_ id: String) -> Bool {
+        guard lock.withLock({ ranHere.contains { $0.made?.kind == "note" && $0.made?.id == id } }) else { return false }
+        return AXSurface.osascript("""
+            on run argv
+            tell application id "com.apple.Notes"
+            activate
+            show note id (item 1 of argv) separately true
+            end tell
+            end run
+            """, [id], stop: { false }).0 == .done
+    }
+
+    /// Live tests only: whether macOS lets Phew act in `app` now, without asking. A fixed word.
+    static func permission(_ app: String) -> String {
+        switch app {
+        case "com.apple.reminders", "com.apple.iCal":
+            switch EKEventStore.authorizationStatus(for: app == "com.apple.iCal" ? .event : .reminder) {
+            case .fullAccess: return "allowed"
+            case .notDetermined: return "notAsked"
+            case .writeOnly: return "writeOnly"
+            default: return "denied"
+            }
+        default:
+            let target = NSAppleEventDescriptor(bundleIdentifier: app)
+            switch AEDeterminePermissionToAutomateTarget(target.aeDesc, typeWildCard, typeWildCard, false) {
+            case noErr: return "allowed"
+            case OSStatus(errAEEventWouldRequireUserConsent): return "notAsked"
+            case OSStatus(errAEEventNotPermitted): return "denied"
+            case OSStatus(procNotFound): return "notRunning"
+            case let status: return "status \(status)"
+            }
+        }
+    }
+    #endif
+}
+
+#if DEBUG
+extension AXSurface {
+    /// By id only. Notes keeps a deleted note in its Recently Deleted folder for 30 days.
+    static func remove(_ made: HandMade) -> Bool {
+        switch made.kind {
+        case "note":
+            return osascript("""
+                on run argv
+                tell application id "com.apple.Notes" to delete note id (item 1 of argv)
+                end run
+                """, [made.id], stop: { false }).0 == .done
+        case "reminder":
+            guard let item = store.calendarItem(withIdentifier: made.id) as? EKReminder else { return false }
+            return (try? store.remove(item, commit: true)) != nil
+        case "event":
+            guard let item = store.event(withIdentifier: made.id) else { return false }
+            return (try? store.remove(item, span: .thisEvent, commit: true)) != nil
+        case "workbook":
+            return osascript("""
+                on run argv
+                tell application id "com.microsoft.Excel" to close workbook (item 1 of argv) saving no
+                end run
+                """, [made.id], stop: { false }).0 == .done
+        default:
+            return false
+        }
+    }
+}
+#endif

@@ -218,6 +218,59 @@ final class ActJobTests: XCTestCase {
         XCTAssertTrue(provider.requests.isEmpty)
     }
 
+    // MARK: Scripts (PH.6)
+
+    private func script(_ action: String, title: String = "", text: String = "", start: String? = nil, end: String? = nil,
+                        cell: String? = nil, rows: [[String]] = []) -> String {
+        func q(_ s: String?) -> String { s.map { "\"\($0)\"" } ?? "null" }
+        let rows = rows.map { "[" + $0.map { "\"\($0)\"" }.joined(separator: ",") + "]" }.joined(separator: ",")
+        return #"{"action":"\#(action)","element":null,"point":null,"menu":[],"text":"\#(text)","title":"\#(title)","start":\#(q(start)),"end":\#(q(end)),"cell":\#(q(cell)),"rows":[\#(rows)]}"#
+    }
+
+    func testDoerScriptAnswers() throws {
+        func decide(_ json: String) throws -> NextAction {
+            Doer.decide(try JSONDecoder().decode(Doer.Output.self, from: Data(json.utf8)), packet: packet, shot: nil)
+        }
+        XCTAssertEqual(try decide(script("note", title: " Phew test 12 list ", text: #"Milk\nBread"#)),
+                       .script(.note(title: "Phew test 12 list", body: "Milk\nBread")))
+        XCTAssertEqual(try decide(script("append", text: "Eggs")), .script(.append(text: "Eggs")))
+        XCTAssertEqual(try decide(script("reminder", title: "Call", start: "2026-11-16T10:00")),
+                       .script(.reminder(title: "Call", due: DateComponents(year: 2026, month: 11, day: 16, hour: 10, minute: 0))))
+        XCTAssertEqual(try decide(script("reminder", title: "Call", start: "2026-11-16")),
+                       .script(.reminder(title: "Call", due: DateComponents(year: 2026, month: 11, day: 16))))
+        XCTAssertEqual(try decide(script("reminder", title: "Call")), .script(.reminder(title: "Call", due: nil)))
+        let start = try XCTUnwrap(Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 17, hour: 15, minute: 30)))
+        XCTAssertEqual(try decide(script("event", title: "Review", start: "2026-11-17T15:30")),
+                       .script(.event(title: "Review", start: start, end: start.addingTimeInterval(3600))))
+        XCTAssertEqual(try decide(script("event", title: "Review", start: "2026-11-17T15:30", end: "2026-11-17T16:00")),
+                       .script(.event(title: "Review", start: start, end: start.addingTimeInterval(1800))))
+        XCTAssertEqual(try decide(script("workbook")), .script(.workbook))
+        XCTAssertEqual(try decide(script("cells", cell: "b2", rows: [["Item", "Price"], ["Pen", "3"]])),
+                       .script(.cells(top: "B2", rows: [["Item", "Price"], ["Pen", "3"]])))
+        // Never a guess: a missing name, a date that is not one, an event with no time or ending before it starts, a bad cell.
+        for bad in [script("note"), script("append"), script("reminder", title: "Call", start: "tomorrow"),
+                    script("reminder", title: "Call", start: "2026-02-30"), script("event", title: "Review", start: "2026-11-17"),
+                    script("event", title: "Review", start: "2026-11-17T15:30", end: "2026-11-17T15:00"),
+                    script("cells", cell: "A1; B2", rows: [["1"]]), script("cells", cell: "A1")] {
+            XCTAssertEqual(try decide(bad), .stuck(Doer.badScript), bad)
+        }
+    }
+
+    func testAScriptJobRunsBehindTheApp() async {
+        fake.front = 99  // another app in front: a script does not need it
+        let (run, provider, job, _) = make([script("workbook"), script("cells", cell: "A1", rows: [["1", "2"], ["3", "4"]]),
+                                            script("done", text: "Made it.")])
+        var lines: [String] = []
+        let outcome = await run.run("Make a new Excel workbook with 1 2 3 4 in A1", job: job) { lines.append($0) }
+        XCTAssertEqual(outcome, .done("Made it."))
+        XCTAssertEqual(lines, ["Made a new workbook in Excel", "Filled 4 cells from A1 in Excel"])
+        XCTAssertEqual(fake.scripts, [.workbook, .cells(top: "A1", rows: [["1", "2"], ["3", "4"]])])
+        XCTAssertEqual(fake.sentCount, 0, "nothing pressed")
+        XCTAssertTrue(provider.requests[2].text.contains("2. Filled 4 cells from A1 in Excel: done"))
+        XCTAssertTrue(provider.requests[0].text.contains("\nNow: 20"), "the date for \"tomorrow\"")
+        XCTAssertEqual(ActJob.sentence(for: .noAccess), "macOS has not allowed me to use that app. You can allow it in System Settings, Privacy & Security.")
+    }
+
     // MARK: The act route (PH.4)
 
     func testActRouteDecodes() {

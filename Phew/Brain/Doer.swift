@@ -21,8 +21,24 @@ enum Doer {
         app has, or those the user names.
         - click: one click on a spot with no element to press, such as a canvas. Give an element id, or a point in \
         screenshot pixels (x to the right, y down, from the top-left corner). Use press, set or pick whenever they fit.
-        - done: every part of the request is visible on the screen now. In text, one short line saying what you did, \
-        in the language of the request.
+
+        For Notes, Reminders, Calendar and Excel, use these instead of pressing. They work behind the app, which need \
+        not be in front, and they only add:
+        - note: a new note in Notes. In title its first line, in text the lines under it.
+        - append: lines added at the end of the note you made earlier in this job, in text.
+        - reminder: a new reminder. In title its name; in start its due date, "YYYY-MM-DD", or with a time \
+        "YYYY-MM-DDTHH:MM", or null for none.
+        - event: a new calendar event, no guests. In title its name; start and end as "YYYY-MM-DDTHH:MM". With no end \
+        given, it lasts one hour.
+        - workbook: a new empty Excel workbook.
+        - cells: fill cells of the workbook you made earlier in this job. In cell the top-left cell, such as "A1"; in \
+        rows the values row by row, as typed (a number, a text, or a formula starting with =).
+        Dates and times are the user's local ones; "Now" below says when that is. Use the words of the request for \
+        names and text, unchanged. These actions do not show on the screen: judge them by how they ended in the \
+        actions so far.
+
+        - done: every part of the request is done: visible on the screen, or a note, reminder, event, workbook or \
+        cells action that ended done. In text, one short line saying what you did, in the language of the request.
         - stuck: the next action is not possible. In text, one short plain reason, in the language of the request.
 
         Do only what the request asks, nothing more, and in the order it asks. Use only ids from the list, never \
@@ -37,7 +53,7 @@ enum Doer {
         """
 
     static let schema = #"""
-        {"type":"object","properties":{"action":{"type":"string","enum":["press","set","pick","click","done","stuck"]},"element":{"type":["string","null"]},"point":{"anyOf":[{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"additionalProperties":false},{"type":"null"}]},"menu":{"type":"array","items":{"type":"string"}},"text":{"type":"string"}},"required":["action","element","point","menu","text"],"additionalProperties":false}
+        {"type":"object","properties":{"action":{"type":"string","enum":["press","set","pick","click","note","append","reminder","event","workbook","cells","done","stuck"]},"element":{"type":["string","null"]},"point":{"anyOf":[{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"additionalProperties":false},{"type":"null"}]},"menu":{"type":"array","items":{"type":"string"}},"text":{"type":"string"},"title":{"type":"string"},"start":{"type":["string","null"]},"end":{"type":["string","null"]},"cell":{"type":["string","null"]},"rows":{"type":"array","items":{"type":"array","items":{"type":"string"}}}},"required":["action","element","point","menu","text","title","start","end","cell","rows"],"additionalProperties":false}
         """#
 
     struct Output: Decodable {
@@ -46,11 +62,18 @@ enum Doer {
         let point: Guide.Output.Step.Point?
         let menu: [String]
         let text: String
+        // The script fields: optional, so an answer from before them still decodes.
+        var title: String? = nil
+        var start: String? = nil
+        var end: String? = nil
+        var cell: String? = nil
+        var rows: [[String]]? = nil
     }
 
     /// Code's own lines when the answer cannot be used: never a guess.
     static let noScreen = "I could not read the screen, so I stopped."
     static let noTarget = "I could not find that control on the screen, so I stopped."
+    static let badScript = "I could not tell what to make, so I stopped."
 
     static func next(_ request: String, packet: ContextPacket?, done: [String], provider: any ModelProvider) async throws -> NextAction {
         guard let packet, !packet.neverRead else { return .stuck(noScreen) }
@@ -81,6 +104,8 @@ enum Doer {
         case "pick":
             let menu = output.menu.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
             return menu.isEmpty ? .stuck(noTarget) : .act(.pick, target: nil, menu: menu)
+        case "note", "append", "reminder", "event", "workbook", "cells":
+            return script(output).map(NextAction.script) ?? .stuck(badScript)
         case let word:
             guard let kind = HandStep.Kind(rawValue: word) else { return .stuck(noTarget) }
             // Press and set act on a named element only; a click may take a point.
@@ -90,7 +115,55 @@ enum Doer {
         }
     }
 
-    static func request(_ request: String, packet: ContextPacket, shot: ScreenshotSize?, done: [String]) -> ModelRequest {
+    /// A script answer as the Hand takes it, or nil when a part it needs is missing or not a real date or cell.
+    static func script(_ output: Output) -> HandScript? {
+        let title = (output.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = output.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch output.action.lowercased() {
+        case "note": return title.isEmpty ? nil : .note(title: title, body: text)
+        case "append": return text.isEmpty ? nil : .append(text: text)
+        case "reminder":
+            guard !title.isEmpty else { return nil }
+            guard let start = output.start, !start.trimmingCharacters(in: .whitespaces).isEmpty else { return .reminder(title: title, due: nil) }
+            return components(start).map { .reminder(title: title, due: $0) }  // a due that is not a date: nil, never a guess
+        case "event":
+            guard !title.isEmpty, let given = output.start.flatMap(components), given.hour != nil,
+                  let start = Calendar.current.date(from: given) else { return nil }
+            let end = output.end.flatMap(components).flatMap { Calendar.current.date(from: $0) } ?? start.addingTimeInterval(3600)
+            return end > start ? .event(title: title, start: start, end: end) : nil
+        case "workbook": return .workbook
+        case "cells":
+            let rows = (output.rows ?? []).filter { !$0.isEmpty }
+            guard let cell = output.cell, !rows.isEmpty,
+                  Hand.range(top: cell, rows: rows.count, columns: rows.map(\.count).max() ?? 0) != nil else { return nil }
+            return .cells(top: cell.uppercased().trimmingCharacters(in: .whitespaces), rows: rows)
+        default: return nil
+        }
+    }
+
+    /// The local date, time and weekday, for "tomorrow at 10".
+    private static let nowFormat = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm, EEEE"
+        return f
+    }()
+
+    /// "2026-11-16" or "2026-11-16T10:00" (seconds allowed) as local date components; nil for anything else.
+    static func components(_ s: String) -> DateComponents? {
+        let parts = s.trimmingCharacters(in: .whitespaces)
+            .wholeMatch(of: /(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::\d{2})?)?/)
+        guard let parts, let year = Int(parts.1), let month = Int(parts.2), let day = Int(parts.3) else { return nil }
+        var c = DateComponents(year: year, month: month, day: day)
+        if let h = parts.4.flatMap({ Int($0) }), let m = parts.5.flatMap({ Int($0) }) {
+            guard h < 24, m < 60 else { return nil }
+            c.hour = h
+            c.minute = m
+        }
+        return c.isValidDate(in: Calendar.current) ? c : nil
+    }
+
+    static func request(_ request: String, packet: ContextPacket, shot: ScreenshotSize?, done: [String], now: Date = Date()) -> ModelRequest {
         // The screen and the done lines are data, in their delimiters; a line cannot close a block early.
         func block(_ name: String, _ text: String) -> String {
             "<\(name)>\n\(text.replacingOccurrences(of: "</\(name)>", with: "</ \(name)>", options: .caseInsensitive))\n</\(name)>"
@@ -98,6 +171,7 @@ enum Doer {
         let actions = done.isEmpty ? "None yet." : done.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
         return ModelRequest(agent: "doer", tier: .main, system: system,
                             text: [block("screen", Guide.context(packet, shot: shot)), block("actions", actions),
+                                   "Now: \(nowFormat.string(from: now))",
                                    "Request: \(request)"].joined(separator: "\n\n"),
                             image: shot == nil ? nil : packet.screenshot, schema: schema, maxTokens: 2048)
     }

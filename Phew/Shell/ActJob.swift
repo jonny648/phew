@@ -42,12 +42,18 @@ struct ActJob {
             switch next {
             case .done(let line): return .done(line)
             case .stuck(let line): return .stuck(line)
-            case let .act(kind, target, menu, text):
-                guard let packet, let step = Self.step(kind, target: target, menu: menu, text: text, packet: packet, pid: pid) else {
+            case .script, .act:
+                let step: HandStep
+                if case .script(let script) = next {
+                    step = HandStep(kind: .script, pid: 0, script: script)  // behind the app: nothing on screen to move aside from
+                } else if case let .act(kind, target, menu, text) = next, let packet,
+                          let found = Self.step(kind, target: target, menu: menu, text: text, packet: packet, pid: pid) {
+                    step = found
+                    if kind != .pick { aside(step.frame) }
+                } else {
                     return .stuck(Self.noTarget)
                 }
                 starting(Self.line(step, doing: true))
-                if kind != .pick { aside(step.frame) }
                 let hand = hand
                 // Off the main thread: an app that hangs blocks for at most `Hand.timeout`.
                 let result = await Task.detached { hand.act(step, in: job) }.value
@@ -88,6 +94,16 @@ struct ActJob {
         case .set: return "\(doing ? "Typing" : "Typed") \(step.text.count) character\(step.text.count == 1 ? "" : "s") in \(name ?? "a field")"
         case .pick: return "\(doing ? "Picking" : "Picked") \(step.menuPath.joined(separator: " > "))"
         case .click: return "\(doing ? "Clicking" : "Clicked") \(name ?? "a spot")"
+        case .script:
+            switch step.script {
+            case .note(let title, _): return "Made the note “\(title)” in Notes"
+            case .append(let text): return "Added \(text.count) character\(text.count == 1 ? "" : "s") to the note"
+            case .reminder(let title, _): return "Added the reminder “\(title)”"
+            case .event(let title, _, _): return "Added the event “\(title)” to Calendar"
+            case .workbook: return "Made a new workbook in Excel"
+            case let .cells(top, rows): return "Filled \(rows.joined().count) cells from \(top) in Excel"
+            case nil: return "Ran a script"
+            }
         }
     }
 
@@ -114,6 +130,7 @@ struct ActJob {
         case .failed: "I could not do it. Nothing changed, as far as I can see."
         case .timeout: "The app did not answer in time. I stopped."
         case .checkFailed: "I acted, but I could not see the change. Check before going on."
+        case .noAccess: "macOS has not allowed me to use that app. You can allow it in System Settings, Privacy & Security."
         }
     }
 }

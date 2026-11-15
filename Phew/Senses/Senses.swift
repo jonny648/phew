@@ -7,8 +7,9 @@ enum Senses {
     /// cursor and would hide the user's element. The cursor read happens now, on the main thread;
     /// the window walk and the screenshot run in the returned task.
     /// `app` defaults to the front app; the debug self-check may name another running app.
+    /// `windowOnly`: the picture is the front window whatever the mouse, never the whole display (live acting tests).
     @MainActor
-    static func capture(app: NSRunningApplication? = nil, list: NeverReadList = .shared) -> Task<ContextPacket?, Never> {
+    static func capture(app: NSRunningApplication? = nil, list: NeverReadList = .shared, windowOnly: Bool = false) -> Task<ContextPacket?, Never> {
         let start = Date()
         guard let app = app ?? NSWorkspace.shared.frontmostApplication else { return Task { nil } }
         let pid = app.processIdentifier, name = app.localizedName ?? "", bundleID = app.bundleIdentifier ?? "unknown"
@@ -40,7 +41,7 @@ enum Senses {
             packet = packet.filtered()
             // Text and picture together, every time.
             // shortcut: screenshot pixels are not filtered (a key on screen stays visible); OCR redaction if that matters.
-            if let shot = await ScreenCapture.picture(pid: pid, windowFrame: window.frame, mouse: point) {
+            if let shot = await ScreenCapture.picture(pid: pid, windowFrame: window.frame, mouse: point, windowOnly: windowOnly) {
                 packet.screenshot = shot.png
                 packet.screenshotFrame = shot.frame
             }

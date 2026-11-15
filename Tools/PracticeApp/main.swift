@@ -1,9 +1,10 @@
 // A made-up practice app for PH.5's live check: a window in another process for Phew's Hand to act on, since the
 // Hand never acts on Phew's own windows. Not part of the Xcode project. Build and run:
 //   swiftc -o <dir>/PracticeApp.app/Contents/MacOS/PracticeApp Tools/PracticeApp/main.swift
-//   cp Tools/PracticeApp/Info.plist <dir>/PracticeApp.app/Contents/ && open -n <dir>/PracticeApp.app --args <state.json>
+//   cp Tools/PracticeApp/Info.plist <dir>/PracticeApp.app/Contents/ && open -n <dir>/PracticeApp.app --args <state.json> "Phew test 4821"
 // Then: Phew --debug-act "Type Weekly plan in the Title field, press Bold, tick Done, choose Format > Make Italic
-// from the menu bar, then press Save." Every change writes the window's state, made-up only, to <state.json>.
+// from the menu bar, then press Save." --test-window "Phew test 4821". The second argument is the window's title, the
+// made-up marker the live check looks for (PH.10). Every change writes the window's state, made-up only, to <state.json>.
 import AppKit
 
 final class Practice: NSObject, NSApplicationDelegate {
@@ -15,7 +16,7 @@ final class Practice: NSObject, NSApplicationDelegate {
     var counts: [String: Int] = [:]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        window.title = "Practice"
+        window.title = CommandLine.arguments.dropFirst(2).first ?? "Practice"
         field.placeholderString = "Title"
         field.target = self
         field.action = #selector(changed)
@@ -40,6 +41,8 @@ final class Practice: NSObject, NSApplicationDelegate {
         bar.addItem(format)
         NSApp.mainMenu = bar
         window.center()
+        // On screen even while the user works in a full-screen app on another Space: the live check looks at it there.
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
         NotificationCenter.default.addObserver(self, selector: #selector(changed), name: NSControl.textDidChangeNotification, object: field)

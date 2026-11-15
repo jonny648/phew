@@ -78,43 +78,103 @@ extension AppDelegate {
         shellLog("consent check done: card visible=\(card.isVisible) screen gone=\(card.consentPanel.panel == nil) phewFront=\(phewIsFront)")
     }
 
-    /// PH.5 live: `--debug-act "<words>"` asks Phew the words, through the real ask path, about the app in front, with
-    /// acting on for this process only: in memory (the argument domain), never written to the user's defaults. Real
-    /// model calls and real actions in the front app: run it only on a made-up window or a made-up note. The user's own
-    /// click or key stops the job. With `--debug-stop-after <n>`, Stop is pressed (what the card's button calls) once
-    /// n actions are ticked. Logs counts and fixed words only, never the words or the card's lines. Quits at the end.
+    /// PH.5 live: `--debug-act "<words>" --test-window "<marker>"` asks Phew the words, through the real ask path,
+    /// about the app in front, with acting on for this process only: in memory (the argument domain), never written to
+    /// the user's defaults. Real model calls and real actions. The user's own click or key stops the job.
+    /// PH.10: only on a window the test itself made, holding only made-up content, whose title carries `marker` ("Phew
+    /// test " and a number). Before the first model call, and before every later look, the capture is cut to that
+    /// window and checked (`ContextPacket.notTestWindow`); when it is not that window, nothing is sent and the check
+    /// stops. `--test-pid <pid>` names the test's app, looked at and acted in whatever app is in front; with
+    /// `--test-note`, Notes; with neither, nothing is sent. `--test-note` first makes a made-up note titled `marker` and opens it in its own window (no
+    /// sidebar, no list). At the end everything scripts made is removed by id (`Hand.removeTestItems`). Logs counts and fixed words
+    /// only, never the words, a title or the card's lines. Quits at the end.
+    /// With `--debug-stop-after <n>`, Stop is pressed (what the card's button calls) once n actions are ticked.
     private func checkAct(_ words: String) async {
-        UserDefaults.standard.setVolatileDomain([Hand.allowedKey: true], forName: UserDefaults.argumentDomain)
         let arguments = CommandLine.arguments
+        let marker = arguments.firstIndex(of: "--test-window").flatMap { arguments.dropFirst($0 + 1).first } ?? ""
+        UserDefaults.standard.setVolatileDomain([Hand.allowedKey: true], forName: UserDefaults.argumentDomain)
         let stopAfter = arguments.firstIndex(of: "--debug-stop-after").flatMap { arguments.dropFirst($0 + 1).first }.flatMap { Int($0) }
         try? await Task.sleep(for: .seconds(2))
         NSApp.deactivate()
-        guard await Self.madeUpFront() else { exit(1) }  // nothing of a real app goes to the model
-        let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
-        shellLog("act check: allowed=\(Hand.shared.allowed) asks=\(card.consent.asks) accessibility=\(AXIsProcessTrusted()) phewFront=\(phewIsFront)")
-        capture = Senses.capture()
-        let visible = NSScreen.screens.first?.visibleFrame ?? .zero
-        anchor = NSPoint(x: visible.minX + 20, y: visible.minY + 320)  // out of the way, bottom left
-        ask(words)
-        var seen = 0, stopped: Date?
-        for _ in 0..<2400 where card.isVisible && (card.answering || card.model.thinking) {
-            let rows = card.model.actions
-            if rows.count != seen {
-                seen = rows.count
-                // Each row as it appears: its state and the footer, never its words.
-                shellLog("act check: row \(rows.count) \(rows.last.map { "\($0.state)" } ?? "") acting=\(card.model.acting) footer stop=\(card.model.acting) closeHidden=\(card.model.acting)")
-            }
-            if let stopAfter, stopped == nil, rows.filter({ $0.state == .done }).count >= stopAfter, card.model.acting {
-                stopped = Date()
-                card.handJob?.stop()  // what the footer's Stop button calls
-                shellLog("act check: Stop pressed after \(stopAfter) actions")
-            }
-            try? await Task.sleep(for: .milliseconds(50))
+        let apps = ["com.apple.Notes", "com.apple.reminders", "com.apple.iCal", "com.microsoft.Excel"]
+        shellLog("act check: allowed=\(Hand.shared.allowed) accessibility=\(AXIsProcessTrusted()) phewFront=\(phewIsFront) permissions=\(apps.map { Hand.permission($0) })")
+        if arguments.contains("--test-note") {
+            let job = Hand.shared.begin(watchUser: false)
+            let made = Hand.shared.act(HandStep(kind: .script, pid: 0, script: .note(title: marker, body: "A made-up line for a Phew test.")), in: job)
+            Hand.shared.close(job)
+            let shown = job.made.first.map { Hand.shared.showTestNote($0.id) } ?? false
+            shellLog("act check: test note \(made.end.rawValue), shown in its own window \(shown)")
+            try? await Task.sleep(for: .seconds(2))
         }
-        shellLog("act check done: rows=\(card.model.actions.count) done=\(card.model.actions.filter { $0.state == .done }.count) failed=\(card.model.actions.filter { $0.state == .failed }.count) acting=\(card.model.acting) summary=\(!card.model.text.isEmpty) ended=\(card.model.ended != nil) problem=\(card.model.problem != nil) note=\(card.model.note != nil) steps=\(card.model.steps.count)\(stopped.map { " stop to end \(Int(Date().timeIntervalSince($0) * 1000)) ms" } ?? "") frontUnchanged=\(NSWorkspace.shared.frontmostApplication?.processIdentifier == front) phewFront=\(phewIsFront) $\(CallLog.spentUSD)")
+        let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        // The test's own app, looked at and acted in even while the user works in another: `--test-pid <pid>`, or Notes
+        // with `--test-note`. Never the app in front, which may be the user's.
+        let app = arguments.firstIndex(of: "--test-pid").flatMap { arguments.dropFirst($0 + 1).first }.flatMap { Int32($0) }
+            .flatMap { NSRunningApplication(processIdentifier: $0) }
+            ?? (arguments.contains("--test-note") ? NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Notes").first : nil)
+        if app == nil { shellLog("act check: no test app named; nothing sent") }
+        let look = { () async -> ContextPacket? in
+            var why = "none"
+            guard let app, let bundle = app.bundleIdentifier else { return nil }
+            // Up to three tries: while the user switches Spaces the window is briefly off screen and has no picture.
+            for _ in 0..<3 {
+                let packet = await Senses.capture(app: app, windowOnly: true).value
+                guard let reason = packet.map({ $0.notTestWindow(marker: marker, app: bundle) }) ?? "none" else { return packet }
+                why = reason
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+            shellLog("act check: look refused, not the test's own made-up window (\(why)); nothing sent")
+            return nil
+        }
+        if let pid = app?.processIdentifier, let first = await look() {
+            capture = Task { first }
+            TextCard.testWindow = (pid, look)
+            let visible = NSScreen.screens.first?.visibleFrame ?? .zero
+            anchor = NSPoint(x: visible.minX + 20, y: visible.minY + 320)  // out of the way, bottom left
+            ask(words)
+            var seen = 0, stopped: Date?
+            for _ in 0..<2400 where card.isVisible && (card.answering || card.model.thinking) {
+                let rows = card.model.actions
+                if rows.count != seen {
+                    seen = rows.count
+                    // Each row as it appears: its state and the footer, never its words.
+                    shellLog("act check: row \(rows.count) \(rows.last.map { "\($0.state)" } ?? "") acting=\(card.model.acting) footer stop=\(card.model.acting) closeHidden=\(card.model.acting)")
+                }
+                if let stopAfter, stopped == nil, rows.filter({ $0.state == .done }).count >= stopAfter, card.model.acting {
+                    stopped = Date()
+                    card.handJob?.stop()  // what the footer's Stop button calls
+                    shellLog("act check: Stop pressed after \(stopAfter) actions")
+                }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            shellLog("act check done: lines=\(card.model.text.split(separator: "\n").count) problem=\(card.model.problem != nil) note=\(card.model.note != nil) steps=\(card.model.steps.count) frontUnchanged=\(NSWorkspace.shared.frontmostApplication?.processIdentifier == front) phewFront=\(phewIsFront) $\(CallLog.spentUSD)")
+        }
+        for (script, end, made) in Hand.shared.ranHere { shellLog("act check script: \(Self.shape(script, marker: marker)) ended \(end.rawValue) made \(made != nil)") }
+        let (removed, failed) = Hand.shared.removeTestItems()
+        shellLog("act check clean-up: removed \(removed) could not remove \(failed)")
         try? await Task.sleep(for: .seconds(2))
         card.dismiss()
         exit(0)
+    }
+
+    /// A script as numbers and fixed words: whether its title carries the test's marker, line and cell counts, and
+    /// dates as days from today and a clock time. Never a title or a text.
+    private static func shape(_ script: HandScript, marker: String) -> String {
+        func when(_ date: Date?) -> String {
+            guard let date else { return "none" }
+            let calendar = Calendar.current
+            let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: date)).day ?? 0
+            return "+\(days)d \(date.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)))"
+        }
+        switch script {
+        case let .note(title, body): return "note marked=\(title.hasPrefix(marker)) lines=\(body.isEmpty ? 0 : body.components(separatedBy: .newlines).count)"
+        case let .append(text): return "append lines=\(text.components(separatedBy: .newlines).count)"
+        case let .reminder(title, due):
+            return "reminder marked=\(title.hasPrefix(marker)) due=\(due.map { $0.hour == nil ? "date only, " + when(Calendar.current.date(from: $0)) : when(Calendar.current.date(from: $0)) } ?? "none")"
+        case let .event(title, start, end): return "event marked=\(title.hasPrefix(marker)) start=\(when(start)) minutes=\(Int(end.timeIntervalSince(start) / 60))"
+        case .workbook: return "workbook"
+        case let .cells(top, rows): return "cells top=\(top) rows=\(rows.count) columns=\(rows.map(\.count).max() ?? 0)"
+        }
     }
 
     /// P5.10 without the save window: a made-up Map in memory, exported through the real Export panel and its model,

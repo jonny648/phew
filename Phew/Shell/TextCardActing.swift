@@ -10,17 +10,32 @@ extension TextCard {
     /// One fixed line above a guide given instead of acting, while acting is off.
     static let actingOff = "Acting is off, so here is how to do it."
 
+    #if DEBUG
+    /// PH.10: set only by `--debug-act`. The app of the test's own made-up window, and every look of the job, already
+    /// checked to be that window; nil when it is not, so nothing is sent.
+    static var testWindow: (pid: pid_t, look: () async -> ContextPacket?)?
+    #endif
+
     /// Runs the job in `app`, the app the user asked in. Returns when it ends; the Hand's watch goes with it.
     /// If another app has come to the front meanwhile, it stops before any look, so no other app's screen is read.
     func act(_ request: String, in app: NSRunningApplication?) async {
+        var app = app
+        // Each look reads the app the job works in, never whatever came to the front meanwhile (the Hand stops then).
+        var look: (() async -> ContextPacket?)?
+        var watchUser = true
+        #if DEBUG
+        // A live test acts in its own made-up app while the user works in others: their clicks are not a take-over.
+        if let test = Self.testWindow { (app, look, watchUser) = (NSRunningApplication(processIdentifier: test.pid), test.look, false) }
+        #endif
         guard let brain, let app, app.processIdentifier != getpid() else { return }
-        guard NSWorkspace.shared.frontmostApplication == app else {
+        guard look != nil || NSWorkspace.shared.frontmostApplication == app else {
             shellLog("act: not started, another app came to the front")
             model.problem = ActJob.sentence(for: .frontChanged)
             return
         }
         let pid = app.processIdentifier
-        let job = Hand.shared.begin()
+        let capture = look ?? { await Senses.capture(app: app).value }
+        let job = Hand.shared.begin(watchUser: watchUser)
         handJob = job
         model.startActing(in: app.localizedName ?? "")
         let start = Date()
@@ -30,8 +45,7 @@ extension TextCard {
         let screen = NSScreen.screens.first { $0.frame.contains(frame.origin) } ?? NSScreen.screens[0]
         let pointer = PointerOverlay(on: screen)
         overlay = pointer
-        // Each look reads the app the job works in, never whatever came to the front meanwhile (the Hand stops then).
-        var run = ActJob(brain: brain, hand: .shared, pid: pid, capture: { await Senses.capture(app: app).value },
+        var run = ActJob(brain: brain, hand: .shared, pid: pid, capture: capture,
                          aside: { [weak self] rect in
                              let spot = rect.flipped(mainHeight: mainHeight)
                              self?.moveAside(from: spot)

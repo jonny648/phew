@@ -71,6 +71,8 @@ enum NextAction: Sendable, Equatable {
     /// in screenshot pixels. Validated like `GuideStep.target`. `menu`: for pick, the path from the menu bar.
     /// `text`: for set, what the field holds afterwards.
     case act(HandStep.Kind, target: StepTarget?, menu: [String] = [], text: String = "")
+    /// One action through an app's own scripting or the system's reminders and calendar access: no target on screen.
+    case script(HandScript)
     /// The job is finished: one short line for the card, in the user's language.
     case done(String)
     /// The next action is not possible: one short plain reason for the card. Empty when there is none.

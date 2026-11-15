@@ -1,13 +1,22 @@
 import Foundation
 
-/// The two permissions talking needs (P6.1), as the system says now. Senses gives the real ones.
+/// The permission talking needs (P6.1), as the system says now: the Microphone only. Apple's on-device analyzer
+/// needs no Speech Recognition permission, so it is never asked (`ListenPermissions`).
 struct VoicePermissions: Equatable {
     enum State: Equatable { case granted, notAsked, refused }
     var microphone: State
-    var speech: State
 
-    static let granted = VoicePermissions(microphone: .granted, speech: .granted)
-    var allGranted: Bool { microphone == .granted && speech == .granted }
+    static let granted = VoicePermissions(microphone: .granted)
+    var allGranted: Bool { microphone == .granted }
+
+    /// As the system says now.
+    static var now: VoicePermissions {
+        switch ListenPermissions.microphone {
+        case .allowed: .granted
+        case .notAsked: VoicePermissions(microphone: .notAsked)
+        case .denied: VoicePermissions(microphone: .refused)
+        }
+    }
 }
 
 /// Hold the shortcut to talk (P6.1 to P6.3, the owner's choices of 15 November). The hold takes the same single
@@ -27,9 +36,9 @@ final class Talk {
         case closed
     }
 
-    /// The recogniser. Nil until Senses' is merged: a hold is then a short press (the app delegate's choice).
+    /// The recogniser. Nil: a hold is a short press (the app delegate's choice).
     var listener: (any Listening)?
-    /// Microphone and Speech Recognition now. Senses gives the real ones; until then both granted.
+    /// The Microphone permission now.
     var permissions: () -> VoicePermissions = { .granted }
     /// Names from the Map for the recogniser (`Brain.spokenNames`).
     var names: () async -> [String] = { [] }
@@ -68,8 +77,14 @@ final class Talk {
         show(.listening)
         shellLog("talk: listening")
         let names = names
+        // The microphone opens at once; the words on screen and the Map's names follow when the capture is read.
+        let context: @Sendable () async -> [String] = {
+            async let named = names()
+            let packet = await capture?.value
+            let extra = await named
+            return packet?.spokenContext(extra: extra) ?? extra
+        }
         hold.started = Task {
-            let context = Self.spokenContext(await capture?.value) + (await names())
             do {
                 try await listener.start(context: context) { [weak self, weak hold] words in
                     guard let self, let hold, self.hold === hold else { return }
@@ -152,16 +167,5 @@ final class Talk {
     static func modelMissing(_ language: String) -> String {
         let name = Locale(identifier: "en").localizedString(forLanguageCode: Spoken.code(language)) ?? language
         return "macOS is still getting the speech model for \(name). Try again in a minute."
-    }
-
-    /// Words on screen for the recogniser: the app's name, the control under the pointer and the controls.
-    // shortcut: Senses may give `packet.spokenContext`; at merge this body becomes that, if it exists.
-    static func spokenContext(_ packet: ContextPacket?) -> [String] {
-        guard let packet, !packet.neverRead else { return [] }
-        var seen = Set<String>()
-        return ([packet.appName, packet.cursor?.label ?? ""] + packet.pointables.map(\.label))
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty && $0.count <= 40 && seen.insert($0.lowercased()).inserted }
-            .prefix(60).map { $0 }
     }
 }

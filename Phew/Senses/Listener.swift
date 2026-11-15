@@ -18,12 +18,23 @@ struct Heard: Sendable, Equatable { var hearings: [Hearing] }
 
 /// The door the Shell listens through, so a later engine swap changes nothing there.
 protocol Listening: AnyObject, Sendable {
-    /// Starts listening now. `context`: words that matter now (control names, app name, names from memory). `partial` is called on the main actor with what is heard so far, best hearing only.
-    func start(context: [String], partial: @escaping @MainActor (String) -> Void) async throws
+    /// Starts listening now: the microphone opens at once and its sound is kept in memory (at most `keptCap`
+    /// seconds) while `context` is awaited and the recognisers prepare with it; then the kept sound goes to them in
+    /// order, and the live sound after it. Returns once the recognisers read. `context`: words that matter now
+    /// (control names, app name, names from memory). `partial` is called on the main actor with what is heard so
+    /// far, best hearing only.
+    func start(context: @escaping @Sendable () async -> [String], partial: @escaping @MainActor (String) -> Void) async throws
     /// Stops, returns the final hearings, drops the sound.
     func stop() async -> Heard
     /// Stops and returns nothing; drops the sound.
     func cancel() async
+}
+
+extension Listening {
+    /// Context words known already (the hear check, the tests).
+    func start(context words: [String], partial: @escaping @MainActor (String) -> Void) async throws {
+        try await start(context: { words }, partial: partial)
+    }
 }
 
 enum ListenProblem: Error, Equatable { case noMicrophone, noSpeechPermission, modelMissing(String) /* language */, failed }
@@ -52,6 +63,19 @@ final class AppleListener: Listening, @unchecked Sendable {
     private var audio: AVAudioEngine?
     private var latest: [String: Hearing] = [:]
     private var seconds = 0.0
+    /// The sound heard while the recognisers prepare, in order, as copies (the tap reuses its buffers). Memory only;
+    /// handed on and let go once they read, dropped at stop and cancel.
+    private var kept: [AVAudioPCMBuffer] = []
+    private var keptSeconds = 0.0
+    /// From `start` until the recognisers read, or the hold ends first.
+    private var preparing = false
+    /// Each start's number: a start overtaken by a newer one leaves the listener alone.
+    private var session = 0
+    /// Seconds of sound kept while the recognisers prepare; later pieces are dropped until they read.
+    static let keptCap = 10.0
+
+    /// For the tests: seconds of sound kept now.
+    var keptNow: Double { lock.withLock { keptSeconds } }
 
     /// One open stream into one recogniser, with its converter from the microphone's format.
     private struct Feed {
@@ -76,11 +100,20 @@ final class AppleListener: Listening, @unchecked Sendable {
         self.microphone = microphone
     }
 
-    func start(context: [String], partial: @escaping @MainActor (String) -> Void) async throws {
+    func start(context: @escaping @Sendable () async -> [String], partial: @escaping @MainActor (String) -> Void) async throws {
         await cancel()
         guard !engines.isEmpty else { throw ListenProblem.failed }
-        let words = ContextPacket.spokenWords(context)
+        let mine = lock.withLock { () -> Int in
+            session += 1
+            preparing = true
+            kept = []; keptSeconds = 0; seconds = 0; latest = [:]
+            return session
+        }
+        var words: [String] = [], early = 0.0
         do {
+            // The microphone first: the first words are said while the screen is read and the models load.
+            if microphone { try startMicrophone() }
+            words = ContextPacket.spokenWords(await context())
             var opened: [Feed] = []
             var streams: [AsyncStream<AVAudioPCMBuffer>] = []
             for engine in engines {
@@ -89,18 +122,30 @@ final class AppleListener: Listening, @unchecked Sendable {
                 opened.append(Feed(format: format, continuation: continuation))
                 streams.append(stream)
             }
-            lock.withLock { feeds = opened; latest = [:]; seconds = 0 }
+            // The kept sound, in order, then the live sound: under one lock, so no piece slips in between.
+            let live = lock.withLock { () -> Bool in
+                guard session == mine, preparing else { return false }  // stopped or cancelled while preparing
+                preparing = false
+                feeds = opened
+                kept.forEach(pass)
+                early = keptSeconds
+                kept = []; keptSeconds = 0
+                return true
+            }
+            guard live else {
+                opened.forEach { $0.continuation.finish() }
+                throw ListenProblem.failed
+            }
             for (engine, stream) in zip(engines, streams) {
                 try await engine.start(sound: stream) { [weak self] hearing in self?.heardSoFar(hearing, partial) }
             }
-            if microphone { try startMicrophone() }
         } catch {
-            await cancel()
+            if lock.withLock({ session == mine }) { await cancel() }
             let problem = error as? ListenProblem ?? .failed
             shellLog("listen: not started, \(problem)")
             throw problem
         }
-        shellLog("listen: started, \(engines.count) languages, \(words.count) context words")
+        shellLog("listen: started, \(engines.count) languages, \(words.count) context words, \(String(format: "%.1f", early)) s of sound kept while they prepared")
     }
 
     func stop() async -> Heard {
@@ -122,24 +167,39 @@ final class AppleListener: Listening, @unchecked Sendable {
         if !opened.isEmpty { shellLog("listen: cancelled") }
     }
 
-    /// Where the sound comes in: the microphone's tap, or a file in the hear check. Any thread. Each piece is
-    /// converted into a new buffer (the tap may reuse its own) and handed to every recogniser; none is kept here.
+    /// Where the sound comes in: the microphone's tap, or a file in the hear check. Any thread. While the recognisers
+    /// prepare, each piece is copied and kept (at most `keptCap` seconds); after, each is converted into a new buffer
+    /// (the tap may reuse its own) and handed to every recogniser, and none is kept here.
     func hear(_ buffer: AVAudioPCMBuffer) {
         lock.withLock {
-            guard !feeds.isEmpty, buffer.format.sampleRate > 0 else { return }
-            seconds += Double(buffer.frameLength) / buffer.format.sampleRate
-            for i in feeds.indices {
-                if feeds[i].converter?.inputFormat != buffer.format {
-                    feeds[i].converter = AVAudioConverter(from: buffer.format, to: feeds[i].format)
-                }
-                if let converter = feeds[i].converter, let out = Self.convert(buffer, with: converter) {
-                    feeds[i].continuation.yield(out)
-                }
+            guard buffer.format.sampleRate > 0 else { return }
+            let piece = Double(buffer.frameLength) / buffer.format.sampleRate
+            if preparing {
+                guard keptSeconds + piece <= Self.keptCap + 0.001, let copy = Self.copy(buffer) else { return }
+                kept.append(copy)
+                keptSeconds += piece
+                seconds += piece
+                return
+            }
+            guard !feeds.isEmpty else { return }
+            seconds += piece
+            pass(buffer)
+        }
+    }
+
+    /// One piece to every recogniser. The lock is held.
+    private func pass(_ buffer: AVAudioPCMBuffer) {
+        for i in feeds.indices {
+            if feeds[i].converter?.inputFormat != buffer.format {
+                feeds[i].converter = AVAudioConverter(from: buffer.format, to: feeds[i].format)
+            }
+            if let converter = feeds[i].converter, let out = Self.convert(buffer, with: converter) {
+                feeds[i].continuation.yield(out)
             }
         }
     }
 
-    /// Stops the microphone and ends every stream; the streams and their sound are dropped with them.
+    /// Stops the microphone and ends every stream; the streams, the kept sound and their sound are dropped with them.
     private func close() -> ([Feed], Double) {
         let engine = lock.withLock { () -> AVAudioEngine? in defer { audio = nil }; return audio }
         engine?.inputNode.removeTap(onBus: 0)
@@ -148,9 +208,23 @@ final class AppleListener: Listening, @unchecked Sendable {
             let opened = feeds
             feeds = []
             latest = [:]
+            kept = []; keptSeconds = 0; preparing = false
             opened.forEach { $0.continuation.finish() }
             return (opened, seconds)
         }
+    }
+
+    /// A piece of sound as a new buffer of the same format.
+    static func copy(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        guard let copy = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: max(buffer.frameLength, 1)) else { return nil }
+        copy.frameLength = buffer.frameLength
+        let from = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: buffer.audioBufferList))
+        let to = UnsafeMutableAudioBufferListPointer(copy.mutableAudioBufferList)
+        for (source, target) in zip(from, to) {
+            guard let data = source.mData, let into = target.mData else { return nil }
+            memcpy(into, data, Int(min(source.mDataByteSize, target.mDataByteSize)))
+        }
+        return copy
     }
 
     private func heardSoFar(_ hearing: Hearing, _ partial: @escaping @MainActor (String) -> Void) {
@@ -385,7 +459,10 @@ final class AppleTranscriber: Transcribing, @unchecked Sendable {
     }
 }
 
-/// Microphone and Speech Recognition permissions, for the first-run panel. Asking shows the system's own prompt.
+/// The Microphone permission, for the voice row. Asking shows the system's own prompt. Speech Recognition is never
+/// asked: Apple's "Asking Permission to Use Speech Recognition" says it "only applies to speech recognition using
+/// SFSpeechRecognizer. SpeechAnalyzer transcriber modules don't send audio data of the user's voice to Apple's
+/// servers", and the hear check transcribes with it not granted. `speech` is read only, for the hear check's log.
 enum ListenPermissions {
     enum State: Sendable, Equatable { case allowed, denied, notAsked }
 
@@ -406,12 +483,6 @@ enum ListenPermissions {
     }
 
     static func askMicrophone() async -> Bool { await AVCaptureDevice.requestAccess(for: .audio) }
-
-    static func askSpeech() async -> Bool {
-        await withCheckedContinuation { done in
-            SFSpeechRecognizer.requestAuthorization { done.resume(returning: $0 == .authorized) }
-        }
-    }
 }
 
 extension ContextPacket {

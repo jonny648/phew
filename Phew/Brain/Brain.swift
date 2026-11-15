@@ -149,6 +149,9 @@ enum NextAction: Sendable, Equatable {
 }
 
 enum BrainEvent: Sendable, Equatable {
+    /// A spoken question as the Conductor understood it, misheard words put right (P6.3): shown as the question on
+    /// the card in place of the raw hearing. Before `.route`, and only for a spoken question.
+    case heard(String)
     case route(Route)
     /// The next piece of the explanation, to append to the card.
     case text(String)

@@ -389,6 +389,7 @@ final class CardModel: ObservableObject {
 
     func apply(_ event: BrainEvent) {
         switch event {
+        case .heard(let line): question = line  // P6.3: what he understood, in place of the raw hearing
         case .route(let route): shellLog("card: route \(route)")
         case .text(let piece): text += piece; pieces += 1; thinking = false
         case .steps(let steps): self.steps = steps.map(\.instruction)  // the card points at their targets

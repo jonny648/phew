@@ -15,6 +15,8 @@ final class ListenerTests: XCTestCase {
         private var seen: [Weak] = []
         private(set) var read = 0, cancels = 0
         private(set) var context: [String] = []
+        /// The first sample of each piece read, in order: the tests number their pieces there.
+        private(set) var firsts: [Int16] = []
         struct Weak { weak var buffer: AVAudioPCMBuffer? }
         static let format = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1, interleaved: true)!
 
@@ -34,7 +36,13 @@ final class ListenerTests: XCTestCase {
 
         func start(sound: AsyncStream<AVAudioPCMBuffer>, partial: @escaping @Sendable (Hearing) -> Void) async throws {
             let reader = Task {
-                for await buffer in sound { self.lock.withLock { self.seen.append(Weak(buffer: buffer)); self.read += 1 } }
+                for await buffer in sound {
+                    self.lock.withLock {
+                        self.seen.append(Weak(buffer: buffer))
+                        self.read += 1
+                        self.firsts.append(buffer.int16ChannelData?[0][0] ?? -1)
+                    }
+                }
             }
             lock.withLock { self.reader = reader }
             partials.forEach(partial)
@@ -163,6 +171,87 @@ final class ListenerTests: XCTestCase {
         XCTAssertEqual(it.cancels, 2, "the Italian recogniser is let go too")
         ear.hear(tone())
         XCTAssertEqual(it.read, 0)
+    }
+
+    // MARK: First words: the sound kept while the recognisers prepare
+
+    /// A tenth of a second in the recognisers' own format, its first sample set to `n`, so its order can be read back.
+    private func piece(_ n: Int) -> AVAudioPCMBuffer {
+        let buffer = AVAudioPCMBuffer(pcmFormat: FakeEngine.format, frameCapacity: 1600)!
+        buffer.frameLength = 1600
+        for i in 0..<1600 { buffer.int16ChannelData![0][i] = i == 0 ? Int16(n) : Int16(i % 50) }
+        return buffer
+    }
+
+    /// Starts `ear` with a context that waits for `gate`; returns once the context is asked, so sound is being kept.
+    private func startWaiting(_ ear: AppleListener, words: [String] = ["Formato"]) async -> (Task<Void, Error>, AsyncStream<Void>.Continuation) {
+        let (gate, open) = AsyncStream<Void>.makeStream()
+        let asked = expectation(description: "context asked")
+        let started = Task {
+            try await ear.start(context: {
+                asked.fulfill()
+                for await _ in gate { break }
+                return words
+            }, partial: { _ in })
+        }
+        await fulfillment(of: [asked], timeout: 2)
+        return (started, open)
+    }
+
+    func testSoundBeforeTheRecognisersAreReadyIsDeliveredInOrderNoneLost() async throws {
+        let it = FakeEngine("it", "uno"), en = FakeEngine("en", "one")
+        let ear = listener([it, en])
+        let (started, open) = await startWaiting(ear)
+        for n in 0..<5 { ear.hear(piece(n)) }
+        XCTAssertEqual(ear.keptNow, 0.5, accuracy: 0.001)
+        XCTAssertEqual(it.read + en.read, 0, "nothing reaches a recogniser before it is ready")
+        open.yield(())
+        try await started.value
+        XCTAssertEqual(ear.keptNow, 0, "handed on and let go")
+        for n in 5..<8 { ear.hear(piece(n)) }
+        _ = await ear.stop()
+        XCTAssertEqual(it.firsts, (0..<8).map(Int16.init), "kept sound first, in order, then the live sound")
+        XCTAssertEqual(en.firsts, (0..<8).map(Int16.init))
+        XCTAssertEqual(it.context, ["Formato"], "prepared with the context given late")
+        XCTAssertEqual(it.alive + en.alive, 0)
+    }
+
+    func testKeptSoundIsCappedAtTenSeconds() async throws {
+        let it = FakeEngine("it", "uno")
+        let ear = listener([it])
+        let (started, open) = await startWaiting(ear)
+        for n in 0..<120 { ear.hear(piece(n)) }
+        XCTAssertEqual(ear.keptNow, AppleListener.keptCap, accuracy: 0.001)
+        open.yield(())
+        try await started.value
+        _ = await ear.stop()
+        XCTAssertEqual(it.firsts, (0..<100).map(Int16.init), "the first 10 s, the rest dropped")
+    }
+
+    func testKeptSoundDroppedAtCancelAndStopWhilePreparing() async throws {
+        for ends in ["cancel", "stop"] {
+            let it = FakeEngine("it", "uno"), en = FakeEngine("en", "one")
+            let ear = listener([it, en])
+            let (started, open) = await startWaiting(ear)
+            for n in 0..<5 { ear.hear(piece(n)) }
+            if ends == "cancel" {
+                await ear.cancel()
+            } else {
+                let heard = await ear.stop()
+                XCTAssertEqual(heard.hearings, [], ends)
+            }
+            XCTAssertEqual(ear.keptNow, 0, "\(ends): the kept sound is dropped at once")
+            open.yield(())
+            do {
+                try await started.value
+                XCTFail("\(ends): started after the hold ended")
+            } catch {
+                XCTAssertEqual(error as? ListenProblem, .failed, ends)
+            }
+            ear.hear(piece(9))
+            XCTAssertEqual(it.read + en.read, 0, "\(ends): no piece reached a recogniser")
+            XCTAssertEqual(ear.keptNow, 0)
+        }
     }
 
     // MARK: Context

@@ -10,6 +10,14 @@ struct SpokenSample: Sendable {
     let text: String
     /// Control names of a made-up window in front when the sentence is said.
     let screen: [String]
+    /// What the Brain should make of it (P6.3's third number): the Conductor's route, and for act what the Doer's
+    /// first action is on: a control's label (a press, or a menu path starting there) or a script kind ("reminder").
+    /// Nil: the first action is not scored (the sentence names an app or a list that is not on the made-up screen).
+    var route = ""
+    var first: String? = nil
+
+    /// The made-up names the sentence is about, spelled right: the understood request must hold each.
+    var names: [String] { SpokenSamples.names.filter { text.contains($0) } }
 }
 
 /// 40 made-up sentences, 20 Italian and 20 English: a third plain requests, a third with interface words, a third
@@ -26,51 +34,54 @@ enum SpokenSamples {
 
     static let all: [SpokenSample] = english + italian
 
-    static let english: [SpokenSample] = [
-        ("plain", "what is this window for"),
-        ("plain", "explain what this button does"),
-        ("plain", "how do I save this file as a PDF"),
-        ("plain", "why is this cell showing an error"),
-        ("plain", "summarize the page I am reading"),
-        ("plain", "what does this setting change"),
-        ("plain", "show me how to share this document"),
-        ("interface", "make the title bold and tick done"),
-        ("interface", "open the format menu and choose italic"),
-        ("interface", "turn on track changes in the sidebar"),
-        ("interface", "insert a table under the title"),
-        ("interface", "change the text color to blue"),
-        ("interface", "underline the bullet list"),
-        ("interface", "export the file and click share"),
-        ("names", "add a note to the Brightmoss project"),
-        ("names", "send the draft to Odalys Venn"),
-        ("names", "open Quillfen and start a new sketch"),
-        ("names", "what did Odalys Venn say about Brightmoss"),
-        ("names", "move the Quillfen task to Friday"),
-        ("names", "remind me to call Odalys Venn about the Brightmoss budget"),
-    ].map { SpokenSample(language: "en", kind: .init(rawValue: $0.0)!, text: $0.1, screen: screenEN) }
+    // kind, sentence, expected route, expected first action of an act (nil: not scored).
+    typealias Row = (kind: String, text: String, route: String, first: String?)
 
-    static let italian: [SpokenSample] = [
-        ("plain", "a cosa serve questa finestra"),
-        ("plain", "spiegami cosa fa questo pulsante"),
-        ("plain", "come salvo questo file in PDF"),
-        ("plain", "perché questa cella mostra un errore"),
-        ("plain", "riassumi la pagina che sto leggendo"),
-        ("plain", "cosa cambia questa impostazione"),
-        ("plain", "mostrami come condividere questo documento"),
-        ("interface", "apri il menu formato e scegli grassetto"),
-        ("interface", "metti il titolo in corsivo e spunta fatto"),
-        ("interface", "attiva le revisioni nella barra laterale"),
-        ("interface", "inserisci una tabella sotto il titolo"),
-        ("interface", "cambia il colore del testo in blu"),
-        ("interface", "sottolinea l'elenco puntato"),
-        ("interface", "esporta il file e premi condividi"),
-        ("names", "aggiungi una nota al progetto Brightmoss"),
-        ("names", "manda la bozza a Odalys Venn"),
-        ("names", "apri Quillfen e inizia un nuovo schizzo"),
-        ("names", "cosa ha detto Odalys Venn su Brightmoss"),
-        ("names", "sposta l'attività di Quillfen a venerdì"),
-        ("names", "ricordami di chiamare Odalys Venn per il budget di Brightmoss"),
-    ].map { SpokenSample(language: "it", kind: .init(rawValue: $0.0)!, text: $0.1, screen: screenIT) }
+    static let english: [SpokenSample] = ([
+        ("plain", "what is this window for", "explain", nil),
+        ("plain", "explain what this button does", "explain", nil),
+        ("plain", "how do I save this file as a PDF", "guide", nil),
+        ("plain", "why is this cell showing an error", "explain", nil),
+        ("plain", "summarize the page I am reading", "explain", nil),
+        ("plain", "what does this setting change", "explain", nil),
+        ("plain", "show me how to share this document", "guide", nil),
+        ("interface", "make the title bold and tick done", "act", "Bold"),
+        ("interface", "open the format menu and choose italic", "act", "Format"),
+        ("interface", "turn on track changes in the sidebar", "act", "Track Changes"),
+        ("interface", "insert a table under the title", "act", "Insert Table"),
+        ("interface", "change the text color to blue", "act", "Text Color"),
+        ("interface", "underline the bullet list", "act", "Underline"),
+        ("interface", "export the file and click share", "act", "Export"),
+        ("names", "add a note to the Brightmoss project", "remember", nil),
+        ("names", "send the draft to Odalys Venn", "act", "Share"),
+        ("names", "open Quillfen and start a new sketch", "act", nil),
+        ("names", "what did Odalys Venn say about Brightmoss", "explain", nil),
+        ("names", "move the Quillfen task to Friday", "act", nil),
+        ("names", "remind me to call Odalys Venn about the Brightmoss budget", "act", "reminder"),
+    ] as [Row]).map { SpokenSample(language: "en", kind: .init(rawValue: $0.kind)!, text: $0.text, screen: screenEN, route: $0.route, first: $0.first) }
+
+    static let italian: [SpokenSample] = ([
+        ("plain", "a cosa serve questa finestra", "explain", nil),
+        ("plain", "spiegami cosa fa questo pulsante", "explain", nil),
+        ("plain", "come salvo questo file in PDF", "guide", nil),
+        ("plain", "perché questa cella mostra un errore", "explain", nil),
+        ("plain", "riassumi la pagina che sto leggendo", "explain", nil),
+        ("plain", "cosa cambia questa impostazione", "explain", nil),
+        ("plain", "mostrami come condividere questo documento", "guide", nil),
+        ("interface", "apri il menu formato e scegli grassetto", "act", "Formato"),
+        ("interface", "metti il titolo in corsivo e spunta fatto", "act", "Corsivo"),
+        ("interface", "attiva le revisioni nella barra laterale", "act", "Revisioni"),
+        ("interface", "inserisci una tabella sotto il titolo", "act", "Inserisci tabella"),
+        ("interface", "cambia il colore del testo in blu", "act", "Colore testo"),
+        ("interface", "sottolinea l'elenco puntato", "act", "Sottolineato"),
+        ("interface", "esporta il file e premi condividi", "act", "Esporta"),
+        ("names", "aggiungi una nota al progetto Brightmoss", "remember", nil),
+        ("names", "manda la bozza a Odalys Venn", "act", "Condividi"),
+        ("names", "apri Quillfen e inizia un nuovo schizzo", "act", nil),
+        ("names", "cosa ha detto Odalys Venn su Brightmoss", "explain", nil),
+        ("names", "sposta l'attività di Quillfen a venerdì", "act", nil),
+        ("names", "ricordami di chiamare Odalys Venn per il budget di Brightmoss", "act", "reminder"),
+    ] as [Row]).map { SpokenSample(language: "it", kind: .init(rawValue: $0.kind)!, text: $0.text, screen: screenIT, route: $0.route, first: $0.first) }
 
     /// The context words for a sample: its screen's control names and the made-up names.
     static func context(for sample: SpokenSample) -> [String] { sample.screen + names }
@@ -106,9 +117,10 @@ enum HearCheck {
         var kinds: [String: Int] = [:]
     }
 
-    static func run() async {
-        guard #available(macOS 26, *) else { return shellLog("hear check: needs macOS 26") }
-        shellLog("hear check: speech permission \(ListenPermissions.speech), microphone not used")
+    /// Both recognisers with their models installed (waiting up to 5 minutes each), after the product's own first
+    /// start. Nil when a model is missing; the reason is logged.
+    @available(macOS 26, *)
+    static func engines() async -> [AppleTranscriber]? {
         let it = AppleTranscriber(language: "it", locale: "it-IT"), en = AppleTranscriber(language: "en", locale: "en-US")
         // The product's own first start at launch, before anything else touched the models.
         let first = AppleListener(engines: [it, en], microphone: false)
@@ -127,16 +139,22 @@ enum HearCheck {
                 return first
             }
             shellLog("hear check: model \(engine.language) \(ready == true ? "ready" : ready == nil ? "still downloading after 5 min" : "missing") in \(Int(Date().timeIntervalSince(t0))) s")
-            guard ready == true else { return }
+            guard ready == true else { return nil }
         }
+        return [it, en]
+    }
 
+    /// The 40 sentences spoken by the Mac's voices into a new temporary folder, one file each in `SpokenSamples.all`'s
+    /// order, given to `body`; the folder is deleted after, whatever happens. Nil when a file could not be made.
+    static func withSoundFiles<T>(_ body: ([URL]) async -> T) async -> T? {
         let folder = FileManager.default.temporaryDirectory.appending(path: "PhewHearCheck-\(UUID().uuidString)")
         defer {
             try? FileManager.default.removeItem(at: folder)
             shellLog("hear check: sound folder deleted \(!FileManager.default.fileExists(atPath: folder.path))")
         }
         do { try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true) } catch {
-            return shellLog("hear check: no temporary folder")
+            shellLog("hear check: no temporary folder")
+            return nil
         }
         let voices = ["it": "Alice", "en": "Samantha"]
         var files: [URL] = []
@@ -146,34 +164,61 @@ enum HearCheck {
             say.executableURL = URL(fileURLWithPath: "/usr/bin/say")
             say.arguments = ["-v", voices[sample.language]!, "-o", file.path, "--data-format=LEI16@16000", sample.text]
             do { try say.run(); say.waitUntilExit() } catch {}
-            guard say.terminationStatus == 0 else { return shellLog("hear check: say failed for sample \(i)") }
+            guard say.terminationStatus == 0 else {
+                shellLog("hear check: say failed for sample \(i)")
+                return nil
+            }
             files.append(file)
         }
         shellLog("hear check: \(files.count) sound files written, voices it Alice, en Samantha")
+        return await body(files)
+    }
 
+    /// One sound file through `listener` (the microphone's path, no microphone), as fast as a voice. Nil when the
+    /// listener did not start; the reason is logged as a fixed word.
+    static func hear(_ file: URL, context: [String], with listener: AppleListener) async -> (heard: Heard, startMS: Int, finalSeconds: Double)? {
+        let t0 = Date()
+        do {
+            try await listener.start(context: context, partial: { _ in })
+        } catch {
+            shellLog("hear check: not started, \(error)")
+            return nil
+        }
+        let startMS = Int(Date().timeIntervalSince(t0) * 1000)
+        guard let audio = try? AVAudioFile(forReading: file) else {
+            await listener.cancel()
+            return nil
+        }
+        let chunk = AVAudioFrameCount(audio.processingFormat.sampleRate / 10)
+        while let buffer = AVAudioPCMBuffer(pcmFormat: audio.processingFormat, frameCapacity: chunk),
+              (try? audio.read(into: buffer, frameCount: chunk)) != nil, buffer.frameLength > 0 {
+            listener.hear(buffer)
+            try? await Task.sleep(for: .milliseconds(100))  // as fast as a voice: one tenth of a second per tenth
+        }
+        let end = Date()
+        let heard = await listener.stop()
+        return (heard, startMS, Date().timeIntervalSince(end))
+    }
+
+    static func run() async {
+        guard #available(macOS 26, *) else { return shellLog("hear check: needs macOS 26") }
+        shellLog("hear check: speech permission \(ListenPermissions.speech), microphone not used")
+        guard let engines = await engines() else { return }
+        await withSoundFiles { files in await score(files, engines: engines) }
+    }
+
+    @available(macOS 26, *)
+    private static func score(_ files: [URL], engines: [AppleTranscriber]) async {
         for withContext in [false, true] {
             let pass = withContext ? "with" : "without"
-            let listener = AppleListener(engines: [it, en], microphone: false)
+            let listener = AppleListener(engines: engines, microphone: false)
             var scores: [String: Score] = [:]  // "it plain", "en names"…, and "it all", "en all"
             for (i, sample) in SpokenSamples.all.enumerated() {
-                let t0 = Date()
-                do {
-                    try await listener.start(context: withContext ? SpokenSamples.context(for: sample) : [], partial: { _ in })
-                } catch {
-                    shellLog("hear check: \(pass) sample \(i) not started, \(error)")
+                guard let (heard, startMS, finalSeconds) = await hear(files[i], context: withContext ? SpokenSamples.context(for: sample) : [],
+                                                                    with: listener) else {
+                    shellLog("hear check: \(pass) sample \(i) not heard")
                     continue
                 }
-                let startMS = Int(Date().timeIntervalSince(t0) * 1000)
-                guard let audio = try? AVAudioFile(forReading: files[i]) else { await listener.cancel(); continue }
-                let chunk = AVAudioFrameCount(audio.processingFormat.sampleRate / 10)
-                while let buffer = AVAudioPCMBuffer(pcmFormat: audio.processingFormat, frameCapacity: chunk),
-                      (try? audio.read(into: buffer, frameCount: chunk)) != nil, buffer.frameLength > 0 {
-                    listener.hear(buffer)
-                    try? await Task.sleep(for: .milliseconds(100))  // as fast as a voice: one tenth of a second per tenth
-                }
-                let end = Date()
-                let heard = await listener.stop()
-                let finalSeconds = Date().timeIntervalSince(end)
 
                 let expected = SpokenSamples.words(sample.text)
                 let own = SpokenSamples.words(heard.hearings.first { $0.language == sample.language }?.text ?? "")

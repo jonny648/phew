@@ -93,12 +93,17 @@ struct ClaudeBrain: Brain {
     private func run(_ question: String, packet: ContextPacket?, state: ShellState, spoken: [Hearing], emit: (BrainEvent) -> Void) async throws {
         let start = Date()
         // Side by side, so together they cost one small-model round trip. The Map is read by code, no model call.
-        async let routing = Conductor.route(question, packet: packet, spoken: spoken, provider: provider)
+        // P6.3: for a spoken question, the words the recogniser had (screen and memory), so a misheard name can be put right.
+        let mapNames = spoken.isEmpty ? [] : await map.spokenNames()
+        let names = spoken.isEmpty ? [] : packet?.spokenContext(extra: mapNames) ?? mapNames
+        async let routing = Conductor.understand(question, packet: packet, spoken: spoken, names: names, provider: provider)
         async let cleaned = Observer.clean(packet?.visibleText ?? "", question: question, provider: provider)
         async let recalled = recall(question, packet: packet)
         var route: Route
         do {
-            route = try await routing
+            let understood = try await routing
+            route = understood.route
+            if let heard = understood.heard { emit(.heard(heard)) }  // P6.3: the card shows what he understood
         } catch BrainError.refused, BrainError.badOutput {
             route = .explain  // the Guide, with its fallback model, can still answer
         }

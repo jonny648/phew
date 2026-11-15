@@ -156,8 +156,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var capture: Task<ContextPacket?, Never>?
     /// The ask panel's top-left corner: the card opens there, in its place.
     var anchor = NSPoint.zero
-    /// The recogniser (P6.1), Senses' `AppleListener` once merged. Nil: a hold behaves like a short press.
-    var listener: (any Listening)?
+    /// The recogniser (P6.1): the microphone, Italian and English on this Mac. Nil: a hold behaves like a short press.
+    var listener: (any Listening)? = AppleListener()
     /// Hold the shortcut to talk (P6).
     lazy var talk = makeTalk()
     private lazy var hotKey = makeHotKey()
@@ -167,6 +167,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotKey.install()
         // Re-install once Accessibility is granted, so the shortcut works without a relaunch.
         setup.onAccessibilityGranted = { [unowned self] in hotKey.install() }
+        setup.voicePermissions = { VoicePermissions.now }
+        setup.askMicrophone = { Task { _ = await ListenPermissions.askMicrophone() } }
         card.onTask = { [unowned self] in tasks.start($0, packet: $1, spoken: $2) }
         card.onUnclear = { [unowned self] in unclear($0, packet: $1) }
         importUndo.watchMenus()

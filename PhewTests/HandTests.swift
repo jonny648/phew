@@ -1,0 +1,476 @@
+import AppKit
+import XCTest
+@testable import Phew
+
+/// A fake surface: made-up elements found by frame, no Accessibility call, nothing sent anywhere.
+final class FakeSurface: HandSurface, @unchecked Sendable {  // state under `lock`
+    final class Element {
+        var seen: HandSeen
+        var window: String
+        init(_ seen: HandSeen, window: String) { self.seen = seen; self.window = window }
+    }
+
+    static let pid: pid_t = 42
+    let lock = NSLock()
+    var front: pid_t? = pid
+    var bundles: [pid_t: String] = [pid: "com.example.practice"]
+    var secureInputOn = false
+    var focusedSecure = false
+    var elements: [Element] = []
+    var menus: [[String]: Element] = [:]
+    var dialogCount = 0
+    /// How long each action takes: the slow control.
+    var delay: TimeInterval = 0
+    private(set) var sent: [HandStep] = []
+
+    @discardableResult
+    func add(_ name: String, role: String = "AXButton", subrole: String = "", frame: CGRect, window: String = "Practice") -> HandStep {
+        elements.append(Element(HandSeen(role: role, subrole: subrole, name: name, frame: frame), window: window))
+        return HandStep(kind: role == "AXTextField" ? .set : .press, pid: Self.pid, role: role, name: name, frame: frame)
+    }
+
+    var sentCount: Int { lock.withLock { sent.count } }
+
+    func frontPID() -> pid_t? { front }
+    func bundleID(_ pid: pid_t) -> String? { bundles[pid] }
+    func secureInput() -> Bool { secureInputOn }
+    func focusedIsSecure(_ pid: pid_t) -> Bool { focusedSecure }
+    func element(at point: CGPoint, pid: pid_t) -> AnyObject? { elements.first { $0.seen.frame?.contains(point) == true } }
+    func menuItem(_ path: [String], pid: pid_t) -> AnyObject? { menus[path] }
+    func read(_ element: AnyObject) -> HandSeen? { (element as! Element).seen }
+    func windowTitle(of element: AnyObject) -> String { (element as! Element).window }
+    func dialogs(_ pid: pid_t) -> Int { dialogCount }
+
+    func send(_ step: HandStep, to element: AnyObject?) -> HandEnd {
+        if delay > 0 { Thread.sleep(forTimeInterval: delay) }
+        lock.withLock { sent.append(step) }
+        if step.kind == .set, let element = element as? Element { element.seen.value = step.text }
+        return .done
+    }
+}
+
+@MainActor
+final class HandTests: XCTestCase {
+    private var suite = ""
+    private var defaults: UserDefaults!
+    private var neverRead: NeverReadList!
+    private var fake: FakeSurface!
+    private var savedLog: URL!
+    private var log: URL!
+
+    override func setUp() {
+        suite = "PhewTests.hand.\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: suite)!
+        defaults.set(true, forKey: Hand.allowedKey)
+        neverRead = NeverReadList(defaults: defaults)
+        fake = FakeSurface()
+        savedLog = ActionLog.url
+        log = FileManager.default.temporaryDirectory.appending(path: "phew-actions-\(UUID().uuidString).log")
+        ActionLog.url = log  // never the user's real actions.log
+    }
+
+    override func tearDown() {
+        ActionLog.flush()
+        try? FileManager.default.removeItem(at: log)
+        ActionLog.url = savedLog
+        UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
+    }
+
+    private func hand(ownPID: pid_t = getpid(), now: @escaping () -> Date = Date.init) -> Hand {
+        Hand(defaults: defaults, surface: fake, list: neverRead, ownPID: ownPID, now: now)
+    }
+
+    private func frame(_ i: Int) -> CGRect { CGRect(x: 20, y: 20 + i * 40, width: 100, height: 30) }
+
+    // MARK: - The off switch
+
+    func testOffRefusesEverything() {
+        defaults.removeObject(forKey: Hand.allowedKey)  // never set: off
+        let hand = self.hand()
+        let press = fake.add("Bold", frame: frame(0))
+        fake.menus[["Format", "Bold"]] = FakeSurface.Element(HandSeen(role: "AXMenuItem", name: "Bold"), window: "")
+        var steps = [press, fake.add("Title", role: "AXTextField", frame: frame(1)),
+                     HandStep(kind: .pick, pid: FakeSurface.pid, role: "AXMenuItem", menuPath: ["Format", "Bold"]),
+                     HandStep(kind: .click, pid: FakeSurface.pid, frame: CGRect(x: 60, y: 35, width: 0, height: 0))]
+        steps[1].text = "made up"
+        for step in steps { XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, .off, "\(step.kind)") }
+        XCTAssertEqual(fake.sentCount, 0)
+    }
+
+    // MARK: - The Never list
+
+    func testNeverWordsEnglishAndItalian() {
+        let refused: [(String, HandEnd)] = [
+            ("Pay now", .paying), ("Paga ora", .paying), ("Buy", .paying), ("Acquista", .paying), ("Checkout", .paying),
+            ("Procedi al pagamento", .paying), ("Card number", .paying), ("Numero della carta", .paying),
+            ("Subscribe", .paying), ("Abbonati", .paying), ("Billing", .paying), ("Fatturazione", .paying),
+            ("Sign in", .signIn), ("Sign-In", .signIn), ("Accedi", .signIn), ("Log in", .signIn), ("Login", .signIn),
+            ("Effettua l’accesso", .signIn), ("Account settings", .signIn), ("Impostazioni dell'account", .signIn),
+            ("Password", .password), ("Change password", .password), ("Codice di sicurezza", .password),
+            ("Security code", .password),
+        ]
+        for (i, (name, reason)) in refused.enumerated() {
+            let hand = self.hand()
+            let step = fake.add(name, frame: CGRect(x: 600, y: 20 + i * 40, width: 100, height: 30))
+            XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, reason, name)
+        }
+        // A harmless control in a window that asks for a sign-in or a payment.
+        for title in ["Accedi al tuo account", "Checkout", "Sign in to iCloud"] {
+            let hand = self.hand()
+            let step = fake.add("Continue", frame: CGRect(x: 800, y: fake.elements.count * 40, width: 100, height: 30), window: title)
+            XCTAssertNotEqual(hand.act(step, in: hand.begin(watchUser: false)).end, .done, title)
+        }
+        // A menu path.
+        fake.menus[["Account", "Sign In…"]] = FakeSurface.Element(HandSeen(role: "AXMenuItem", name: "Sign In…"), window: "")
+        let hand = self.hand()
+        XCTAssertEqual(hand.act(HandStep(kind: .pick, pid: FakeSurface.pid, role: "AXMenuItem", menuPath: ["Account", "Sign In…"]),
+                                in: hand.begin(watchUser: false)).end, .signIn)
+        XCTAssertEqual(fake.sentCount, 0)
+        // Whole words only, and harmless names act.
+        for name in ["Bold", "Grassetto", "Display", "Spaghetti", "Paypal-free layout", "Compravendita"] {
+            let hand = self.hand()
+            let step = fake.add(name, frame: CGRect(x: 1000, y: fake.elements.count * 40, width: 100, height: 30))
+            XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, .done, name)
+        }
+    }
+
+    func testNeverApps() {
+        let apps: [(String, HandEnd)] = [
+            ("com.apple.systempreferences", .neverActApp), ("com.apple.settings.PrivacySecurity.extension", .neverActApp),
+            ("com.apple.Terminal", .neverActApp), ("com.googlecode.iterm2", .neverActApp), ("com.apple.dt.Xcode", .neverActApp),
+            ("com.microsoft.VSCode", .neverActApp), ("com.jetbrains.intellij", .neverActApp),
+            ("com.1password.1password", .neverActApp), ("com.apple.keychainaccess", .neverActApp),
+            ("com.apple.Passwords", .neverActApp), ("com.example.private-diary", .neverReadApp),
+        ]
+        neverRead.add(name: "Private Diary", bundleID: "com.example.private-diary")
+        let step = fake.add("Bold", frame: frame(0))
+        for (bundleID, reason) in apps {
+            fake.bundles[FakeSurface.pid] = bundleID
+            let hand = self.hand()
+            XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, reason, bundleID)
+        }
+        fake.bundles[FakeSurface.pid] = nil  // no bundle id: careful side
+        var hand = self.hand()
+        XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, .neverActApp)
+        fake.bundles[FakeSurface.pid] = "com.example.practice"
+        hand = self.hand(ownPID: FakeSurface.pid)  // Phew's own windows
+        XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, .ownApp)
+        XCTAssertEqual(fake.sentCount, 0)
+    }
+
+    func testSecureFieldsAreNeverWrittenOrPressed() {
+        var step = fake.add("Secret", role: "AXTextField", subrole: "AXSecureTextField", frame: frame(0))
+        step.text = "made up"
+        var hand = self.hand()
+        XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, .secureField)
+        step.kind = .press
+        hand = self.hand()
+        XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, .secureField)
+        // A plain field while a secure one has focus, and anything while secure input mode is on.
+        var plain = fake.add("Title", role: "AXTextField", frame: frame(1))
+        plain.text = "made up"
+        fake.focusedSecure = true
+        hand = self.hand()
+        XCTAssertEqual(hand.act(plain, in: hand.begin(watchUser: false)).end, .secureField)
+        fake.focusedSecure = false
+        fake.secureInputOn = true
+        hand = self.hand()
+        XCTAssertEqual(hand.act(plain, in: hand.begin(watchUser: false)).end, .secureInput)
+        XCTAssertEqual(fake.sentCount, 0)
+    }
+
+    func testCarefulSide() {
+        let unnamed = fake.add("", frame: frame(0))
+        let german = fake.add("Jetzt bestellen und sofort bezahlen", frame: frame(1))
+        let english = fake.add("Make the selected text bigger", frame: frame(2))
+        for (step, mark) in [(unnamed, true), (german, true), (english, false)] {
+            let hand = self.hand()
+            XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)), HandResult(end: .done, marked: mark), step.name)
+        }
+    }
+
+    // MARK: - Ceilings
+
+    func testCeilings() {
+        var time = Date(timeIntervalSince1970: 1_000_000)
+        let step = fake.add("Bold", frame: frame(0))
+        // 40 per job: spaced so the minute ceiling never bites.
+        var hand = self.hand(now: { time })
+        var job = hand.begin(watchUser: false)
+        for i in 0..<Hand.perJob {
+            XCTAssertEqual(hand.act(step, in: job).end, .done, "action \(i + 1)")
+            time += 5
+        }
+        XCTAssertEqual(hand.act(step, in: job).end, .jobCeiling)
+        // 20 per minute, across jobs.
+        hand = self.hand(now: { time })
+        for _ in 0..<Hand.perMinute { XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, .done) }
+        XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, .minuteCeiling)
+        time += 61
+        job = hand.begin(watchUser: false)
+        XCTAssertEqual(hand.act(step, in: job).end, .done)
+        XCTAssertEqual(fake.sentCount, Hand.perJob + Hand.perMinute + 1)
+    }
+
+    // MARK: - Surprises: stop, never retry
+
+    func testMovedTargetStopsWithNoRetry() {
+        let step = fake.add("Bold", frame: frame(0))
+        fake.elements[0].seen.frame = frame(0).offsetBy(dx: 10, dy: 0)
+        let hand = self.hand()
+        let job = hand.begin(watchUser: false)
+        XCTAssertEqual(hand.act(step, in: job).end, .moved)
+        fake.elements[0].seen.frame = frame(0)  // back in place: the job is still over
+        XCTAssertEqual(hand.act(step, in: job).end, .moved)
+        // Renamed, or another kind of control at that place.
+        fake.elements[0].seen.name = "Italic"
+        let renamed = self.hand()
+        XCTAssertEqual(renamed.act(step, in: renamed.begin(watchUser: false)).end, .moved)
+        fake.elements = []
+        let gone = self.hand()
+        XCTAssertEqual(gone.act(step, in: gone.begin(watchUser: false)).end, .gone)
+        XCTAssertEqual(fake.sentCount, 0)
+    }
+
+    func testSurpriseSheetStopsUnlessCalledFor() {
+        let open = fake.add("Open sheet", frame: frame(0))
+        let bold = fake.add("Bold", frame: frame(1))
+        var hand = self.hand()
+        var job = hand.begin(watchUser: false)
+        XCTAssertEqual(hand.act(open, in: job).end, .done)
+        fake.dialogCount = 1
+        XCTAssertEqual(hand.act(bold, in: job).end, .surprise)
+        XCTAssertEqual(hand.act(bold, in: job).end, .surprise)
+        XCTAssertEqual(fake.sentCount, 1)
+        // A step that calls for a window: the next one goes ahead.
+        fake.dialogCount = 0
+        var opens = open
+        opens.opensWindow = true
+        hand = self.hand()
+        job = hand.begin(watchUser: false)
+        XCTAssertEqual(hand.act(opens, in: job).end, .done)
+        fake.dialogCount = 1
+        XCTAssertEqual(hand.act(bold, in: job).end, .done)
+    }
+
+    func testFrontAppChangedStops() {
+        let step = fake.add("Bold", frame: frame(0))
+        fake.front = 99
+        let hand = self.hand()
+        XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, .frontChanged)
+        XCTAssertEqual(fake.sentCount, 0)
+    }
+
+    // MARK: - Stop
+
+    func testStopWithinOneSecondOnASlowControl() async {
+        fake.delay = PracticeWindow.slow
+        let step = fake.add("Slow", frame: frame(0))
+        for run in 0..<10 {
+            let hand = self.hand()
+            let job = hand.begin(watchUser: false)
+            let (late, ends, stopToEnd) = await stopRun(hand, step, job, after: Double.random(in: 0.2...1.5))
+            XCTAssertLessThan(stopToEnd, 1, "run \(run)")
+            XCTAssertEqual(late, 0, "run \(run): a step acted after Stop")
+            XCTAssertEqual(ends.last, .stopped, "run \(run)")
+        }
+    }
+
+    func testUserInputStopsAndOwnClicksDoNot() throws {
+        let step = fake.add("Bold", frame: frame(0))
+        let hand = self.hand()
+        let job = hand.begin(watchUser: false)
+        let own = try XCTUnwrap(CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: .zero, mouseButton: .left))
+        own.setIntegerValueField(.eventSourceUserData, value: Hand.mark)
+        job.seen(own)  // made, never posted
+        XCTAssertNil(job.end)
+        XCTAssertEqual(hand.act(step, in: job).end, .done)
+        job.seen(try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true)))
+        XCTAssertEqual(job.end, .userInput)
+        XCTAssertEqual(hand.act(step, in: job).end, .userInput)
+        XCTAssertEqual(fake.sentCount, 1)
+    }
+
+    // MARK: - actions.log
+
+    func testActionLogHoldsOnlyNumbersAndFixedWords() throws {
+        let planted = ["Planted Secret Name", "planted typed text 4242", "Planted Window Title", "Paga ora subito", "made-up-role"]
+        var set = fake.add(planted[0], role: "AXTextField", frame: frame(0), window: planted[2])
+        set.text = planted[1]
+        let pay = fake.add(planted[3], frame: frame(1), window: planted[2])
+        fake.add("Planted Other", role: "AXButton \(planted[4])", frame: frame(2), window: planted[2])
+        let hand = self.hand()
+        XCTAssertEqual(hand.act(set, in: hand.begin(watchUser: false)).end, .done)
+        XCTAssertEqual(hand.act(pay, in: hand.begin(watchUser: false)).end, .paying)
+        var odd = HandStep(kind: .press, pid: FakeSurface.pid, frame: frame(2))
+        odd.name = "Planted Other"
+        _ = hand.act(odd, in: hand.begin(watchUser: false))
+        ActionLog.flush()
+
+        let text = try String(contentsOf: log, encoding: .utf8)
+        for word in planted + ["Planted", "planted", "Practice", "4242"] { XCTAssertFalse(text.contains(word), word) }
+        let lines = text.split(separator: "\n")
+        XCTAssertEqual(lines.count, 3)
+        let kinds = Set(HandStep.Kind.allCases.map(\.rawValue)), ends = Set(HandEnd.allCases.map(\.rawValue))
+        for line in lines {
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
+            XCTAssertEqual(Set(json.keys), ["ts", "job", "step", "kind", "role", "ended", "marked", "ms", "chars"])
+            XCTAssertTrue(kinds.contains(json["kind"] as? String ?? ""))
+            XCTAssertTrue(ends.contains(json["ended"] as? String ?? ""))
+            let role = try XCTUnwrap(json["role"] as? String)
+            XCTAssertTrue(role == "other" || role.range(of: #"^AX[A-Za-z]+$"#, options: .regularExpression) != nil, role)
+            XCTAssertNotNil(ISO8601DateFormatter().date(from: json["ts"] as? String ?? ""))
+            for key in ["job", "step", "ms", "chars"] { XCTAssertNotNil(json[key] as? Int, key) }
+        }
+        XCTAssertTrue(lines[0].contains(#""chars":\#(planted[1].count)"#))
+        XCTAssertTrue(lines[2].contains(#""role":"other""#))
+    }
+
+    // MARK: - Only Hand.swift acts
+
+    /// Fails the build if any file under Phew/ other than Senses/Hand.swift can send an action.
+    func testOnlyHandActs() throws {
+        let root = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent().appending(path: "Phew")
+        let acting = ["AXUIElementPerformAction", "AXUIElementSetAttributeValue", "AXUIElementPostKeyboardEvent",
+                      "CGEventPost", "CGEventTapPostEvent", ".post(tap:", "postToPid", "mouseEventSource:",
+                      "keyboardEventSource:", "NSAppleScript", "NSUserAppleScriptTask", "osascript", "SBApplication",
+                      "NSAppleEventDescriptor", "AESend"]
+        // Named exceptions, line by line:
+        // WindowReader asks Chromium, Electron and Keynote to build their full Accessibility tree, for reading only
+        // (AXManualAccessibility, AXEnhancedUserInterface). It sets those two flags and nothing else.
+        let exceptions: [String: (String) -> Bool] = [
+            "Senses/WindowReader.swift": { $0.contains("AXUIElementSetAttributeValue(app, ")
+                && ($0.contains("\"AXManualAccessibility\"") || $0.contains("enhanced as CFString")) },
+        ]
+        var files = 0, offenders: [String] = []
+        let all = try XCTUnwrap(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil))
+        for case let url as URL in all where url.pathExtension == "swift" {
+            files += 1
+            let relative = String(url.path.dropFirst(root.path.count + 1))
+            guard relative != "Senses/Hand.swift" else { continue }
+            for (n, line) in try String(contentsOf: url, encoding: .utf8).split(separator: "\n", omittingEmptySubsequences: false).enumerated()
+            where acting.contains(where: line.contains) && exceptions[relative]?(String(line)) != true {
+                offenders.append("\(relative):\(n + 1)")
+            }
+        }
+        XCTAssertGreaterThan(files, 40, "the scan found the sources")
+        XCTAssertEqual(offenders, [], "only Senses/Hand.swift may act")
+        let hand = try String(contentsOf: root.appending(path: "Senses/Hand.swift"), encoding: .utf8)
+        XCTAssertTrue(hand.contains("AXUIElementPerformAction") && hand.contains("postToPid"), "the scan looks for the right words")
+    }
+
+    // MARK: - The practice window, through the real Accessibility API
+
+    private func realHand() throws -> Hand {
+        try XCTSkipUnless(AXIsProcessTrusted(), "the test runner has no Accessibility permission: real-window tests skipped")
+        // The practice window lives in the test process: it stands in for the front app and is not "Phew's own".
+        return Hand(defaults: defaults, surface: AXSurface(front: { getpid() }), list: neverRead, ownPID: -1)
+    }
+
+    /// On the main thread, unlike for other apps: macOS answers an Accessibility call to the caller's own process
+    /// directly there, while from another thread every other press returns a failure although it happened (measured).
+    private func act(_ hand: Hand, _ step: HandStep, _ job: HandJob) -> HandEnd { hand.act(step, in: job).end }
+
+    func testPracticeWindowActsAndRefuses() async throws {
+        let hand = try realHand()
+        let practice = PracticeWindow()
+        defer { practice.close() }
+        try await Task.sleep(for: .milliseconds(200))
+        var job = hand.begin(watchUser: false)
+        let pressEnd = act(hand, practice.press("Bold"), job)
+        XCTAssertEqual(pressEnd, .done)
+        XCTAssertEqual(practice.presses["Bold"], 1)
+        let setEnd = act(hand, practice.set("A made-up title"), job)
+        XCTAssertEqual(setEnd, .done)
+        XCTAssertEqual(practice.field.stringValue, "A made-up title")
+        let pickEnd = act(hand, HandStep(kind: .pick, pid: getpid(), role: "AXMenuItem", menuPath: ["Practice", "Make Bold"]), job)
+        XCTAssertEqual(pickEnd, .done)
+        try await Task.sleep(for: .milliseconds(200))  // a menu item's action runs on the next turn of the run loop
+        XCTAssertEqual(practice.presses["Make Bold"], 1)
+
+        let refused: [(HandStep, HandEnd)] = [
+            (practice.set("made up", secure: true), .secureField), (practice.press("Pay now"), .paying),
+            (practice.press("Paga ora"), .paying), (practice.press("Sign in"), .signIn), (practice.press("Accedi"), .signIn),
+            (HandStep(kind: .pick, pid: getpid(), role: "AXMenuItem", menuPath: ["Account", "Sign In…"]), .signIn),
+        ]
+        for (step, reason) in refused {
+            job = hand.begin(watchUser: false)
+            let end = act(hand, step, job)
+            XCTAssertEqual(end, reason, step.name + step.menuPath.joined())
+        }
+        XCTAssertEqual(practice.secret.stringValue, "")
+        for name in ["Pay now", "Paga ora", "Sign in", "Accedi"] { XCTAssertNil(practice.presses[name], name) }
+        XCTAssertNil(practice.presses["Sign In…"])
+        // Phew's own windows: the same window, with the real own pid.
+        let own = Hand(defaults: defaults, surface: AXSurface(front: { getpid() }), list: neverRead)
+        let ownEnd = act(own, practice.press("Bold"), own.begin(watchUser: false))
+        XCTAssertEqual(ownEnd, .ownApp)
+        XCTAssertEqual(practice.presses["Bold"], 1)
+    }
+
+    func testPracticeWindowMovedButtonAndSurpriseSheet() async throws {
+        let hand = try realHand()
+        let practice = PracticeWindow()
+        defer { practice.close() }
+        try await Task.sleep(for: .milliseconds(200))
+        // The look saw "Move me" here; it moved before the action.
+        let seen = practice.press("Move me")
+        practice.buttons["Move me"]!.setFrameOrigin(NSPoint(x: 240, y: 240))
+        var job = hand.begin(watchUser: false)
+        let movedEnd = act(hand, seen, job)
+        XCTAssertEqual(movedEnd, .moved)
+        let again = act(hand, practice.press("Move me"), job)  // even where it is now: the job is over
+        XCTAssertEqual(again, .moved)
+        XCTAssertNil(practice.presses["Move me"])
+        // A sheet the job did not call for.
+        job = hand.begin(watchUser: false)
+        let openEnd = act(hand, practice.press("Open sheet"), job)
+        XCTAssertEqual(openEnd, .done)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertNotNil(practice.window.attachedSheet)
+        let surpriseEnd = act(hand, practice.press("Bold"), job)
+        XCTAssertEqual(surpriseEnd, .surprise)
+        XCTAssertNil(practice.presses["Bold"])
+    }
+
+    func testPracticeWindowStopWithinOneSecond() async throws {
+        _ = try realHand()
+        let practice = PracticeWindow()
+        defer { practice.close() }
+        try await Task.sleep(for: .milliseconds(200))
+        let step = practice.press("Slow")
+        var done = 0
+        for run in 0..<10 {
+            let hand = try realHand()
+            let job = hand.begin(watchUser: false)
+            let (late, ends, stopToEnd) = await stopRun(hand, step, job, after: Double.random(in: 0.2...1.5))
+            XCTAssertLessThan(stopToEnd, 1, "run \(run)")
+            XCTAssertEqual(late, 0, "run \(run): a step acted after Stop")
+            XCTAssertEqual(ends.last, .stopped, "run \(run): \(ends.map(\.rawValue))")
+            done += ends.filter { $0 == .done }.count
+        }
+        XCTAssertEqual(practice.presses["Slow"], done, "every press the Hand counted, and no other")
+    }
+
+    /// Runs `step` over and over in `job` while another thread presses Stop after `after` seconds. Returns how many
+    /// steps acted after Stop, every end, and the seconds from Stop to the loop's end.
+    private func stopRun(_ hand: Hand, _ step: HandStep, _ job: HandJob, after: TimeInterval) async
+        -> (late: Int, ends: [HandEnd], stopToEnd: TimeInterval) {
+        let stopper = Task.detached { () -> Date in
+            try? await Task.sleep(for: .seconds(after))
+            job.stop()
+            return Date()
+        }
+        var ends: [HandEnd] = [], starts: [Date] = []
+        for _ in 0..<15 {
+            starts.append(Date())
+            let end = act(hand, step, job)
+            ends.append(end)
+            if end != .done { break }
+        }
+        let finished = Date()
+        let stopAt = await stopper.value
+        let late = zip(starts, ends).filter { $0.0 > stopAt && $0.1 == .done }.count
+        return (late, ends, finished.timeIntervalSince(stopAt))
+    }
+}

@@ -58,6 +58,10 @@ enum Guide {
         matches.", nothing more is there: do not search again.
         """
 
+    /// The guide route's system prompt: the same without the self text (PS.16). With it, a guide sometimes came back
+    /// as an empty skeleton; without it, 4 of 4 good answers in the PS.15 work. Fixed too, so cached on its own.
+    static let guideSystem = system.replacingOccurrences(of: SelfKnowledge.text + "\n\n", with: "")
+
     static let schema = #"""
         {"type":"object","properties":{"explanation":{"type":"string"},"steps":{"type":"array","items":{"type":"object","properties":{"instruction":{"type":"string"},"element":{"type":["string","null"]},"point":{"anyOf":[{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"additionalProperties":false},{"type":"null"}]},"click":{"type":"boolean"}},"required":["instruction","element","point","click"],"additionalProperties":false}}},"required":["explanation","steps"],"additionalProperties":false}
         """#
@@ -83,35 +87,64 @@ enum Guide {
                        about: String? = nil, tools: (any ToolRunner)? = nil, provider: any ModelProvider,
                        emit: (BrainEvent) -> Void) async throws {
         let shot = packet?.screenshot.flatMap(ScreenshotSize.init(png:))
-        var json = "", stop = "", shown = false
-        var explanation = ExplanationStream()
-        let request = request(question, packet: packet, route: route, shot: shot, earlier: earlier, recall: recall, about: about)
-        for try await event in ToolLoop.stream(request, runner: tools, provider: provider) {
-            switch event {
-            case .text(let piece):
-                json += piece
-                let words = explanation.feed(piece)
-                if !words.isEmpty { shown = true; emit(.text(words)) }
-            case .stop("tool_use"):
-                // A search round ended; the answer comes in the next round.
-                // shortcut: words already shown in a search round stay and are not shown twice; the JSON grammar
-                // makes such words unlikely. Revisit if the card ever shows a cut explanation after a search.
-                json = ""
-                if !shown { explanation = ExplanationStream() }
-            case .stop(let reason): stop = reason
-            case .usage, .content: break
+        var request = request(question, packet: packet, route: route, shot: shot, earlier: earlier, recall: recall, about: about)
+        var shown = false  // explanation words already on the card
+        var answer: Output?
+        // PS.16: a blank answer (an empty skeleton, or one-character fields) is asked once more and never shown.
+        for attempt in 1...2 where answer == nil {
+            // After a blank first step only, the explanation is already on the card: the retry's is not shown twice.
+            let quiet = shown
+            var json = "", stop = "", held = ""
+            var explanation = ExplanationStream()
+            for try await event in ToolLoop.stream(request, runner: tools, provider: provider) {
+                switch event {
+                case .text(let piece):
+                    json += piece
+                    guard !quiet else { continue }
+                    held += explanation.feed(piece)
+                    // Held back until it is not blank, so a blank explanation never reaches the card.
+                    if !held.isEmpty, shown || !isBlank(held) { shown = true; emit(.text(held)); held = "" }
+                case .stop("tool_use"):
+                    // A search round ended; the answer comes in the next round.
+                    // shortcut: words already shown in a search round stay and are not shown twice; the JSON grammar
+                    // makes such words unlikely. Revisit if the card ever shows a cut explanation after a search.
+                    json = ""
+                    if !shown { explanation = ExplanationStream(); held = "" }
+                case .stop(let reason): stop = reason
+                case .usage, .content: break
+                }
             }
+            guard stop != "max_tokens", let output = try? JSONDecoder().decode(Output.self, from: Data(json.utf8)) else {
+                throw BrainError.badOutput
+            }
+            let noStep = route == .guide && output.steps.first.map { isBlank($0.instruction, under: 1) } == true
+            if attempt == 1, isBlank(output.explanation) || noStep {
+                shellLog("guide: blank answer, asked once more")
+                // The same request again came back blank as often as not (canvas case, 15 Nov); a line after the
+                // question changes it, and the cached part before stays the same.
+                request.text += "\n\nYour last answer came back empty. Write the explanation in words"
+                    + (route == .guide ? ", then each step with its instruction." : ".")
+                continue
+            }
+            answer = output
         }
-        guard stop != "max_tokens", let output = try? JSONDecoder().decode(Output.self, from: Data(json.utf8)) else {
-            throw BrainError.badOutput
+        guard let output = answer else { throw BrainError.badOutput }
+        if !shown {
+            // Blank twice: the card's fixed line for a bad answer, never a blank card.
+            guard !isBlank(output.explanation) else { throw BrainError.badOutput }
+            emit(.text(output.explanation))
         }
-        if !shown { emit(.text(output.explanation)) }
         guard route == .guide else { return }
         let valid = steps(output.steps, packet: packet, shot: shot)
         let given = output.steps.filter { $0.element != nil || $0.point != nil }.count
         let kept = valid.filter { $0.target != nil }.count
         shellLog("guide: \(valid.count) steps, \(kept) with a target, \(given - kept) targets dropped, \(valid.filter(\.click).count) click only")
         emit(.steps(valid))
+    }
+
+    /// Fewer than `under` characters once spaces are trimmed (PS.16).
+    static func isBlank(_ text: String, under: Int = 3) -> Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).count < under
     }
 
     static func request(_ question: String, packet: ContextPacket?, route: Route, shot: ScreenshotSize?,
@@ -126,8 +159,9 @@ enum Guide {
         // The whole history leaves the Mac again with every reply, so it is filtered again every time (3.10).
         let history = earlier.map { Turn(question: SecretsFilter.clean($0.question), answer: SecretsFilter.clean($0.answer)) }
         // The live facts sit in the user turn, after the fixed system prompt, so the system prompt never changes.
-        let me = about.map { [$0] } ?? []
-        return ModelRequest(agent: "guide", tier: .main, system: system, text: (map + me + [screen, task, asked(question)]).joined(separator: "\n\n"),
+        // A guide gets neither the self text nor the live facts (PS.16): questions about Phew are explained.
+        let me = route == .guide ? [] : about.map { [$0] } ?? []
+        return ModelRequest(agent: "guide", tier: .main, system: route == .guide ? guideSystem : system, text: (map + me + [screen, task, asked(question)]).joined(separator: "\n\n"),
                             image: shot == nil ? nil : packet?.screenshot, schema: schema, maxTokens: 8192, earlier: history)
     }
 

@@ -240,7 +240,7 @@ final class BrainAgentsTests: XCTestCase {
         let fake = FakeProvider([
             "conductor": [#"{"route":"explain"}"#],
             "observer": ["Fourier series: a sum of sines."],
-            "guide": [#"{"explanation":"ok","steps":[]}"#],
+            "guide": [#"{"explanation":"Okay.","steps":[]}"#],
         ])
         // Over the observer's threshold, which today's packets never reach (PS.12).
         let long = String(repeating: "Fourier series text. ", count: Observer.minChars / 20 + 1)
@@ -264,6 +264,60 @@ final class BrainAgentsTests: XCTestCase {
         } catch {
             XCTAssertEqual(error as? BrainError, .badOutput)
         }
+    }
+
+    // MARK: PS.16, blank answers
+
+    private typealias Reply = FakeProvider.Reply
+    private let skeleton = Reply(pieces: [#"{"explanation":""#, #"","steps":[{"instruction":"","element":null,"point":null,"click":false}]}"#])
+
+    /// The events that arrived before the stream ended, and its error if any.
+    private func eventsAndError(_ brain: ClaudeBrain, _ question: String) async -> ([BrainEvent], BrainError?) {
+        var all: [BrainEvent] = []
+        do {
+            for try await event in brain.answer(question, packet: packet()) { all.append(event) }
+            return (all, nil)
+        } catch {
+            return (all, error as? BrainError)
+        }
+    }
+
+    func testABlankAnswerIsAskedOnceMoreAndNeverShown() async {
+        let oneChar = Reply(pieces: [#"{"explanation":"A"#, #"","steps":[{"instruction":"Click Table","element":"e2","point":null,"click":true}]}"#])
+        let good = Reply(pieces: [#"{"explanation":"Tables are in "#, #"the toolbar.","steps":[{"instruction":"Click Table","element":"e2","point":null,"click":true}]}"#])
+        for blank in [skeleton, oneChar] {
+            let fake = FakeProvider(rounds: ["conductor": [Reply(pieces: [#"{"route":"guide"}"#])], "guide": [blank, good]])
+            let (all, error) = await eventsAndError(ClaudeBrain(provider: fake), "How do I add a table?")
+            XCTAssertNil(error)
+            XCTAssertEqual(all, [.route(.guide), .text("Tables are in "), .text("the toolbar."),
+                                 .steps([GuideStep(instruction: "Click Table", target: .element("e2"), click: true)]), .done])
+            let asked = fake.requests.filter { $0.agent == "guide" }
+            XCTAssertEqual(asked.count, 2)
+            // The second ask says the first came back empty, after the question; the system prompt is unchanged.
+            XCTAssertTrue(asked[1].text.hasPrefix(asked[0].text))
+            XCTAssertTrue(asked[1].text.contains("came back empty"))
+            XCTAssertEqual(asked[1].system, asked[0].system)
+        }
+    }
+
+    func testBlankTwiceIsTheFixedErrorNeverABlankCard() async {
+        let fake = FakeProvider(rounds: ["conductor": [Reply(pieces: [#"{"route":"guide"}"#])], "guide": [skeleton]])
+        let (all, error) = await eventsAndError(ClaudeBrain(provider: fake), "How do I add a table?")
+        XCTAssertEqual(error, .badOutput)  // the card's fixed line
+        XCTAssertEqual(all, [.route(.guide)])
+        XCTAssertEqual(fake.requests.filter { $0.agent == "guide" }.count, 2)
+    }
+
+    /// The explanation was fine and already on the card; only the first step was blank. The retry's steps are
+    /// used and its explanation is not shown a second time.
+    func testABlankFirstStepIsAskedAgainWithoutRepeatingTheText() async {
+        let noStep = Reply(pieces: [#"{"explanation":"Use the toolbar.","steps":[{"instruction":" ","element":null,"point":null,"click":false}]}"#])
+        let good = Reply(pieces: [#"{"explanation":"Use the toolbar above.","steps":[{"instruction":"Click Table","element":"e2","point":null,"click":true}]}"#])
+        let fake = FakeProvider(rounds: ["conductor": [Reply(pieces: [#"{"route":"guide"}"#])], "guide": [noStep, good]])
+        let (all, error) = await eventsAndError(ClaudeBrain(provider: fake), "How do I add a table?")
+        XCTAssertNil(error)
+        XCTAssertEqual(all, [.route(.guide), .text("Use the toolbar."),
+                             .steps([GuideStep(instruction: "Click Table", target: .element("e2"), click: true)]), .done])
     }
 
     // MARK: Follower

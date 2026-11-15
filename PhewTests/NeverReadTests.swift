@@ -51,7 +51,7 @@ final class NeverReadTests: XCTestCase {
         let packet = try XCTUnwrap(list.packet(appName: madeUp.name, bundleID: madeUp.bundleID))
         let fake = BrainAgentsTests.FakeProvider([
             "conductor": [#"{"route":"explain"}"#],
-            "guide": [#"{"explanation":"ok","steps":[]}"#],
+            "guide": [#"{"explanation":"Okay.","steps":[]}"#],
         ])
         for try await _ in ClaudeBrain(provider: fake).answer("What is this?", packet: packet) {}
         XCTAssertFalse(fake.requests.isEmpty)

@@ -10,7 +10,7 @@ import UniformTypeIdentifiers
 ///
 /// Parts: `speed [n]` plain questions with the Map, `search [n]` the "this month" question, `conversation` four
 /// replies in one conversation, `looks [n]` Follower looks on a full-size made-up window, `pages [n]` the guide case
-/// "native app with pointables" again.
+/// "native app with pointables" again, `guides [n]` every guide case of the brain check (PS.16), `self` the five self-questions (PS.14).
 enum BrainSpeedCheck {
     static func run(_ part: String, count: Int?) async {
         switch part {
@@ -19,6 +19,15 @@ enum BrainSpeedCheck {
         case "conversation": await conversation()
         case "looks": await looks(count ?? 10)
         case "pages": await pages(count ?? 5)
+        case "guides": await guides(count ?? 1)
+        case "self":
+            var passed = 0
+            for item in BrainSelfCheck.selfCases {
+                let (ok, detail) = (try? await item.run(ClaudeProvider())) ?? (false, "error")
+                if ok { passed += 1 }
+                shellLog("self check \(ok ? "PASS" : "FAIL") \(item.name): \(detail)")
+            }
+            shellLog("self check done: \(passed)/\(BrainSelfCheck.selfCases.count) passed")
         case "librarian":
             var sensitive = 0
             for n in 0..<(count ?? 3) {
@@ -201,11 +210,35 @@ enum BrainSpeedCheck {
                     if case .steps(let given) = event { steps = given }
                 }
             } catch { shellLog("pages check \(n + 1): failed, \(error)") }
-            let ok = !text.isEmpty && steps.contains { $0.target == .element("e5") }
+            let ok = BrainSelfCheck.notBlank(text, steps: steps) && steps.contains { $0.target == .element("e5") }
             if ok { right += 1 }
             shellLog("pages check \(n + 1): \(ok ? "right" : "wrong"), explanation \(text.count) chars, \(steps.count) steps")
         }
         shellLog("pages check done: \(right)/\(count) right")
+    }
+
+    // MARK: PS.16, every guide case of the brain check, again
+
+    /// The guide and click cases of the full check, `count` times, under the rule on blank answers. A case whose
+    /// Guide made two calls was blank once and asked again.
+    static func guides(_ count: Int) async {
+        let clock = Clock(ClaudeProvider())
+        let names = BrainSelfCheck.guideCases.map { "guide \($0.name)" } + BrainSelfCheck.clickCases.map { "guide clicks \($0.name)" }
+        var passed = [Int](repeating: 0, count: names.count), retried = passed
+        for n in 0..<count {
+            for (i, name) in names.enumerated() {
+                let before = clock.calls.count
+                let (ok, detail) = await (i < BrainSelfCheck.guideCases.count
+                    ? BrainSelfCheck.guideCase(BrainSelfCheck.guideCases[i], provider: clock)
+                    : BrainSelfCheck.clickCase(BrainSelfCheck.clickCases[i - BrainSelfCheck.guideCases.count], provider: clock))
+                let again = clock.calls[before...].filter { $0.agent == "guide" }.count > 1
+                if ok { passed[i] += 1 }
+                if again { retried[i] += 1 }
+                shellLog("guides check run \(n + 1) \(ok ? "PASS" : "FAIL") \(name)\(again ? " (asked again)" : ""): \(detail)")
+            }
+        }
+        for (i, name) in names.enumerated() { shellLog("guides check \(name): \(passed[i])/\(count) passed, \(retried[i]) asked again") }
+        shellLog("guides check done: \(cents(clock.calls.reduce(0) { $0 + $1.usd })) cents in all")
     }
 
     // MARK: Made-up full-size window

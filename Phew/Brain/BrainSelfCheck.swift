@@ -69,26 +69,8 @@ enum BrainSelfCheck {
 
             // (b) The Guide on 6 made-up cases, then 2 on recall rules (P5.11) with a lower token cap.
             for item in guideCases {
-                let t0 = Date(), usd0 = CallLog.spentUSD
-                var first: Int?, text = "", steps: [GuideStep]?
-                do {
-                    let capped = item.maxTokens.map { Capped(base: provider, maxTokens: $0) as any ModelProvider } ?? provider
-                    try await Guide.answer(item.question, packet: item.packet, route: item.route, recall: item.recall, provider: capped) { event in
-                        switch event {
-                        case .text(let piece): first = first ?? ms(t0); text += piece
-                        case .steps(let s): steps = s
-                        default: break
-                        }
-                    }
-                    let onElements = steps?.filter { if case .element = $0.target { true } else { false } }.count ?? 0
-                    let onPoints = steps?.filter { if case .point = $0.target { true } else { false } }.count ?? 0
-                    // The explanation stays in memory: only whether it names the expected thing is logged.
-                    let named = item.mentions.isEmpty || item.mentions.contains { text.localizedCaseInsensitiveContains($0) }
-                    let says = item.says(text)
-                    let valid = !text.isEmpty && named && says && (item.route == .guide) == (steps != nil) && item.check(steps ?? [])
-                    report("guide \(item.name)", valid,
-                           "explanation \(text.count) chars\(item.mentions.isEmpty ? "" : ", names it \(named)"), says what it must \(says), \(steps?.count ?? 0) steps (\(onElements) on elements, \(onPoints) on points), first word \(first ?? -1) ms, total \(ms(t0)) ms, $\(CallLog.spentUSD - usd0)")
-                } catch { report("guide \(item.name)", false, failure(error)) }
+                let (ok, detail) = await guideCase(item, provider: provider)
+                report("guide \(item.name)", ok, detail)
             }
 
             // (c) The Conductor on 12 requests.
@@ -130,15 +112,8 @@ enum BrainSelfCheck {
 
             // (d) PS.3: the Guide marks the steps that need only a click, and not those that need typing.
             for item in clickCases {
-                let t0 = Date(), usd0 = CallLog.spentUSD
-                var steps: [GuideStep] = []
-                do {
-                    try await Guide.answer(item.question, packet: item.packet, route: .guide, provider: provider) { event in
-                        if case .steps(let s) = event { steps = s }
-                    }
-                    report("guide clicks \(item.name)", item.check(steps),
-                           "\(steps.count) steps, click only \(steps.map { $0.click ? 1 : 0 }), total \(ms(t0)) ms, $\(CallLog.spentUSD - usd0)")
-                } catch { report("guide clicks \(item.name)", false, failure(error)) }
+                let (ok, detail) = await clickCase(item, provider: provider)
+                report("guide clicks \(item.name)", ok, detail)
             }
 
             // (e) The Librarian on 10 made-up interactions and the sensitive case (P5.2), each on its own Map in memory.
@@ -172,6 +147,50 @@ enum BrainSelfCheck {
     }
 
     private static func ms(_ since: Date) -> Int { Int(Date().timeIntervalSince(since) * 1000) }
+
+    /// PS.16: what reaches the card is never blank: an explanation of at least 3 characters and, for a guide, a
+    /// first step with an instruction.
+    static func notBlank(_ text: String, steps: [GuideStep]?) -> Bool {
+        !Guide.isBlank(text) && steps?.first.map { !Guide.isBlank($0.instruction, under: 1) } != false
+    }
+
+    /// One guide case of (b): pass or fail, and the counts for the log line.
+    static func guideCase(_ item: GuideCase, provider: any ModelProvider) async -> (Bool, String) {
+        let t0 = Date(), usd0 = CallLog.spentUSD
+        var first: Int?, text = "", steps: [GuideStep]?
+        do {
+            let capped = item.maxTokens.map { Capped(base: provider, maxTokens: $0) as any ModelProvider } ?? provider
+            try await Guide.answer(item.question, packet: item.packet, route: item.route, recall: item.recall, provider: capped) { event in
+                switch event {
+                case .text(let piece): first = first ?? ms(t0); text += piece
+                case .steps(let s): steps = s
+                default: break
+                }
+            }
+            let onElements = steps?.filter { if case .element = $0.target { true } else { false } }.count ?? 0
+            let onPoints = steps?.filter { if case .point = $0.target { true } else { false } }.count ?? 0
+            // The explanation stays in memory: only whether it names the expected thing is logged.
+            let named = item.mentions.isEmpty || item.mentions.contains { text.localizedCaseInsensitiveContains($0) }
+            let says = item.says(text)
+            let valid = notBlank(text, steps: steps) && named && says && (item.route == .guide) == (steps != nil) && item.check(steps ?? [])
+            return (valid, "explanation \(text.count) chars\(item.mentions.isEmpty ? "" : ", names it \(named)"), says what it must \(says), \(steps?.count ?? 0) steps (\(onElements) on elements, \(onPoints) on points), first word \(first ?? -1) ms, total \(ms(t0)) ms, $\(CallLog.spentUSD - usd0)")
+        } catch { return (false, "error \(error) \(ClaudeProvider.lastErrorMessage ?? "")") }
+    }
+
+    /// One click case of (d), held to the same rule on blank answers.
+    static func clickCase(_ item: (name: String, question: String, packet: ContextPacket, check: ([GuideStep]) -> Bool),
+                          provider: any ModelProvider) async -> (Bool, String) {
+        let t0 = Date(), usd0 = CallLog.spentUSD
+        var text = "", steps: [GuideStep] = []
+        do {
+            try await Guide.answer(item.question, packet: item.packet, route: .guide, provider: provider) { event in
+                if case .text(let piece) = event { text += piece }
+                if case .steps(let s) = event { steps = s }
+            }
+            return (notBlank(text, steps: steps) && item.check(steps),
+                    "explanation \(text.count) chars, \(steps.count) steps, click only \(steps.map { $0.click ? 1 : 0 }), total \(ms(t0)) ms, $\(CallLog.spentUSD - usd0)")
+        } catch { return (false, "error \(error) \(ClaudeProvider.lastErrorMessage ?? "")") }
+    }
 
     // MARK: - Made-up data
 

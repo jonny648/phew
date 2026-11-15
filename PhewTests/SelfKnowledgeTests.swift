@@ -100,6 +100,22 @@ final class SelfKnowledgeTests: XCTestCase {
 
     private static let systemOnce = Guide.system
 
+    /// PS.16: a guide gets the same instructions without the self text and without the live facts; an explanation
+    /// keeps both.
+    func testOnlyAnExplanationGetsTheSelfTextAndTheLiveFacts() {
+        let about = SelfKnowledge.live(ShellState(), turn: 1, projects: nil, facts: nil)
+        let guide = Guide.request("How do I add a table?", packet: packet("x"), route: .guide, shot: nil, about: about)
+        XCTAssertEqual(guide.system, Guide.guideSystem)
+        XCTAssertFalse(guide.system.contains(SelfKnowledge.text))
+        XCTAssertFalse(guide.text.contains("<self>"))
+        XCTAssertTrue(guide.system.contains("When the route is guide, also give the steps"))
+        XCTAssertTrue(guide.system.contains("steps empty.\n\nWhat Phew remembers"))
+        XCTAssertEqual(guide.system.count, Guide.system.count - SelfKnowledge.text.count - 2)
+        let explain = Guide.request("Who are you?", packet: packet("x"), route: .explain, shot: nil, about: about)
+        XCTAssertEqual(explain.system, Guide.system)
+        XCTAssertTrue(explain.text.contains("<self>"))
+    }
+
     /// The five live cases of `--debug-brain-check` run offline on a fake provider, and the email check refuses a
     /// claim that it was sent.
     func testSelfCheckCasesRunWithoutTheNetwork() async throws {

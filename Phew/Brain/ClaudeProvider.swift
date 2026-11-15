@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// The Claude implementation of `ModelProvider`: raw HTTPS to the Messages API (no official Swift SDK), streamed.
 /// Request and event shapes from the Claude API docs, Nov 2026: Messages, streaming, vision, structured outputs,
@@ -16,6 +17,7 @@ struct ClaudeProvider: ModelProvider {
     func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
         AsyncThrowingStream { continuation in
             guard let key = key(), !key.isEmpty else { return continuation.finish(throwing: BrainError.noKey) }
+            let capped = OSAllocatedUnfairLock(initialState: false)
             let task = Task {
                 let start = Date()
                 var parser = SSEParser()
@@ -29,6 +31,7 @@ struct ClaudeProvider: ModelProvider {
                         if first == nil { first = Self.ms(since: start) }
                         continuation.yield(.text(text))
                     }
+                    try Task.checkCancellation()  // a cancelled read may end the lines without throwing
                     try parser.end()
                     continuation.yield(.content(parser.content))
                     continuation.yield(.usage(parser.usage))
@@ -37,14 +40,25 @@ struct ClaudeProvider: ModelProvider {
                                    stop: parser.stopReason, error: nil)
                     continuation.finish()
                 } catch {
-                    let failure = BrainError(error)
-                    CallLog.record(request, usage: parser.usage, msFirst: first, msTotal: Self.ms(since: start),
-                                   stop: parser.stopReason, error: Task.isCancelled ? "cancelled" : "\(failure)")
+                    // Over the time cap: "runaway" in calls.log's ending, and the error the caller may retry on.
+                    let failure = capped.withLock { $0 } ? BrainError.runaway : BrainError(error)
+                    CallLog.record(request, usage: parser.usage, msFirst: first, msTotal: Self.ms(since: start), stop: parser.stopReason,
+                                   error: failure != .runaway && Task.isCancelled ? "cancelled" : "\(failure)")
                     continuation.finish(throwing: failure)
                 }
             }
+            let cap = request.timeLimit.map { limit in
+                Task {
+                    try await Task.sleep(for: .seconds(limit))
+                    capped.withLock { $0 = true }
+                    task.cancel()
+                }
+            }
             // The consumer stopped listening (card closed): cancelling the task cancels the HTTP request.
-            continuation.onTermination = { _ in task.cancel() }
+            continuation.onTermination = { _ in
+                task.cancel()
+                cap?.cancel()
+            }
         }
     }
 

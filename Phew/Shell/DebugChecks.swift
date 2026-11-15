@@ -135,6 +135,9 @@ extension AppDelegate {
     /// In those four the screen watch runs but counts every look as a change. In the last, "watch", it judges for real:
     /// Phew's own windows are left out of it, so on a still screen an action makes no look; with a short idle limit
     /// the watch stops by itself; an action starts it again and, with nothing to compare with, the look goes ahead.
+    /// "hit" and "hit-back" (PS.3) press and release on the targets as the monitor reports them: a drag does not move
+    /// on, a direct hit moves on at once with the looking motion, the look confirms ("hit") or steps back
+    /// ("hit-back"), a hit inside a point's ring moves on, a typing step and the last step wait for the look.
     /// The action monitor is real: the user's own clicks, keys and scrolls during the check also make looks.
     private func checkGuide() async {
         try? await Task.sleep(for: .seconds(1))
@@ -149,10 +152,13 @@ extension AppDelegate {
                                        frame: CGRect(x: display.midX - 160, y: display.midY - 60, width: 120, height: 28))]
         packet.screenshotFrame = display
         let targets: [StepTarget?] = [.element("e1"), .point(x: Int(display.width / 2) + 60, y: Int(display.height / 2) + 40), nil, .element("e1")]
-        for (ending, failure) in [("follow", nil), ("cancel", nil), ("overloaded", BrainError.overloaded), ("noKey", .noKey), ("watch", nil)] {
+        for (ending, failure) in [("follow", nil), ("cancel", nil), ("overloaded", BrainError.overloaded), ("noKey", .noKey), ("watch", nil),
+                                  ("hit", nil), ("hit-back", nil)] {
             watch.seesEveryChange = ending != "watch"
             ScreenWatch.idleLimit = ending == "watch" ? 6 : 120
-            brain = FakeBrain(targets: targets, lookFailure: failure)
+            // PS.3: steps 1, 2 and 4 need only a click, step 3 typing. In "hit-back" every look finds the step not done.
+            brain = FakeBrain(targets: targets, lookFailure: failure, clicks: ending.hasPrefix("hit") ? [true, true, false, true] : [],
+                              confirms: ending != "hit-back")
             capture = Task<ContextPacket?, Never> { packet }
             anchor = NSPoint(x: main.midX - 600, y: main.midY + 160)  // a made-up cursor, left of the targets
             ask("")
@@ -161,7 +167,7 @@ extension AppDelegate {
             shellLog("guide check \(ending): menu bar icon found=\(NSApp.windows.contains { $0.className == "NSStatusBarWindow" }) following=\(card.actionMonitor != nil)")
             try? await Task.sleep(for: .seconds(3))  // step 1's glide and ring
             func state(_ moment: String) {
-                shellLog("guide check \(ending) \(moment): step=\(card.model.current + 1) looks=\(card.rule.looks) lookPending=\(card.lookPending) overlay ignoresMouse=\(overlay?.ignoresMouseEvents ?? false) visible=\(overlay?.isVisible ?? false) key=\(overlay?.isKeyWindow ?? false) canBecomeKey=\(overlay?.canBecomeKey ?? true) cardKey=\(card.isKeyWindow) phewFront=\(phewIsFront) appActive=\(NSRunningApplication.current.isActive) watch=\(watch.running)")
+                shellLog("guide check \(ending) \(moment): step=\(card.model.current + 1) looks=\(card.rule.looks) lookPending=\(card.lookPending) looking=\(overlay?.isLooking ?? false) cardVisible=\(card.isVisible) overlay ignoresMouse=\(overlay?.ignoresMouseEvents ?? false) visible=\(overlay?.isVisible ?? false) key=\(overlay?.isKeyWindow ?? false) canBecomeKey=\(overlay?.canBecomeKey ?? true) cardKey=\(card.isKeyWindow) phewFront=\(phewIsFront) appActive=\(NSRunningApplication.current.isActive) watch=\(watch.running)")
             }
             state("step 1")
             if ending == "follow" {
@@ -190,6 +196,35 @@ extension AppDelegate {
                 card.userActed()
                 await until { !self.card.lookPending }
                 state("after an action that started the watch again")
+                card.dismiss()
+            } else if ending.hasPrefix("hit") {
+                // A press and release as the action monitor sees them (no event is made), `drag` points apart.
+                func hit(_ step: Int, dx: CGFloat = 0, drag: CGFloat = 0) {
+                    guard let rect = card.targets[step] else { return shellLog("guide check \(ending): step \(step + 1) has no target") }
+                    let at = NSPoint(x: rect.midX + dx, y: rect.midY)
+                    card.rule.pressed(at: at)
+                    card.directHit(at: NSPoint(x: at.x + drag, y: at.y))
+                }
+                hit(0, drag: 20)
+                state("after a drag on step 1's target")
+                let t0 = Date()
+                hit(0)
+                shellLog("guide check \(ending): direct hit on step 1, card on step \(card.model.current + 1) after \(Int(Date().timeIntervalSince(t0) * 1000)) ms, looking=\(overlay?.isLooking ?? false)")
+                card.userActed()  // the release is also an action: the look that confirms
+                await until { !self.card.lookPending }
+                state("after the look that confirms")
+                if ending == "hit" {
+                    hit(1, dx: 15)  // inside the 22-point ring around step 2's point
+                    state("after a direct hit inside step 2's ring")
+                    hit(2)  // step 3 needs typing: a click into it waits for the look
+                    state("after a click on step 3, a typing step")
+                    card.jump(to: 3)
+                    hit(3)  // the last step always waits for the look
+                    state("after a click on the last step's target")
+                    card.userActed()
+                    await until { !self.card.lookPending }
+                    state("after the look on the last step")
+                }
                 card.dismiss()
             } else if failure != nil {
                 card.userActed()
@@ -308,6 +343,10 @@ struct FakeBrain: Brain {
     var targets: [StepTarget?] = [nil, nil, nil]
     /// Thrown by `progress`, as a look that fails.
     var lookFailure: BrainError?
+    /// Which steps need only a click (PS.3); missing ones do not.
+    var clicks: [Bool] = []
+    /// False: every look finds the step it is asked about not done.
+    var confirms = true
 
     func answer(_ question: String, packet: ContextPacket?) -> AsyncThrowingStream<BrainEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -320,7 +359,9 @@ struct FakeBrain: Brain {
                     continuation.yield(.text(piece))
                 }
                 if let failure { return continuation.finish(throwing: failure) }
-                continuation.yield(.steps(targets.enumerated().map { GuideStep(instruction: "Fake step \($0.offset + 1).", target: $0.element) }))
+                continuation.yield(.steps(targets.enumerated().map {
+                    GuideStep(instruction: "Fake step \($0.offset + 1).", target: $0.element, click: clicks.indices.contains($0.offset) && clicks[$0.offset])
+                }))
                 continuation.yield(.done)
                 continuation.finish()
             }
@@ -332,7 +373,7 @@ struct FakeBrain: Brain {
     func progress(steps: [GuideStep], current: Int, packet: ContextPacket?) async throws -> GuideProgress {
         try await Task.sleep(for: .milliseconds(500))
         if let lookFailure { throw lookFailure }
-        let next = min(max(current + 1, 0), steps.count)
+        let next = min(max(current + (confirms ? 1 : 0), 0), steps.count)
         return GuideProgress(current: next, target: next < steps.count ? steps[next].target : nil)
     }
 }

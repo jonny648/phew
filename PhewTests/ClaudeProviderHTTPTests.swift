@@ -190,6 +190,28 @@ final class ClaudeProviderHTTPTests: XCTestCase {
         XCTAssertEqual(try logLines().map(\.error), ["badKey"])
     }
 
+    func testACallOverItsTimeCapIsCancelledAndLoggedAsRunaway() async throws {
+        Stub.hang = true  // the answer never ends, as a look that keeps thinking
+        Stub.body = #"data: {"type":"message_start","message":{"usage":{"input_tokens":7,"output_tokens":1}}}"# + "\n"
+        let stopped = expectation(description: "request stopped")
+        Stub.stopped = stopped
+        var capped = request
+        capped.timeLimit = 0.3
+        let t0 = Date()
+        do {
+            for try await _ in provider.stream(capped) {}
+            XCTFail("expected runaway")
+        } catch {
+            XCTAssertEqual(error as? BrainError, .runaway)
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(t0), 3)
+        await fulfillment(of: [stopped], timeout: 5)  // the HTTP request itself was cancelled
+        // One line, "runaway" in how the call ended: numbers and fixed words only.
+        let lines = try logLines()
+        XCTAssertEqual(lines.map(\.error), ["runaway"])
+        XCTAssertGreaterThanOrEqual(lines[0].msTotal, 300)
+    }
+
     func testCancellingTheConsumerCancelsTheRequest() async throws {
         Stub.hang = true
         Stub.body = #"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hel"}}"# + "\n"

@@ -85,15 +85,44 @@ enum BrainSelfCheck {
             }
 
             // (d) The Follower on 4 drawn screens of a made-up sticky-note board.
+            var looks: [Int] = []
             for item in followerCases {
                 let t0 = Date(), usd0 = CallLog.spentUSD
                 do {
                     let result = try await Follower.progress(steps: noteSteps, current: item.current, packet: item.packet, provider: provider)
+                    looks.append(ms(t0))
                     let kind = switch result.target { case .element: "element"; case .point: "point"; case nil: "none" }
                     let placed = item.target(result.target)
                     report("follower \(item.name)", result.current == item.expected && placed,
                            "step \(item.current + 1) to \(result.current + 1), expected \(item.expected + 1), target \(kind) in place \(placed), total \(ms(t0)) ms, $\(CallLog.spentUSD - usd0)")
                 } catch { report("follower \(item.name)", false, failure(error)) }
+            }
+            // (d) PS.5: the same 4 screens twice more, 12 looks in all. Each try is capped (3.5 s, 1024 tokens) and
+            // tried once more when it runs over: no look may pass 4 s. A retry shows as "runaway" in calls.log.
+            do {
+                let usd0 = CallLog.spentUSD
+                for _ in 0..<2 {
+                    for item in followerCases {
+                        let t0 = Date()
+                        _ = try? await Follower.progress(steps: noteSteps, current: item.current, packet: item.packet, provider: provider)
+                        looks.append(ms(t0))
+                    }
+                }
+                let over = looks.filter { $0 > 4000 }.count
+                report("follower speed", over == 0, "\(looks.count) looks, slowest \(looks.max() ?? -1) ms, \(over) above 4 s, $\(CallLog.spentUSD - usd0) for the 8 extra")
+            }
+
+            // (d) PS.3: the Guide marks the steps that need only a click, and not those that need typing.
+            for item in clickCases {
+                let t0 = Date(), usd0 = CallLog.spentUSD
+                var steps: [GuideStep] = []
+                do {
+                    try await Guide.answer(item.question, packet: item.packet, route: .guide, provider: provider) { event in
+                        if case .steps(let s) = event { steps = s }
+                    }
+                    report("guide clicks \(item.name)", item.check(steps),
+                           "\(steps.count) steps, click only \(steps.map { $0.click ? 1 : 0 }), total \(ms(t0)) ms, $\(CallLog.spentUSD - usd0)")
+                } catch { report("guide clicks \(item.name)", false, failure(error)) }
             }
 
             // (e) The Librarian on 10 made-up interactions and the sensitive case (P5.2), each on its own Map in memory.
@@ -193,6 +222,16 @@ enum BrainSelfCheck {
                       text.contains("B12") && ["outdated", "out of date", "may have changed", "might have changed", "no longer"]
                           .contains { text.localizedCaseInsensitiveContains($0) }
                   }, maxTokens: 2048) { _ in true },
+    ]
+
+    /// PS.3: clicking a tab and a checkbox are click steps; typing a title is not.
+    static let clickCases: [(name: String, question: String, packet: ContextPacket, check: ([GuideStep]) -> Bool)] = [
+        ("plain clicks", "How do I turn on Track Changes?", wordApp, { steps in
+            steps.contains { $0.click && $0.target == .element("e4") }
+        }),
+        ("typing waits", "How do I add a title at the top of my report and type it in?", pagesApp, { steps in
+            !steps.isEmpty && steps.contains { !$0.click }
+        }),
     ]
 
     /// A plain notes window with nothing about the exam or the lab, so the answer must come from the recall.

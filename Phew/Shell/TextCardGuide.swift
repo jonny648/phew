@@ -7,6 +7,8 @@ extension TextCard {
     /// place, or rests beside the card.
     func jump(to step: Int) {
         guard targets.indices.contains(step), step != model.current else { return }
+        rule.settle()  // a direct hit's guess no longer waits: the student's choice wins
+        overlay?.looking(false)
         model.current = step
         pointAtCurrentStep()
     }

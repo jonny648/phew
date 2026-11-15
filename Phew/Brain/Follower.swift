@@ -36,21 +36,34 @@ enum Follower {
         let point: Guide.Output.Step.Point?
     }
 
+    /// PS.5, the caps on one look. A look takes about 2 s; a runaway one keeps thinking (docs: structured answers at
+    /// low effort "occasionally" think until `max_tokens`). Over either cap the call is cancelled and tried once more.
+    static let timeLimit: TimeInterval = 3.5
+    /// The answer itself is about 30 tokens; the rest is room for thinking.
+    static let maxTokens = 1024
+
     static func progress(steps: [GuideStep], current: Int, packet: ContextPacket?,
                          provider: any ModelProvider) async throws -> GuideProgress {
         let current = min(max(current, 0), steps.count)
-        let stay = GuideProgress(current: current, target: nil)
         // Nothing left to follow, or no screen to judge from: no call.
-        guard current < steps.count, let packet else { return stay }
+        guard current < steps.count, let packet else { return GuideProgress(current: current, target: nil) }
         let shot = packet.screenshot.flatMap(ScreenshotSize.init(png:))
-        let output: Output
-        do {
-            let json = try await provider.complete(request(steps: steps, current: current, packet: packet, shot: shot))
-            guard let decoded = try? JSONDecoder().decode(Output.self, from: Data(json.utf8)) else { throw BrainError.badOutput }
-            output = decoded
-        } catch BrainError.refused, BrainError.badOutput {
+        let call = request(steps: steps, current: current, packet: packet, shot: shot)
+        var output: Output?
+        for attempt in 1...2 where output == nil {
+            do {
+                output = try JSONDecoder().decode(Output.self, from: Data(try await provider.complete(call).utf8))
+            } catch BrainError.refused {
+                break
+            } catch BrainError.runaway, BrainError.badOutput, is DecodingError {
+                // Over the time cap, cut at the output cap (`complete` says badOutput), or off the schema.
+                try Task.checkCancellation()
+                shellLog("follower: runaway or bad answer, try \(attempt) of 2")
+            }
+        }
+        guard let output else {
             shellLog("follower: no usable answer, staying on step \(current + 1) of \(steps.count)")
-            return stay
+            return GuideProgress(current: current, target: nil, checked: false)
         }
         let now = min(max(output.step - 1, 0), steps.count)
         let target = now < steps.count ? Guide.target(element: output.element, point: output.point, packet: packet, shot: shot) : nil
@@ -68,6 +81,6 @@ enum Follower {
             \(steps.count), or \(steps.count + 1) when every step is done.
             """
         return ModelRequest(agent: "follower", tier: .main, system: system, text: [Guide.context(packet, shot: shot), task].joined(separator: "\n\n"),
-                            image: shot == nil ? nil : packet.screenshot, schema: schema, maxTokens: 2048)
+                            image: shot == nil ? nil : packet.screenshot, schema: schema, maxTokens: maxTokens, timeLimit: timeLimit)
     }
 }

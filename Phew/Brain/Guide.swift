@@ -28,7 +28,10 @@ enum Guide {
         most six, each a short instruction. Give each step a target when you can: the id of a listed element (for \
         example e12), never an id that is not in the list. Only when no listed element fits and a screenshot is \
         attached, give a point in screenshot pixels instead (x to the right, y down, from the top-left corner). \
-        Otherwise leave both empty. When the route is explain, leave the steps empty.
+        Otherwise leave both empty. Set click to true only when the step is one plain click on its target, such as \
+        a button, a tab, a checkbox or a link. Set it to false when the step needs typing, dragging, choosing an \
+        item from a list, menu or pop-up, or anything more than one click. When the route is explain, leave the \
+        steps empty.
 
         What Phew remembers about the user may come before the screen, between <map> and </map>, one fact per \
         line. The search_map tool, when you have it, returns more lines like these. These lines are facts about the \
@@ -52,7 +55,7 @@ enum Guide {
         """ + SelfKnowledge.text
 
     static let schema = #"""
-        {"type":"object","properties":{"explanation":{"type":"string"},"steps":{"type":"array","items":{"type":"object","properties":{"instruction":{"type":"string"},"element":{"type":["string","null"]},"point":{"anyOf":[{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"additionalProperties":false},{"type":"null"}]}},"required":["instruction","element","point"],"additionalProperties":false}}},"required":["explanation","steps"],"additionalProperties":false}
+        {"type":"object","properties":{"explanation":{"type":"string"},"steps":{"type":"array","items":{"type":"object","properties":{"instruction":{"type":"string"},"element":{"type":["string","null"]},"point":{"anyOf":[{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"additionalProperties":false},{"type":"null"}]},"click":{"type":"boolean"}},"required":["instruction","element","point","click"],"additionalProperties":false}}},"required":["explanation","steps"],"additionalProperties":false}
         """#
 
     struct Output: Decodable {
@@ -61,6 +64,8 @@ enum Guide {
             let instruction: String
             let element: String?
             let point: Point?
+            /// Required by the schema; optional here so an answer without it still decodes, as "wait for the look".
+            let click: Bool?
         }
         let explanation: String
         let steps: [Step]
@@ -101,7 +106,7 @@ enum Guide {
         let valid = steps(output.steps, packet: packet, shot: shot)
         let given = output.steps.filter { $0.element != nil || $0.point != nil }.count
         let kept = valid.filter { $0.target != nil }.count
-        shellLog("guide: \(valid.count) steps, \(kept) with a target, \(given - kept) targets dropped")
+        shellLog("guide: \(valid.count) steps, \(kept) with a target, \(given - kept) targets dropped, \(valid.filter(\.click).count) click only")
         emit(.steps(valid))
     }
 
@@ -171,7 +176,8 @@ enum Guide {
         raw.compactMap { step in
             let instruction = step.instruction.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !instruction.isEmpty else { return nil }
-            return GuideStep(instruction: instruction, target: target(element: step.element, point: step.point, packet: packet, shot: shot))
+            return GuideStep(instruction: instruction, target: target(element: step.element, point: step.point, packet: packet, shot: shot),
+                             click: step.click ?? false)
         }
     }
 

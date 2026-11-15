@@ -117,4 +117,88 @@ final class FollowRuleTests: XCTestCase {
         XCTAssertEqual(moved, CGRect(x: 110, y: 620, width: 80, height: 20))
         XCTAssertEqual(FollowRule.moved(target, anchorWas: .zero, anchorNow: .zero), target)
     }
+
+    // MARK: - PS.3: a direct hit on a click step
+
+    private let button = CGRect(x: 100, y: 200, width: 80, height: 24)  // a made-up element, AppKit coordinates
+    private let point = CGRect(x: 400, y: 300, width: 0, height: 0)  // a marked point: its ring is 22 points
+
+    /// A press at `down`, a release at `up`, on step `step` of 4.
+    private func release(_ rule: inout FollowRule, down: CGPoint, up: CGPoint? = nil, step: Int = 0, click: Bool = true,
+                         target: CGRect?) -> Bool {
+        rule.pressed(at: down)
+        return rule.released(at: up ?? down, step: step, count: 4, click: click, target: target)
+    }
+
+    func testADirectHitIsAPressAndReleaseInsideTheElementOrTheRing() {
+        XCTAssertTrue(FollowRule.directHit(down: CGPoint(x: 120, y: 210), up: CGPoint(x: 122, y: 211), on: button))
+        XCTAssertFalse(FollowRule.directHit(down: CGPoint(x: 120, y: 210), up: CGPoint(x: 150, y: 210), on: button))  // a drag
+        XCTAssertFalse(FollowRule.directHit(down: CGPoint(x: 190, y: 210), up: CGPoint(x: 190, y: 210), on: button))  // beside it
+        XCTAssertTrue(FollowRule.directHit(down: CGPoint(x: 415, y: 315), up: CGPoint(x: 415, y: 315), on: point))  // 21.2 from it
+        XCTAssertFalse(FollowRule.directHit(down: CGPoint(x: 417, y: 317), up: CGPoint(x: 417, y: 317), on: point))  // 24 from it
+        XCTAssertFalse(FollowRule.directHit(down: CGPoint(x: 400, y: 300), up: CGPoint(x: 406, y: 300), on: point))  // a short drag
+    }
+
+    func testAHitOnAClickStepMovesOnAndTheLookJudgesFromTheStepItLeft() {
+        var rule = FollowRule()
+        XCTAssertFalse(rule.released(at: CGPoint(x: 120, y: 210), step: 0, count: 4, click: true, target: button))  // no press seen
+        XCTAssertFalse(release(&rule, down: CGPoint(x: 110, y: 210), up: CGPoint(x: 160, y: 210), target: button))  // a drag
+        XCTAssertNil(rule.guessed)
+        XCTAssertTrue(release(&rule, down: CGPoint(x: 120, y: 210), target: button))
+        XCTAssertEqual(rule.guessed, 0)
+        XCTAssertEqual(rule.lookFrom(1), 0)  // the card shows step 2, the look confirms step 1
+        // A second hit before the look: the look still judges from the first step left.
+        XCTAssertTrue(release(&rule, down: CGPoint(x: 400, y: 300), step: 1, target: point))
+        XCTAssertEqual(rule.lookFrom(2), 0)
+        // Its confirm is never skipped, even on a screen that looks unchanged.
+        _ = rule.userActed(at: at(0))
+        XCTAssertFalse(rule.skip())
+    }
+
+    func testTypingStepsTheLastStepAndMissingTargetsWaitForTheLook() {
+        var rule = FollowRule()
+        // A click into a text field on a typing step.
+        XCTAssertFalse(release(&rule, down: CGPoint(x: 120, y: 210), step: 1, click: false, target: button))
+        // The last step, so the card never closes on a guess.
+        XCTAssertFalse(release(&rule, down: CGPoint(x: 120, y: 210), step: 3, target: button))
+        XCTAssertFalse(release(&rule, down: CGPoint(x: 120, y: 210), step: 0, target: nil))
+        XCTAssertNil(rule.guessed)
+        XCTAssertEqual(rule.lookFrom(2), 2)
+    }
+
+    func testNoHitMovesOnOnceNoLookIsLeft() {
+        var rule = FollowRule()
+        for n in 0..<FollowRule.ceiling {
+            _ = rule.userActed(at: at(TimeInterval(n) * 10))
+            _ = rule.startLook(at: at(TimeInterval(n) * 10 + 1))
+            _ = rule.lookEnded(at: at(TimeInterval(n) * 10 + 2))
+        }
+        XCTAssertFalse(release(&rule, down: CGPoint(x: 120, y: 210), target: button))
+    }
+
+    func testTheLookConfirmsOrStepsBack() {
+        var rule = FollowRule()
+        _ = release(&rule, down: CGPoint(x: 120, y: 210), target: button)  // the card moves on to step 2 (index 1)
+        // The look finds step 1 not done: back to it, and the guess is settled.
+        XCTAssertEqual(rule.judged(GuideProgress(current: 0, target: nil), shown: 1, now: 1, count: 4), .move(0))
+        XCTAssertNil(rule.guessed)
+
+        _ = release(&rule, down: CGPoint(x: 120, y: 210), target: button)
+        XCTAssertEqual(rule.judged(GuideProgress(current: 1, target: nil), shown: 1, now: 1, count: 4), .stay)  // confirmed
+        XCTAssertNil(rule.guessed)
+
+        _ = release(&rule, down: CGPoint(x: 120, y: 210), target: button)
+        XCTAssertEqual(rule.judged(GuideProgress(current: 3, target: nil), shown: 1, now: 1, count: 4), .move(3))  // further on
+        XCTAssertEqual(rule.judged(GuideProgress(current: 9, target: nil), shown: 3, now: 3, count: 4), .done)
+
+        // A look with no judgement leaves the card and the guess as they are.
+        _ = release(&rule, down: CGPoint(x: 120, y: 210), target: button)
+        XCTAssertEqual(rule.judged(GuideProgress(current: 0, target: nil, checked: false), shown: 1, now: 1, count: 4), .stay)
+        XCTAssertEqual(rule.guessed, 0)
+        // The card's step changed during the look (a newer hit, a step line): its answer is dropped, the guess waits.
+        XCTAssertEqual(rule.judged(GuideProgress(current: 0, target: nil), shown: 1, now: 2, count: 4), .drop)
+        XCTAssertEqual(rule.guessed, 0)
+        rule.settle()  // a step line was picked
+        XCTAssertNil(rule.guessed)
+    }
 }

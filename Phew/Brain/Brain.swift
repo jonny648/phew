@@ -9,8 +9,9 @@ protocol Brain: Sendable {
     func answer(_ question: String, packet: ContextPacket?, state: ShellState) -> AsyncThrowingStream<BrainEvent, Error>
 
     /// During a guide, after the user acts: looks at a fresh `packet` and says which of `steps` the user is on
-    /// now, starting from `current` (0-based), so the guide moves on by itself. A refusal or a bad answer from this
-    /// check does not end the guide: it returns `current` with no target. Key, network and rate errors throw
+    /// now, starting from `current` (0-based), so the guide moves on by itself. A runaway or bad answer is tried
+    /// once more (PS.5). A refusal or a second bad answer does not end the guide: it returns `current` with no
+    /// target, not `checked`. Key, network and rate errors throw
     /// `BrainError` like `answer`.
     func progress(steps: [GuideStep], current: Int, packet: ContextPacket?) async throws -> GuideProgress
 
@@ -47,6 +48,9 @@ struct GuideProgress: Sendable, Equatable {
     /// Where that step points on the fresh screen, validated like `GuideStep.target`: an id in this packet, or a
     /// point inside its screenshot. Nil when the guide is done, nothing safe fits, or the check failed.
     var target: StepTarget?
+    /// False when the check gave no usable answer (a refusal, a bad or runaway answer twice): `current` is then only
+    /// the step it was asked about, not a judgement, so a step a direct hit moved on from is not stepped back.
+    var checked = true
 }
 
 enum Route: String, Sendable, CaseIterable {
@@ -66,6 +70,9 @@ struct GuideStep: Sendable, Equatable {
     var instruction: String
     /// Nil when there is nothing safe to point at.
     var target: StepTarget?
+    /// The step needs only one plain click on its target (PS.3): a direct hit there moves the guide on at once.
+    /// False for typing, dragging or choosing, and whenever the Guide did not say.
+    var click = false
 }
 
 enum StepTarget: Sendable, Equatable {
@@ -85,6 +92,8 @@ enum BrainError: Error, Sendable, Equatable {
     case refused
     /// The model's answer was cut off or did not match its schema.
     case badOutput
+    /// The answer ran over its request's time cap and was cancelled (PS.5).
+    case runaway
     /// Any other HTTP status from the API (400, 402, 403, 404, 413…).
     case failed(status: Int)
 }

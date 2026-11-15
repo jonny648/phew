@@ -186,6 +186,26 @@ final class BrainAgentsTests: XCTestCase {
                              .done])
     }
 
+    func testTheGuideMarksTheStepsThatNeedOnlyAClick() async throws {
+        let fake = FakeProvider([
+            "conductor": [#"{"route":"guide"}"#],
+            "guide": [#"{"explanation":"Two steps.","steps":["#,
+                      #"{"instruction":"Click Table","element":"e2","point":null,"click":true},"#,
+                      #"{"instruction":"Type the caption","element":"e1","point":null,"click":false},"#,
+                      #"{"instruction":"Pick a style","element":null,"point":null}]}"#],  // no flag: waits for the look
+        ])
+        let all = try await events(ClaudeBrain(provider: fake), "How do I add a table?", packet())
+        XCTAssertTrue(all.contains(.steps([GuideStep(instruction: "Click Table", target: .element("e2"), click: true),
+                                           GuideStep(instruction: "Type the caption", target: .element("e1"), click: false),
+                                           GuideStep(instruction: "Pick a style", target: nil, click: false)])))
+        // The fixed schema asks for the flag on every step, under the strict rules.
+        let schema = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(Guide.schema.utf8)) as? [String: Any])
+        let step = try XCTUnwrap(((schema["properties"] as? [String: Any])?["steps"] as? [String: Any])?["items"] as? [String: Any])
+        XCTAssertEqual((step["properties"] as? [String: Any])?["click"] as? NSDictionary, ["type": "boolean"])
+        XCTAssertEqual(step["required"] as? [String], ["instruction", "element", "point", "click"])
+        XCTAssertEqual(step["additionalProperties"] as? Bool, false)
+    }
+
     func testEmptyQuestionExplainsWithoutTheConductor() async throws {
         let fake = FakeProvider(["guide": [#"{"explanation":"This is the body text.","steps":[]}"#]])
         let all = try await events(ClaudeBrain(provider: fake), "  ", packet())
@@ -299,11 +319,11 @@ final class BrainAgentsTests: XCTestCase {
     func testFollowerStaysOnRefusalOrBadOutputButThrowsTheRest() async throws {
         for reply in [#"{"step":"#, "not json", #"{"element":"e1","point":null}"#] {
             let result = try await follow(reply, current: 1)
-            XCTAssertEqual(result, GuideProgress(current: 1, target: nil), reply)
+            XCTAssertEqual(result, GuideProgress(current: 1, target: nil, checked: false), reply)
         }
         let refused = try await ClaudeBrain(provider: FailingProvider(error: BrainError.refused))
             .progress(steps: guideSteps, current: 1, packet: packet())
-        XCTAssertEqual(refused, GuideProgress(current: 1, target: nil))
+        XCTAssertEqual(refused, GuideProgress(current: 1, target: nil, checked: false))
         for (error, expected) in [(BrainError.badKey, BrainError.badKey), (BrainError.noKey, .noKey),
                                   (BrainError.rateLimited, .rateLimited), (URLError(.notConnectedToInternet), .network)] as [(Error, BrainError)] {
             do {
@@ -313,5 +333,54 @@ final class BrainAgentsTests: XCTestCase {
                 XCTAssertEqual(error as? BrainError, expected)
             }
         }
+    }
+
+    // MARK: PS.5, runaway looks
+
+    /// Fails the first `runaways` calls as the time cap does, then answers `reply`. Counts the calls.
+    final class RunawayProvider: ModelProvider, @unchecked Sendable {
+        private let lock = NSLock()
+        private var calls = 0
+        let runaways: Int
+        let reply: String
+        init(runaways: Int, reply: String) { (self.runaways, self.reply) = (runaways, reply) }
+        var made: Int { lock.withLock { calls } }
+
+        func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+            let n = lock.withLock { calls += 1; return calls }
+            return AsyncThrowingStream { continuation in
+                if n <= runaways { return continuation.finish(throwing: BrainError.runaway) }
+                continuation.yield(.text(reply))
+                continuation.yield(.stop("end_turn"))
+                continuation.finish()
+            }
+        }
+    }
+
+    func testTheLookIsCappedInTimeAndOutput() {
+        let request = Follower.request(steps: guideSteps, current: 0, packet: packet(), shot: nil)
+        XCTAssertEqual(request.timeLimit, Follower.timeLimit)
+        XCTAssertEqual(request.maxTokens, Follower.maxTokens)
+        XCTAssertLessThan(Follower.timeLimit, 4)  // the done-when: no look above 4 s
+        // The Guide's answer has no time cap: it streams to the card.
+        XCTAssertNil(Guide.request("q", packet: packet(), route: .guide, shot: nil).timeLimit)
+    }
+
+    func testARunawayLookIsRetriedOnce() async throws {
+        let once = RunawayProvider(runaways: 1, reply: #"{"step":2,"element":"e2","point":null}"#)
+        let result = try await ClaudeBrain(provider: once).progress(steps: guideSteps, current: 0, packet: packet())
+        XCTAssertEqual(result, GuideProgress(current: 1, target: .element("e2")))
+        XCTAssertEqual(once.made, 2)
+        // Two runaways: no third call, and no judgement, so the guide stays where it is.
+        let twice = RunawayProvider(runaways: 5, reply: "")
+        let stuck = try await ClaudeBrain(provider: twice).progress(steps: guideSteps, current: 1, packet: packet())
+        XCTAssertEqual(stuck, GuideProgress(current: 1, target: nil, checked: false))
+        XCTAssertEqual(twice.made, 2)
+        // An answer cut at the output cap is retried the same way.
+        let cut = FakeProvider(rounds: ["follower": [FakeProvider.Reply(pieces: [#"{"step":"#], stop: "max_tokens"),
+                                                     FakeProvider.Reply(pieces: [#"{"step":3,"element":null,"point":null}"#])]])
+        let later = try await ClaudeBrain(provider: cut).progress(steps: guideSteps, current: 1, packet: packet())
+        XCTAssertEqual(later, GuideProgress(current: 2, target: nil))
+        XCTAssertEqual(cut.requests.count, 2)
     }
 }

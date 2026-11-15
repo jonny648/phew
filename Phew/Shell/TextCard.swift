@@ -267,6 +267,7 @@ final class TextCard: EditPanel {
         case .network: "Phew couldn't reach Claude. Check your internet connection."
         case .refused: "Claude declined to answer this one."
         case .badOutput: "The answer came back garbled. Please ask again."
+        case .runaway: "Claude took too long to answer. Please ask again."
         case .failed(let status): "Something went wrong (error \(status)). Please ask again."
         case .noKey, .badKey: "Phew needs a working Claude API key."
         }

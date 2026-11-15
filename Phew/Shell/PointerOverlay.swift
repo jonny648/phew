@@ -97,8 +97,26 @@ final class PointerOverlay: NSPanel {
         fadeRing(in: true)
     }
 
+    /// The "looking" motion (PS.3): the pointer breathes from its tip while a look confirms the step a direct hit
+    /// moved on to. With Reduce Motion it fades in and out instead of growing.
+    func looking(_ on: Bool) {
+        guard on else { return pointer.removeAnimation(forKey: "looking") }
+        let still = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let pulse = CABasicAnimation(keyPath: still ? "opacity" : "transform.scale")
+        pulse.fromValue = 1
+        pulse.toValue = still ? 0.4 : 1.25
+        pulse.duration = 0.35
+        pulse.autoreverses = true
+        pulse.repeatCount = .infinity
+        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        pointer.add(pulse, forKey: "looking")
+    }
+
+    var isLooking: Bool { pointer.animation(forKey: "looking") != nil }
+
     /// Back to the menu bar, then off screen. The glide holds the overlay until it is over; then it is let go.
     func goHome() {
+        looking(false)
         moves += 1
         fadeRing(in: false)
         glide(from: pointer.presentation()?.position, to: screen.map(Self.home) ?? tip) { [self] in

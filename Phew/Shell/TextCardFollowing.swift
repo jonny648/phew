@@ -23,6 +23,10 @@ extension TextCard {
         switch event.type {
         case .leftMouseDown:
             ScreenWatch.shared.acted()
+            rule.pressed(at: NSEvent.mouseLocation)
+        case .leftMouseUp:
+            directHit()
+            userActed()
         case .scrollWheel:
             ScreenWatch.shared.acted()
             rule.scrolled(at: Date())
@@ -40,6 +44,19 @@ extension TextCard {
         ScreenWatch.shared.acted()
         guard let wait = rule.userActed(at: Date()) else { return }
         schedule(after: wait)
+    }
+
+    /// A release on the current step's target (PS.3). On a step that needs only a click, and not the last, the card
+    /// moves on at once and the pointer shows it is looking; the look that follows confirms it or steps back.
+    /// Internal for the debug check, which cannot click.
+    func directHit(at point: NSPoint = NSEvent.mouseLocation) {
+        let step = model.current
+        guard steps.indices.contains(step), targets.indices.contains(step),
+              rule.released(at: point, step: step, count: steps.count, click: steps[step].click, target: targets[step]) else { return }
+        model.current = step + 1
+        shellLog("guide: direct hit on step \(step + 1) of \(steps.count), on to step \(step + 2) before the look")
+        pointAtCurrentStep()
+        overlay?.looking(true)
     }
 
     /// Ties the current step's target to the element under its centre. Called whenever the pointer goes to a step.
@@ -88,8 +105,9 @@ extension TextCard {
         let since = rule.looks > 0 ? Int(now.timeIntervalSince(rule.lastStart) * 1000) : nil
         guard rule.startLook(at: now) else { return }
         watch.mark()
-        let from = model.current, steps = steps, look = rule.looks
-        shellLog("guide: look \(look) of \(FollowRule.ceiling) starts on step \(from + 1) of \(steps.count)\(since.map { ", \($0) ms after the last start" } ?? "")")
+        // After a direct hit the look judges from the step the hit left, so it can confirm it or step back.
+        let shown = model.current, from = rule.lookFrom(shown), steps = steps, look = rule.looks
+        shellLog("guide: look \(look) of \(FollowRule.ceiling) starts on step \(from + 1) of \(steps.count)\(from != shown ? ", confirming a direct hit" : "")\(since.map { ", \($0) ms after the last start" } ?? "")")
         let capture = Senses.capture()
         lookTask = Task { [weak self] in
             let packet = await capture.value
@@ -106,7 +124,7 @@ extension TextCard {
             lookTask = nil
             let kind = switch result.target { case .element: "element"; case .point: "point"; case nil: "none" }
             shellLog("guide: look \(look) ended, step \(from + 1) to \(result.current + 1) of \(steps.count), target \(kind), capture \(captureMS) ms, total \(Int(Date().timeIntervalSince(now) * 1000)) ms")
-            apply(result, from: from, packet: packet)
+            apply(result, shown: shown, packet: packet)
             guard actionMonitor != nil else { return }  // the guide is done, or stopped
             if let wait = rule.lookEnded(at: Date()) {
                 schedule(after: wait)
@@ -117,20 +135,25 @@ extension TextCard {
         }
     }
 
-    /// Moves the guide to what the look saw. Never moves the card.
-    private func apply(_ result: GuideProgress, from: Int, packet: ContextPacket?) {
-        // The student picked a step on the card during the look: their choice wins.
-        guard model.current == from else { return shellLog("guide: look result dropped, a step was picked on the card") }
-        let now = min(max(result.current, 0), targets.count)
-        guard now < targets.count else { return guideDone() }  // every step done: pointer home; an open thread stays
+    /// Moves the guide to what the look saw: on, or back to a step a direct hit left undone. Never moves the card.
+    private func apply(_ result: GuideProgress, shown: Int, packet: ContextPacket?) {
+        let outcome = rule.judged(result, shown: shown, now: model.current, count: targets.count)
+        guard outcome != .drop else { return shellLog("guide: look result dropped, the step changed during the look") }
+        overlay?.looking(false)
         let rect = Self.rect(for: result.target, in: packet)
-        if now == from {
+        switch outcome {
+        case .drop: return
+        case .done: return guideDone()  // every step done: pointer home; an open thread stays
+        case .stay:
             // No target: the check failed or nothing fits, so the pointer stays where it is.
-            guard let rect, rect != targets[now] else { return }
-        } else {
-            model.current = now
+            guard let rect, rect != targets[shown] else { return }
+            targets[shown] = rect
+        case .move(let step):
+            if step < shown { shellLog("guide: the look found step \(step + 1) not done, back to it") }
+            // Back to a step, its last known place stays when the look names none.
+            targets[step] = rect ?? (step < shown ? targets[step] : nil)
+            model.current = step
         }
-        targets[now] = rect
         pointAtCurrentStep()
     }
 
@@ -153,6 +176,7 @@ extension TextCard {
         lookTask?.cancel()  // the Brain then cancels its request; the packet goes with the task
         lookTask = nil
         Self.anchor = nil
+        overlay?.looking(false)
         ScreenWatch.shared.stop("following stopped")  // its frames go with it
     }
 }

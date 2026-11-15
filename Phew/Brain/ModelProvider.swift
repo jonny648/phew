@@ -52,6 +52,9 @@ struct ModelRequest: Sendable {
     /// Interactive overlay: time to the first word matters more than depth.
     var effort = "low"
     var maxTokens: Int
+    /// Hard cap on the whole call, from sending to the last word. Over it the call is cancelled and fails with
+    /// `BrainError.runaway`. Nil: no cap.
+    var timeLimit: TimeInterval? = nil
     /// Earlier questions and answers of this conversation, text only: never an earlier screen text or picture.
     var earlier: [Turn] = []
     /// Tool rounds, append-only: the model's reply exactly as received, then the user turn with the tool results.

@@ -117,6 +117,8 @@ enum WindowReader {
     /// During a guide: the element of app `pid` at `point` (Accessibility coordinates), so the pointer can follow it
     /// when the content scrolls. Nothing of it is read here; `frame(of:)` reads its frame only, never its text.
     static func element(at point: CGPoint, pid: pid_t) -> AXUIElement? {
+        // No element of a never-read app: the pointer then has no anchor, and no frame of it is read on scroll.
+        guard !NeverReadList.shared.contains(NSRunningApplication(processIdentifier: pid)?.bundleIdentifier) else { return nil }
         var hit: AXUIElement?
         guard AXUIElementCopyElementAtPosition(AXUIElementCreateApplication(pid), Float(point.x), Float(point.y), &hit) == .success,
               let hit else { return nil }

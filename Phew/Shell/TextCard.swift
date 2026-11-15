@@ -104,6 +104,7 @@ final class TextCard: EditPanel {
                 // A fast typist can press Return before the first capture in an app is ready (about 1 s).
                 let packet = await capture?.value
                 guard !Task.isCancelled else { return }
+                if let packet, packet.neverRead { self?.model.note = CardModel.neverReadNote(packet.appName) }
                 for try await event in brain.answer(question, packet: packet) {
                     self?.model.apply(event)
                     if case .steps(let steps) = event, !steps.isEmpty {
@@ -288,6 +289,8 @@ final class CardModel: ObservableObject {
     /// The step being guided, emphasized on the card.
     @Published var current = 0
     @Published var problem: String?
+    /// One grey line above the answer: the app is on the never-read list, so its screen was not read.
+    @Published var note: String?
     /// The earlier turns, oldest first. Shown only when the thread is open.
     @Published var history: [Exchange] = []
     /// The thread is open: wider, with the reply field.
@@ -316,11 +319,15 @@ final class CardModel: ObservableObject {
         }
         started = true
         self.question = question
-        thinking = true; text = ""; steps = []; current = 0; problem = nil; pieces = 0
+        thinking = true; text = ""; steps = []; current = 0; problem = nil; note = nil; pieces = 0
+    }
+
+    static func neverReadNote(_ app: String) -> String {
+        "\(app.isEmpty ? "This app" : app) is on your Never read list, so Phew did not look at the screen."
     }
 
     func reset() {
-        question = ""; thinking = true; text = ""; steps = []; current = 0; problem = nil; pieces = 0
+        question = ""; thinking = true; text = ""; steps = []; current = 0; problem = nil; note = nil; pieces = 0
         history = []; open = false; draft = ""; queued = false; started = false
     }
 }
@@ -424,6 +431,7 @@ private struct CardView: View {
 
     /// The turn being answered: thinking, the words as they arrive, the step lines, or what went wrong.
     @ViewBuilder private var turn: some View {
+        if let note = model.note { Text(verbatim: note).font(.footnote).foregroundStyle(.secondary) }
         if model.thinking && model.problem == nil {
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)

@@ -25,6 +25,9 @@ struct ContextPacket: Codable {
     /// The open document's file path or page address, when the app gives one (`WindowReader.documentPath`).
     /// A label for project detection (docs/05-map.md 5.11), not capture: the Map may keep it.
     var documentPath: String? = nil
+    /// The app is on the user's "Never read this app" list (`NeverReadList`): nothing of its screen was read, and
+    /// every field but the app's name and bundle id is empty.
+    var neverRead = false
 
     private enum CodingKeys: String, CodingKey {
         case appName, bundleID, windowTitle, documentPath, visibleText, cursor, windowFrame, pointables, mouse, screenshotFrame

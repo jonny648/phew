@@ -8,10 +8,15 @@ enum Senses {
     /// the window walk and the screenshot run in the returned task.
     /// `app` defaults to the front app; the debug self-check may name another running app.
     @MainActor
-    static func capture(app: NSRunningApplication? = nil) -> Task<ContextPacket?, Never> {
+    static func capture(app: NSRunningApplication? = nil, list: NeverReadList = .shared) -> Task<ContextPacket?, Never> {
         let start = Date()
         guard let app = app ?? NSWorkspace.shared.frontmostApplication else { return Task { nil } }
         let pid = app.processIdentifier, name = app.localizedName ?? "", bundleID = app.bundleIdentifier ?? "unknown"
+        // Before any read: an app on the never-read list gives no window text, no cursor element and no picture.
+        if let packet = list.packet(appName: name, bundleID: bundleID) {
+            shellLog("capture skipped: app on the never-read list")
+            return Task { packet.filtered() }
+        }
         let (cursor, point) = WindowReader.elementUnderCursor(pid: pid)
         let cursorMS = ms(since: start)
 

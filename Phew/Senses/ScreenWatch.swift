@@ -27,20 +27,28 @@ final class ScreenWatch: NSObject, SCStreamOutput, SCStreamDelegate {
     private var frames = WatchFrames()
     private let queue = DispatchQueue(label: "Phew.ScreenWatch")
     private let screen: Bool
+    private let list: NeverReadList
+    /// The front app's bundle id, read at each start.
+    private let front: () -> String?
     #if DEBUG
     /// The guide check's follow cases: every look goes ahead, as before the watch.
     var seesEveryChange = false
     #endif
 
     /// `screen` false streams nothing (tests): no change can be seen, so every look goes ahead.
-    init(screen: Bool = true) {
+    init(screen: Bool = true, list: NeverReadList = .shared,
+         front: @escaping () -> String? = { NSWorkspace.shared.frontmostApplication?.bundleIdentifier }) {
         self.screen = screen
+        self.list = list
+        self.front = front
     }
 
     /// `markFirst`: the first frames are what the first look is compared with (a guide's start). After an idle stop
     /// the action came before any frame, so there is nothing to compare with and the next look goes ahead.
     func start(markFirst: Bool) {
         guard !running else { return }
+        // Never while an app on the never-read list is in front; an action in another app starts it again.
+        guard !list.contains(front()) else { return shellLog("watch: not started, front app on the never-read list") }
         running = true
         generation += 1
         lastAction = Date()
@@ -58,7 +66,9 @@ final class ScreenWatch: NSObject, SCStreamOutput, SCStreamDelegate {
             let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
             guard let self, generation == started else { return }
             guard let content, !content.displays.isEmpty else { return blind("no display to watch") }
-            let phew = content.applications.filter { $0.processID == getpid() }
+            // Phew's windows, and every never-read app's: the watch does not see them even when they come in front.
+            // shortcut: an app on the list launched after the watch started is seen until the next start; update the filter if that matters.
+            let hidden = content.applications.filter { $0.processID == getpid() || self.list.contains($0.bundleIdentifier) }
             for display in content.displays {
                 let config = SCStreamConfiguration()
                 config.width = max(display.width / Self.scale, 1)
@@ -67,7 +77,7 @@ final class ScreenWatch: NSObject, SCStreamOutput, SCStreamDelegate {
                 config.showsCursor = false
                 config.queueDepth = 3
                 config.pixelFormat = kCVPixelFormatType_32BGRA
-                let filter = SCContentFilter(display: display, excludingApplications: phew, exceptingWindows: [])
+                let filter = SCContentFilter(display: display, excludingApplications: hidden, exceptingWindows: [])
                 let stream = SCStream(filter: filter, configuration: config, delegate: self)
                 do {
                     try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)

@@ -4,29 +4,23 @@ import os
 @main
 struct PhewApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @ObservedObject private var shell = Shell.shared
 
     // No main window (hard rule): the menu bar item is the only scene.
     var body: some Scene {
         MenuBarExtra {
-            Button(shell.paused ? "Resume" : "Pause") { shell.paused.toggle() }
             Button("API Key…") { delegate.keyWindow.show() }
             Button("Recently deleted…") { delegate.showRecentlyDeleted() }
             Button("Export the Map…") { delegate.showExport() }
+            Button("Never read this app") { delegate.neverReadFrontApp() }
+            Button("Never-read apps…") { delegate.showNeverRead() }
             Divider()
             Button("About and licences") { delegate.menuPanel.show(title: "About Phew", AboutView()) }
             Button("Quit Phew") { NSApp.terminate(nil) }
         } label: {
-            Image(systemName: shell.paused ? "pause.circle" : "cursorarrow.rays")
-                .accessibilityLabel(shell.paused ? "Phew, paused" : "Phew")
+            Image(systemName: "cursorarrow.rays")
+                .accessibilityLabel("Phew")
         }
     }
-}
-
-final class Shell: ObservableObject {
-    static let shared = Shell()
-    /// While paused the shortcut does nothing.
-    @Published var paused = false
 }
 
 @MainActor
@@ -36,7 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let panel = InputPanel()
     let card = TextCard()
     let keyWindow = KeyWindow()
-    /// Recently deleted, Export the Map or About: one small panel at a time.
+    /// Recently deleted, Export the Map, Never read or About: one small panel at a time.
     let menuPanel = MenuPanel()
     private let permissions = PermissionsWindow()
     /// The context read at the shortcut, kept only until the question is asked or the panel closes without one.
@@ -68,9 +62,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuPanel.show(title: "Export the Map", ExportView(exporter: MapExporter(brain: brain)))
     }
 
+    /// Adds the app in front (opening the menu bar menu does not take the front from it), then shows the list.
+    func neverReadFrontApp() {
+        if let app = NSWorkspace.shared.frontmostApplication, app != .current, let bundleID = app.bundleIdentifier {
+            NeverReadList.shared.add(name: app.localizedName ?? bundleID, bundleID: bundleID)
+        }
+        showNeverRead()
+    }
+
+    func showNeverRead() {
+        menuPanel.show(title: "Never read", NeverReadView(model: NeverReadModel()))
+    }
+
     private func shortcut() {
-        // Paused, or the panel is already open (a second capture would read Phew's own panel).
-        guard !Shell.shared.paused, !panel.isVisible else { return }
+        // The panel is already open: a second capture would read Phew's own panel.
+        guard !panel.isVisible else { return }
         // 3.10: while a conversation is open the shortcut goes back to its reply field; no second card.
         if card.isVisible && card.model.open { return card.shortcutPressed() }
         card.dismiss()  // off screen first, so the capture reads the user's app and not the card

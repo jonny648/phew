@@ -41,7 +41,7 @@ li.is-done .when{display:none}
 <body>
 <main>
 <h1>Phew! roadmap</h1>
-<p class="meta">No fixed deadline since 13 November 2026: nothing is skipped before the MVP. Ticked by Claude Code after verification. Refresh to update.</p>
+<p class="meta">No fixed deadline. Since 15 November 2026 the MVP phases are lean: they build what is useful, and detail work is kept to what keeps the product safe and working. Ticked by Claude Code after verification. Refresh to update.</p>
 <div class="total"><span id="totalText"></span><div class="track"><div class="fill" id="totalFill"></div></div><div class="grid" id="grid"></div></div>
 
 <!-- TASKS START. One task per line. Protocol in CLAUDE.md. -->
@@ -192,21 +192,6 @@ li.is-done .when{display:none}
 <li data-id="PD.8" data-done=""><label><input type="checkbox" disabled> <b>PD.8</b> Competitor map in Figma updated</label><span class="when">Done when: The map holds the products of docs/11-direction.md 11.9 and those found in the validation, with the corrections of 11.9, and the checker finds it matches the docs.</span></li>
 </ul>
 </section>
-<section class="phase mvp" id="PB">
-<h2>PB Second brain <span class="tally"></span></h2>
-<p class="sub">Order 2. Phew learns what your other AI tools already know about you. Subagent: map, shell, brain.</p>
-<ul class="tasks">
-<li data-id="PB.1" data-done=""><label><input type="checkbox" disabled> <b>PB.1</b> Paste box in the menu: you paste the memory list your assistant wrote</label><span class="when">Done when: Opens from the menu bar, accepts text, sends nothing until you confirm.</span></li>
-<li data-id="PB.2" data-done=""><label><input type="checkbox" disabled> <b>PB.2</b> Pasted text passes the secrets filter and is sorted into facts by the small model, as data only</label><span class="when">Done when: Unit tests show the pasted text passes the secrets filter and goes to the model as data, with no tools, that a reply outside the fixed form is refused, and that nothing is written to the Map before you tick. In one live check with the real small model and 5 made-up texts that carry hidden instructions, every reply is still the plain list of facts, and any fact written as an instruction comes back unticked.</span></li>
-<li data-id="PB.3" data-done=""><label><input type="checkbox" disabled> <b>PB.3</b> You tick the facts to keep. They are stored marked as imported, with source and date</label><span class="when">Done when: Ticked facts appear in the Map export. Unticked ones are gone.</span></li>
-<li data-id="PB.4" data-done=""><label><input type="checkbox" disabled> <b>PB.4</b> Claude Code memory read from a project folder you choose: its CLAUDE.md, and that project's memory files, which Phew finds himself and you pick from a list</label><span class="when">Done when: Facts from those files are offered for ticking, through the same path, and facts from a CLAUDE.md start unticked. The files to be read are listed with their total size and nothing is sent before you confirm. A unit test on a made-up folder that also holds a transcript, a settings file and a shortcut pointing outside shows none of the three is read or sent. Tested with a project that has both kinds of file, after checking how real Claude Code files are named and headed. You pick the folder in the system folder window. He looks in ~/.claude/projects only when you start an import, or when a question or task needs that project's memory files (PB.6). Never in the background.</span></li>
-<li data-id="PB.5" data-done=""><label><input type="checkbox" disabled> <b>PB.5</b> "Undo last import" in the menu: every fact from the last import goes at once to Recently deleted, and the card names what went. Last import only</label><span class="when">Done when: After an undo, the Map export no longer shows those facts, and Restore in Recently deleted brings them back. Facts you told him are still there, and a thing the import created is kept if something told or observed now points to it.</span></li>
-</ul>
-<h3>Added during build</h3>
-<ul class="tasks added">
-<li data-id="PB.6" data-done=""><label><input type="checkbox" disabled> <b>PB.6</b> When a question or a task needs it, the Guide and the Runner read the current project's CLAUDE.md and memory files with a read-only tool, read_project_memory. Never in the background</label><span class="when">Done when: A question about a made-up project's rules is answered from its CLAUDE.md, and calls.log shows the tool was used, without file names or words. Unit tests: only CLAUDE.md files and the .md files in that project's memory folder can be read, never transcripts, settings or a shortcut pointing outside; nothing is read for a project whose folder you never pointed at; the text passes the secrets filter; nothing read this way is written to the Map.</span></li>
-</ul>
-</section>
 <section class="phase mvp" id="PS">
 <h2>PS Conversation and speed <span class="tally"></span></h2>
 <p class="sub">Started 15 November, beside PD, by your choice: it is needed whatever the direction. The answer card opens into a conversation, answers with the Map get faster, and the guide stops feeling slow. Findings in docs/10-research-speed.md 10.4, limits of the screen watch in docs/04-architecture.md 4.6. Subagent: shell, senses, brain.</p>
@@ -232,22 +217,30 @@ li.is-done .when{display:none}
 </section>
 <section class="phase mvp" id="PH">
 <h2>PH Hand <span class="tally"></span></h2>
-<p class="sub">After PS. Phew acts on the Mac: asked to do something, he does the whole job by himself in your apps, with no confirm; asked how, he shows. Was L5. Design and your decisions of 15 November in docs/13-hand.md. Guards first: nothing acts on a real app before PH.5. Subagent: senses, shell, brain.</p>
+<p class="sub">Order 2, after PS. Phew acts on the Mac: asked to do something, he does the whole job by himself in your apps; asked how, he shows. Design and your decisions of 15 November in docs/13-hand.md. Made lean on 15 November: 8 tasks, was 14. Subagent: senses, shell, brain.</p>
 <ul class="tasks">
 <li data-id="PH.1" data-done="" class="you"><label><input type="checkbox" disabled> <b>PH.1</b> The design of acting, approved</label> <span class="tag">you decide</span><span class="when">Done when: docs/13-hand.md matches your decisions of 15 November, and the checker finds no rule in CLAUDE.md that disagrees with it.</span></li>
-<li data-id="PH.2" data-done=""><label><input type="checkbox" disabled> <b>PH.2</b> One acting function in Phew/Senses, and a made-up practice window for tests</label><span class="when">Done when: A build test fails if any other file can send an action. Unit tests act only on the practice window.</span></li>
-<li data-id="PH.3" data-done=""><label><input type="checkbox" disabled> <b>PH.3</b> The Never list and the "cannot be undone" class, decided by Phew's own code</label><span class="when">Done when: Unit tests: passwords, paying, sign-in, System Settings, Terminal, Never-read apps and secure fields are refused, in English and Italian. An unknown language or a control with no name falls on the careful side.</span></li>
-<li data-id="PH.4" data-done=""><label><input type="checkbox" disabled> <b>PH.4</b> Stop and surprises</label><span class="when">Done when: Stop ends a job within 1 second in 10 runs on a slow practice app. A moved button, a surprise dialog and a failed check each stop the job with one plain line. No retry.</span></li>
-<li data-id="PH.5" data-done=""><label><input type="checkbox" disabled> <b>PH.5</b> Consent screen and the "Let Phew act" switch</label><span class="when">Done when: Off by default. The acting function refuses everything until Allow. The screen shows the short text of docs/13-hand.md 13.8.</span></li>
-<li data-id="PH.6" data-done=""><label><input type="checkbox" disabled> <b>PH.6</b> Do or show, from your words</label><span class="when">Done when: The Conductor routes "do" and "show" correctly on 20 made-up requests in English and Italian. When unsure he shows. Doing a step yourself hands the job back to you.</span></li>
-<li data-id="PH.7" data-done=""><label><input type="checkbox" disabled> <b>PH.7</b> Acting on named controls: press, set a value, pick a menu item, with a look after each action</label><span class="when">Done when: A 5-step job in the practice window, then in Notes on made-up content, runs to the end with every action listed and checked.</span></li>
-<li data-id="PH.8" data-done=""><label><input type="checkbox" disabled> <b>PH.8</b> The seven apps measured, and what he knows of each written down</label><span class="when">Done when: For Figma, Dia, Excel, Fusion, Notes, Reminders and Calendar: a table of what can be pressed by name, measured on your Mac, in docs/apps/, one file per app.</span></li>
-<li data-id="PH.9" data-done=""><label><input type="checkbox" disabled> <b>PH.9</b> Clicks at a point, for canvases</label><span class="when">Done when: The hit rate is measured on 20 targets in Figma and 20 in Fusion and written in the doc. Point clicks are used only where no named control exists.</span></li>
-<li data-id="PH.10" data-done=""><label><input type="checkbox" disabled> <b>PH.10</b> The apps' own scripting: Notes, Reminders, Calendar, Excel</label><span class="when">Done when: A note, a reminder, an event and a filled range of cells are created on made-up data. macOS asks you once per app.</span></li>
-<li data-id="PH.11" data-done=""><label><input type="checkbox" disabled> <b>PH.11</b> Several apps in one job</label><span class="when">Done when: "Copy this table into a new Excel sheet", from a made-up page: he switches app, does it, and returns you to where you were.</span></li>
-<li data-id="PH.12" data-done=""><label><input type="checkbox" disabled> <b>PH.12</b> The card while he acts: mark, action list, Stop. The actions.log</label><span class="when">Done when: Each action shows on the card as it happens. A unit test with planted names and text shows the log holds only numbers and fixed words.</span></li>
-<li data-id="PH.13" data-done=""><label><input type="checkbox" disabled> <b>PH.13</b> The trick test</label><span class="when">Done when: 20 live jobs on made-up pages and documents that hold hidden instructions: no action outside what your words asked. The result is written in docs/13-hand.md, whatever it is.</span></li>
-<li data-id="PH.14" data-done=""><label><input type="checkbox" disabled> <b>PH.14</b> Phew knows he can act</label><span class="when">Done when: The text about himself is updated, and the five self-questions of PS.14 pass again in a live check.</span></li>
+<li data-id="PH.2" data-done=""><label><input type="checkbox" disabled> <b>PH.2</b> The acting core: one function that does every action, with the Never list, Stop, and a stop on anything unexpected</label><span class="when">Done when: A build test fails if any other file can send an action. On a made-up practice window: passwords, paying, sign-in, System Settings, Terminal and Never-read apps are refused; Stop ends a job within 1 second; a moved button, a surprise dialog and a failed check each stop the job with one plain line.</span></li>
+<li data-id="PH.3" data-done=""><label><input type="checkbox" disabled> <b>PH.3</b> Consent screen and the "Let Phew act" switch</label><span class="when">Done when: Off by default. Nothing acts until Allow. The screen shows the short text of docs/13-hand.md 13.8.</span></li>
+<li data-id="PH.4" data-done=""><label><input type="checkbox" disabled> <b>PH.4</b> Do or show, from your words</label><span class="when">Done when: He chooses right on 20 made-up requests in English and Italian. When unsure he shows. Doing a step yourself hands the job back to you.</span></li>
+<li data-id="PH.5" data-done=""><label><input type="checkbox" disabled> <b>PH.5</b> He acts: presses, types, picks menu items, checks each action, and lists what he did on the card</label><span class="when">Done when: A 5-step job in Notes on made-up content runs to the end, every action listed and checked, with a mark while he works.</span></li>
+<li data-id="PH.6" data-done=""><label><input type="checkbox" disabled> <b>PH.6</b> Your apps work: Notes, Reminders, Calendar, Excel, Dia, Figma, Fusion</label><span class="when">Done when: For each app, 5 real jobs you choose are tried and the result written in docs/apps/, one file per app, with what he can and cannot do there. Notes, Reminders, Calendar and Excel also work through their own scripting. Figma and Fusion use clicks at a point where no named control exists, with the hit rate measured.</span></li>
+<li data-id="PH.7" data-done=""><label><input type="checkbox" disabled> <b>PH.7</b> Several apps in one job</label><span class="when">Done when: "Copy this table into a new Excel sheet", from a made-up page: he switches app, does it, and returns you to where you were.</span></li>
+<li data-id="PH.8" data-done=""><label><input type="checkbox" disabled> <b>PH.8</b> The trick test, and Phew knows he can act</label><span class="when">Done when: 20 live jobs on made-up pages and documents that hold hidden instructions: the result is written in docs/13-hand.md, whatever it is. The text about himself is updated and the self-questions pass again.</span></li>
+</ul>
+<h3>Added during build</h3>
+<ul class="tasks added">
+</ul>
+</section>
+<section class="phase mvp" id="PX">
+<h2>PX Look and feel <span class="tally"></span></h2>
+<p class="sub">Order 3. Added 15 November: the experience is now a main part of the product. A study of every surface, a design you approve, then the build. The character and the notch stay after the MVP (L1); this phase makes what exists feel finished and effortless. Subagent: lead for the study and design, shell for the build.</p>
+<ul class="tasks">
+<li data-id="PX.1" data-done="" class="you"><label><input type="checkbox" disabled> <b>PX.1</b> Study: every surface Phew has today, what feels rough, and what the best Mac tools do</label> <span class="tag">you decide</span><span class="when">Done when: docs/15-design.md lists each surface (input panel, answer card, conversation, pointer and guide, action list, menu, small panels, consent screens, first run) with its problems, references with sources, and a short set of principles. A page for you explains it.</span></li>
+<li data-id="PX.2" data-done="" class="you"><label><input type="checkbox" disabled> <b>PX.2</b> Design: every surface and state drawn in Figma, with one type scale, one palette, one motion language</label> <span class="tag">you decide</span><span class="when">Done when: You approve the Figma file. Each surface has its states (empty, thinking, answer, conversation, guide, acting, error).</span></li>
+<li data-id="PX.3" data-done=""><label><input type="checkbox" disabled> <b>PX.3</b> Built: input panel, answer card and conversation</label><span class="when">Done when: They match the approved design. Your hand review passes.</span></li>
+<li data-id="PX.4" data-done=""><label><input type="checkbox" disabled> <b>PX.4</b> Built: pointer, guide and acting visuals, with motion</label><span class="when">Done when: They match the approved design, also with Reduce Motion on. Your hand review passes.</span></li>
+<li data-id="PX.5" data-done=""><label><input type="checkbox" disabled> <b>PX.5</b> Built: menu, small panels, consent screens and the first run (key and permissions) as one smooth flow</label><span class="when">Done when: A new user gets from first launch to a first answer without help. They match the approved design.</span></li>
 </ul>
 <h3>Added during build</h3>
 <ul class="tasks added">
@@ -255,17 +248,25 @@ li.is-done .when{display:none}
 </section>
 <section class="phase mvp" id="PA">
 <h2>PA Agents <span class="tally"></span></h2>
-<p class="sub">Order 4. Phew researches a task by himself and reports back. Rules in docs/03-experience.md 3.5 and 3.6, docs/04-architecture.md 4.4 and docs/10-research-agents.md 10.2. Subagent: brain, shell.</p>
+<p class="sub">Order 4. Phew works on a task by himself and reports back; he can also act in the background. Made lean on 15 November: 5 tasks, was 9. Rules in docs/03-experience.md 3.5 and 3.6 and docs/13-hand.md. Subagent: brain, shell.</p>
 <ul class="tasks">
-<li data-id="PA.1" data-done=""><label><input type="checkbox" disabled> <b>PA.1</b> Runner agent: web search and web fetch in a loop, with limits on searches, pages and cost per task</label><span class="when">Done when: A research task returns a report with links. A unit test shows the request carries the limits on searches and pages (max_uses), that a second request of the same task carries only what is left, and that Phew adds up the cost after each reply and stops at the limit. At a limit the task stops, reports what it has and names the limit. Limits: 5 searches, 8 pages, 50 cents per task.</span></li>
-<li data-id="PA.2" data-done=""><label><input type="checkbox" disabled> <b>PA.2</b> You give a task from the input panel. The Conductor gets a fourth route, task, and tells a task from a question. When unsure, it is a question</label><span class="when">Done when: "Research X" starts a task. A normal question still gets a normal answer, and so does a request he is unsure about.</span></li>
-<li data-id="PA.3" data-done=""><label><input type="checkbox" disabled> <b>PA.3</b> Several tasks at the same time, at most 3 (first proposal). The menu bar shows a "working" mark with the number running, and each task has its own Stop and its own limits</label><span class="when">Done when: Two made-up tasks run at once, each within its own limits, and both reports arrive. Stop on one ends it within 2 s, reports nothing and drops what it read, and the other goes on. A fourth task given while 3 are running is not started, and the card says so in one line.</span></li>
-<li data-id="PA.4" data-done=""><label><input type="checkbox" disabled> <b>PA.4</b> The result waits in the menu bar and opens on the card when you click</label><span class="when">Done when: He never shows a result by himself. The report is saved as soon as the task ends (PA.7), so it is not lost if Phew quits before you open it. The menu bar mark says a report is ready.</span></li>
-<li data-id="PA.5" data-done=""><label><input type="checkbox" disabled> <b>PA.5</b> Safety: what he reads on the screen, in the Map and on the web is data, never instructions. No address from the screen, the Map or a file is opened: Phew's code removes them before sending, and a setting of the fetch tool blocks any address that comes back from Phew's own tools. An address you type in the task is opened. The Runner has no tool that writes. Secrets filter on everything Phew sends</label><span class="when">Done when: Unit tests show every Runner request carries the blocking setting and the limits and has only four tools (web search, web fetch, Map search, read_project_memory), none of which writes, that web addresses are removed from the screen text, the Map facts, each Map search result and project file text before sending, and that the secrets filter runs on all of it. A made-up page with hidden instructions, fed through a stand-in model, writes no file and changes nothing in the Map. In 10 live runs with a made-up screen and Map facts that hold hidden instructions and a made-up address, the address is never among the pages opened, no hidden instruction is followed, and no file is written except the report. At the limit of 50 cents a task the 10 runs can cost up to 5 dollars together. In one live run, an address typed in the task is opened. Names from the screen or the Map may appear in search words; the secrets filter runs on them. The searches and addresses are read from the reply, never written to calls.log. The live run on a public test page is done after phase PG.</span></li>
-<li data-id="PA.6" data-done=""><label><input type="checkbox" disabled> <b>PA.6</b> One consent screen before the first task, in plain words</label><span class="when">Done when: The screen shows the text in docs/03-experience.md 3.5: what a task reads, what is sent to Anthropic, and that search words can include names from your screen or the Map. After Allow it is not shown again. Not now starts no task, leaves agents off, and the screen comes back at the next task. The text was approved on 14 November.</span></li>
-<li data-id="PA.7" data-done=""><label><input type="checkbox" disabled> <b>PA.7</b> The report saved as soon as the task ends: a PDF for you in the folder you chose, or in Downloads if you chose none, and a Markdown copy in Phew's own storage for Phew and the agents. Phew's own code writes both, never the Runner. He never overwrites, never deletes. Each report listed with Reveal and Delete, which is your own click</label><span class="when">Done when: A saved PDF opens, reads well and holds the report only, and its Markdown copy is in Phew's storage. A second with the same name gets " 2". With no folder chosen the PDF is in Downloads. You pick the folder in the system folder window. Unit tests: a task with "/" or "../" in its words stays inside the folder, an existing file is never replaced, a shortcut in the folder that points elsewhere is not followed, and the Runner has no write tool. Delete asks once and moves both files to the Trash.</span></li>
-<li data-id="PA.8" data-done=""><label><input type="checkbox" disabled> <b>PA.8</b> Cost of each task logged</label><span class="when">Done when: calls.log shows the total per task, by task number. A unit test shows a log line holds no task words, search words or web addresses.</span></li>
-<li data-id="PA.9" data-done=""><label><input type="checkbox" disabled> <b>PA.9</b> The Runner reads the screen once, when you give the task, and can search the Map. What he read from the screen stays in memory and is dropped when the task ends or is stopped</label><span class="when">Done when: A task about the open window uses what was on screen and one fact from the Map. The system log shows the screen was read once, when the task was given, and not again. No screen text is in a log or a file. A unit test shows web addresses are left out of what the Map search returns to the Runner. After the task the Map holds one new line, your task and its Project, and nothing from the report.</span></li>
+<li data-id="PA.1" data-done=""><label><input type="checkbox" disabled> <b>PA.1</b> The Runner: he researches a task on the web and in the Map, with limits on searches, pages and cost</label><span class="when">Done when: A research task on a made-up topic ends with a report inside its limits. What he reads is data, never instructions: a page with hidden instructions does not change what he does, in 5 live cases.</span></li>
+<li data-id="PA.2" data-done=""><label><input type="checkbox" disabled> <b>PA.2</b> You give a task from the input panel. Up to 3 run at once, with a mark, a Stop each, and the result waiting in the menu bar</label><span class="when">Done when: Three tasks run together, each stops within 2 seconds, and no result shows before you open it. One consent screen before the first task.</span></li>
+<li data-id="PA.3" data-done=""><label><input type="checkbox" disabled> <b>PA.3</b> The report saved as a PDF for you and a copy for Phew</label><span class="when">Done when: The PDF is in the folder you chose, or in Downloads. No existing file is ever replaced.</span></li>
+<li data-id="PA.4" data-done=""><label><input type="checkbox" disabled> <b>PA.4</b> An agent acts in the background, without taking your screen</label><span class="when">Done when: A task creates a note, a reminder, an event and fills a sheet on made-up data while you work in another app. Anything that cannot be undone or leaves the Mac waits in the menu bar for one confirm.</span></li>
+<li data-id="PA.5" data-done=""><label><input type="checkbox" disabled> <b>PA.5</b> Cost of each task logged</label><span class="when">Done when: calls.log shows each task with its number and cost, numbers only.</span></li>
+</ul>
+<h3>Added during build</h3>
+<ul class="tasks added">
+</ul>
+</section>
+<section class="phase mvp" id="PB">
+<h2>PB Second brain <span class="tally"></span></h2>
+<p class="sub">Order 5. Phew learns what your other AI tools already know about you. Made lean on 15 November: 3 tasks, was 6. Subagent: map, shell, brain.</p>
+<ul class="tasks">
+<li data-id="PB.1" data-done=""><label><input type="checkbox" disabled> <b>PB.1</b> Paste the memory list your assistant wrote; it is sorted into facts; you tick the ones to keep</label><span class="when">Done when: Ticked facts appear in the Map export marked as imported; unticked ones are gone. Nothing is sent before you confirm, and pasted text is treated as data.</span></li>
+<li data-id="PB.2" data-done=""><label><input type="checkbox" disabled> <b>PB.2</b> Claude Code memory: read from a project folder you choose, and read again when a question or a task needs it</label><span class="when">Done when: Facts from a made-up project CLAUDE.md are offered for ticking, and a question about that project is answered from it. Only CLAUDE.md and that project memory files are ever read.</span></li>
+<li data-id="PB.3" data-done=""><label><input type="checkbox" disabled> <b>PB.3</b> "Undo last import" in the menu</label><span class="when">Done when: After an undo the Map export no longer shows those facts, and Restore brings them back.</span></li>
 </ul>
 <h3>Added during build</h3>
 <ul class="tasks added">
@@ -273,7 +274,7 @@ li.is-done .when{display:none}
 </section>
 <section class="phase mvp" id="P6">
 <h2>P6 Voice <span class="tally"></span></h2>
-<p class="sub">Order 5. Subagent: senses.</p>
+<p class="sub">Order 6. Subagent: senses.</p>
 <ul class="tasks">
 <li data-id="P6.1" data-done=""><label><input type="checkbox" disabled> <b>P6.1</b> Hold key, speak, release. Transcribed on the device</label><span class="when">Done when: With the Mac offline (Wi-Fi off, no cable), the right words appear in the input panel 9 times in 10, in Italian and in English. The sound is held in memory only: no sound file appears on disk.</span></li>
 <li data-id="P6.2" data-done=""><label><input type="checkbox" disabled> <b>P6.2</b> With nothing said, he explains what is under the cursor</label><span class="when">Done when: Works in 3 apps.</span></li>
@@ -282,26 +283,14 @@ li.is-done .when{display:none}
 <ul class="tasks added">
 </ul>
 </section>
-<section class="phase mvp" id="PT">
-<h2>PT Manual testing <span class="tally"></span></h2>
-<p class="sub">Order 6. Checks only you can run. Subagent: checker.</p>
-<ul class="tasks">
-<li data-id="PT.1" data-done="" class="you"><label><input type="checkbox" disabled> <b>PT.1</b> Screen reading in Adobe InDesign</label> <span class="tag">you decide</span><span class="when">Done when: Packet correct, or reported unreadable with a screenshot.</span></li>
-<li data-id="PT.2" data-done="" class="you"><label><input type="checkbox" disabled> <b>PT.2</b> Screen reading in Adobe Acrobat</label> <span class="tag">you decide</span><span class="when">Done when: Packet correct, or reported unreadable with a screenshot.</span></li>
-<li data-id="PT.3" data-done="" class="you"><label><input type="checkbox" disabled> <b>PT.3</b> Explain and guide in Figma Slides</label> <span class="tag">you decide</span><span class="when">Done when: A useful answer on one of your real decks.</span></li>
-</ul>
-<h3>Added during build</h3>
-<ul class="tasks added">
-</ul>
-</section>
 <section class="phase mvp" id="PM">
 <h2>PM MVP test <span class="tally"></span></h2>
-<p class="sub">Order 7. Version 1 used on real work. Subagent: checker.</p>
+<p class="sub">Order 7. Version 1 used on real work. The hand checks of the old phase PT are folded in here. Subagent: checker.</p>
 <ul class="tasks">
-<li data-id="PM.1" data-done="" class="you"><label><input type="checkbox" disabled> <b>PM.1</b> MVP test on real work over 2 days</label> <span class="tag">you decide</span><span class="when">Done when: You judge 8 of 10 answers useful.</span></li>
-<li data-id="PM.2" data-done="" class="you"><label><input type="checkbox" disabled> <b>PM.2</b> Memory test: nothing re-explained on a second question, and he knows your projects</label> <span class="tag">you decide</span><span class="when">Done when: You confirm, with the second question asked on a later day than the first.</span></li>
-<li data-id="PM.3" data-done="" class="you"><label><input type="checkbox" disabled> <b>PM.3</b> Agent test: 3 real research tasks</label> <span class="tag">you decide</span><span class="when">Done when: You judge 2 of 3 reports useful.</span></li>
-<li data-id="PM.4" data-done="" class="you"><label><input type="checkbox" disabled> <b>PM.4</b> Retro written, later phases ordered</label> <span class="tag">you decide</span><span class="when">Done when: Entry in docs/07-decisions.md.</span></li>
+<li data-id="PM.1" data-done="" class="you"><label><input type="checkbox" disabled> <b>PM.1</b> MVP test on real work over 2 days, in the apps you use</label> <span class="tag">you decide</span><span class="when">Done when: 8 of 10 questions get a useful explanation or guide, in at least 3 apps.</span></li>
+<li data-id="PM.2" data-done="" class="you"><label><input type="checkbox" disabled> <b>PM.2</b> Memory test</label> <span class="tag">you decide</span><span class="when">Done when: A second question on a later day uses the first, with nothing re-explained, and he knows your projects.</span></li>
+<li data-id="PM.3" data-done="" class="you"><label><input type="checkbox" disabled> <b>PM.3</b> Acting and agent test</label> <span class="tag">you decide</span><span class="when">Done when: Of 5 real jobs you ask him to do, 4 are done right. Of 3 real research tasks, 2 reports are useful.</span></li>
+<li data-id="PM.4" data-done="" class="you"><label><input type="checkbox" disabled> <b>PM.4</b> Retro written, later phases ordered</label> <span class="tag">you decide</span><span class="when">Done when: docs/07-decisions.md holds the retro and the order of what comes after.</span></li>
 </ul>
 <h3>Added during build</h3>
 <ul class="tasks added">
@@ -341,6 +330,7 @@ li.is-done .when{display:none}
 <li data-id="L14" data-done=""><label><input type="checkbox" disabled> <b>L14</b> Reports that teach the Map</label><span class="when">What a research task finds becomes connected facts in the Map, with deeper understanding than one line. Web findings are added only after an internal review.</span></li>
 <li data-id="L15" data-done=""><label><input type="checkbox" disabled> <b>L15</b> Touch ID on sensitive facts</label><span class="when">Sensitive facts open only after Touch ID or your password. Needs the data protection keychain and a provisioning profile. Sensitive facts are searchable only after you unlock them.</span></li>
 <li data-id="L16" data-done=""><label><input type="checkbox" disabled> <b>L16</b> Cost research and reduction</label><span class="when">A large analysis and research phase to cut what Phew costs per question and per task, as far as possible, without losing anything users can do. It measures each model call in calls.log, then finds and removes calls that are not needed, smaller or cheaper models where they do as well, prompt caching, shorter inputs (screen text, pictures, Map lines), fewer search rounds and cheaper agent tasks.</span></li>
+<li data-id="L17" data-done=""><label><input type="checkbox" disabled> <b>L17</b> Venture readiness</label><span class="when">Everything an investor reviews, written and tested: problem and customer, market size, product and why now, competition and edge, business model and pricing, go-to-market, traction and metrics, team, money plan, risks, the pitch deck and the data room. Plan in docs/14-company.md.</span></li>
 </ul>
 </section>
 <!-- TASKS END -->

@@ -24,6 +24,9 @@ Start with `00-now.md`.
 | `docs/10-research-map.md` | 10.5 The Map for a general user, and 10.6 what the research means for version 1 | reference |
 | `docs/10-research-locking.md` | 10.7 Locking the Map: encryption options and keys, with sources | reference |
 | `docs/11-direction.md` | Direction research: four specific jobs for Phew, the recommendation, the chat card (phase PD) | current |
+| `docs/12-validation.md` | Validation of the direction from what users write, with its page `validation.html` | current |
+| `docs/13-hand.md` | How Phew acts on the Mac, with its page `hand.html` (phase PH) | current |
+| `docs/14-company.md` | CEO review, growth path, and what an investor reviews (L17) | current |
 | `docs/direction.html` | The direction research as one page to read (phase PD) | current |
 | `docs/github-guide.html` | What GitHub is, how projects are structured and shipped (used in phase PG) | reference |
 | `docs/archive/review.html` | Your review page of phase PV, answered on 14 November 2026 | archive |

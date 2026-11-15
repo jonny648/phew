@@ -10,7 +10,7 @@ Not in the MVP: notch and character, backend, dashboard, connections to other to
 
 ## 6.2 Phases
 
-Since 14 November, after your P5 hand test, the phases after PD are open to change: PD.5 rewrites them for the job you choose in PD.3.
+Rewritten on 15 November for the direction of that day (PD.5), and made lean: the phases build what is useful, with detail work kept to what keeps the product safe and working.
 
 | Order | Phase | Goal | Subagent | State |
 |---|---|---|---|---|
@@ -23,13 +23,12 @@ Since 14 November, after your P5 hand test, the phases after PD are open to chan
 | | PV Your review | You read everything on one page, understand it, and answer the open decisions. No code | lead, checker | Answered and approved 14 Nov |
 | 1 | P5 Map | Memory of your projects, recall at any time, follow-up questions. Starts with research on encrypting the Map. Recently deleted | map, brain, senses, shell | Built 14 Nov; your hand tests passed |
 | 1b | PD Direction and revision | Folder tidied, one specific job chosen after research and validation, the phases after P5 rewritten. No product code | lead, research workflow, checker | |
-| 2 | PB Second brain | Memory imported from your other AI tools, by paste and from Claude Code files. Claude Code files also read when an answer needs them | map, shell, brain | |
-| 1c | PS Conversation and speed | Started 15 Nov beside PD. The answer card opens into a conversation, answers with the Map get faster, the guide stops feeling slow and costs half. Pause removed, "Never read this app" list | shell, senses, brain | |
-| 3b | PH Hand | Phew acts on the Mac by himself when asked, in your apps, across apps. Guards, consent screen, the seven apps measured, the trick test | senses, shell, brain | |
-| 4 | PA Agents | He researches tasks alone, several at once, and reports. Reports saved as PDF | brain, shell | |
-| 5 | P6 Voice | Hold key and speak, in Italian and English | senses | |
-| 6 | PT Manual testing | Checks only you can run: InDesign, Acrobat, Figma Slides | checker | |
-| 7 | PM MVP test | Version 1 on real work | checker | |
+| 2 | PH Hand | Phew acts on the Mac by himself when asked, in your apps and across apps. The things he never touches, Stop, the consent screen, your seven apps working, the trick test | senses, shell, brain | |
+| 3 | PX Look and feel | A study of every surface, a design you approve in Figma, then the build: panel, card, conversation, pointer, menu, first run | lead, shell | |
+| 4 | PA Agents | He researches a task alone, several at once, reports as PDF, and acts in the background without taking your screen | brain, shell | |
+| 5 | PB Second brain | Memory imported from your other AI tools, by paste and from Claude Code files | map, shell, brain | |
+| 6 | P6 Voice | Hold key and speak, in Italian and English | senses | |
+| 7 | PM MVP test | Version 1 on real work: questions, memory, 5 real jobs, 3 research tasks | checker | |
 | 8 | PG GitHub and project structure | Folder to the usual standard, private repository pushed, version 0.1.0 tagged | lead, checker | |
 
 Rough size, an estimate and not a promise: Map 5 days with the encryption research and Recently deleted, second brain 2, guide speed 2, agents 8 to 12 with several tasks and PDF reports, voice 2, tests 2.5, GitHub 1. About 22 to 27 working days. Re-estimated on 14 November after your answers added work. The agents figure starts from the research estimate in `10-research-agents.md` 10.2, 4 to 7 days to read and research and 2 to 3 more to save reports as files, plus about 2 for several tasks at once and PDF reports.
@@ -41,11 +40,12 @@ Tasks and their "done when" are in `roadmap.html`.
 1. Over 2 days of real work, 8 of 10 questions get a useful explanation or guide.
 2. It works in at least 3 apps you use.
 3. A second question on a topic, asked on a later day, uses the first, with nothing re-explained, and he knows your projects.
-4. Of 3 real research tasks, 2 reports are useful.
+4. Of 5 real jobs you ask him to do, 4 are done right.
+5. Of 3 real research tasks, 2 reports are useful.
 
-## 6.4 Nothing is cut
+## 6.4 Lean, since 15 November
 
-By your decision of 13 November, no task is skipped or moved to a later version to save time. If a task proves wrong or impossible, it is brought to you, not dropped.
+Your decision of 13 November was that nothing is cut. On 15 November you changed it: the MVP builds what is actually useful and does not dwell on details. Tasks were merged, none silently dropped: PH 14 to 8, PA 9 to 5, PB 6 to 3, PT folded into PM. If a task proves wrong or impossible, it is still brought to you.
 
 ## 6.5 How to manage it
 
@@ -76,4 +76,5 @@ Order to confirm at the retro. Unscheduled.
 | L13 Getting to know you | A short interview at install, and asking you when he cannot understand. Research first |
 | L14 Reports that teach the Map | Research findings become connected facts, web findings after an internal review |
 | L15 Touch ID on sensitive facts | Sensitive facts open only after Touch ID or your password; needs a provisioning profile |
+| L17 Venture readiness | Everything an investor reviews, written and tested, with the pitch deck and the data room. Plan in `14-company.md` |
 | L16 Cost research and reduction | Large analysis and research to cut cost per question and per task without losing capabilities: remove calls that are not needed, cheaper models where they do as well, caching, shorter inputs, fewer rounds |

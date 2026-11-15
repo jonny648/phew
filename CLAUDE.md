@@ -3,7 +3,7 @@
 ## Product
 Phew is a macOS companion for people who create projects. When called, he works with you: he does the second-level jobs you ask for, acting on the Mac by himself in your apps. He also explains what is on screen and guides you step by step by pointing. He remembers your projects and is your second brain, and he can research a task and report back. Underneath: context understanding, a memory graph called the Map, and several model agents. The MVP runs entirely on the Mac and calls only the Claude API. Business software training is a separate product under the same brand, later; nothing of it is built now.
 
-There is no fixed deadline. Nothing in the MVP is skipped or cut to save time.
+There is no fixed deadline. Since 15 November the MVP phases are lean: they build what is useful. Detail work is kept to what keeps the product safe and working, and no new detail work is added without your say.
 
 ## Roadmap protocol. Follow it in every session.
 1. At the start, read `roadmap.html`. State the current phase: the first phase with an unticked task.
@@ -57,8 +57,8 @@ These rules are direction, not strict rules (your choice of 14 November). Follow
 | PS | `docs/03-experience.md`, `docs/11-direction.md` 11.10, `docs/04-architecture.md` 4.4 and 4.6, `docs/10-research-speed.md` 10.4 |
 | PA | `docs/03-experience.md` 3.5 and 3.6, `docs/04-architecture.md` 4.4 and 4.6, `docs/05-map.md` 5.11, `docs/10-research-agents.md` 10.2 |
 | PH | `docs/13-hand.md`, `docs/03-experience.md` 3.6 and 3.10, `docs/04-architecture.md` 4.3 to 4.6 |
+| PX | `docs/03-experience.md`, `docs/02-vision.md` 2.3 to 2.5, `docs/11-direction.md` 11.10, then `docs/15-design.md` once written |
 | P6 | `docs/03-experience.md` 3.3 |
-| PT | The task's own "done when". Manual checks only the user can run |
 | PM | `docs/06-sprint.md` 6.3 |
 | PG | `docs/github-guide.html` sections 5 to 7. Ask before any push |
 

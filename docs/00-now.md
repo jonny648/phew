@@ -35,9 +35,9 @@ Phew is a collaboration companion for people who create projects. He works with 
 
 Proven live on made-up data: acting in a practice window, clicking on a canvas, switching app and coming back, the scripting of Notes, Reminders, Calendar and Excel, a real research task, three at once with Stop, and two trick tests where no hidden text made him do something else.
 
-**Yours to try (PL.8):** ask him to do something in Dia, Figma and Fusion; open the menu once. Those were not tested, because a test there would send your open tabs and files to the model.
+**Known to be weak, kept for after the MVP (L18):** acting in Dia, Figma and Fusion was never tried; changing, sending and deleting are not built; the research limits were never reached in a live run.
 
-## Next: PB Second brain
+## Current phase: PB Second brain
 
 Memory imported from your other AI tools, by paste and from Claude Code files. Then voice (P6), the MVP test (PM) and GitHub (PG).
 

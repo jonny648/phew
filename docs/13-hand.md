@@ -1,6 +1,6 @@
 # 13. The Hand: Phew acts in the front app
 
-Written on 15 November 2026 for decision 39 in `07-decisions.md` 7.2. Updated on 15 November 2026 to your decisions of that day. Approved with the plan of that day. Nothing here is built yet.
+Written on 15 November 2026 for decision 39 in `07-decisions.md` 7.2. Updated on 15 November 2026 to your decisions of that day. Approved with the plan of that day. Built so far: the acting core of 13.6 (PH.2, 15 November). The rest is being built in phase PH.
 
 How to read it. Each fact from the web carries a source number (H1, H2…), listed in 13.11. Three words mark how sure a claim is:
 

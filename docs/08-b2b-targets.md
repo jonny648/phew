@@ -10,7 +10,7 @@ What it would be: a guide for new workers who must learn proprietary or old soft
 
 Nothing of it is built during the MVP. The personal version is described in `02-vision.md` and `01-foundation.md`.
 
-Still open: decision 35 in `07-decisions.md` 7.2 asks whether this product gets its own brand. Your words of 15 November say "the same brand". Decision 35 should be closed or reworded when you approve this page.
+Your words of 15 November say "the same brand" (recorded in `07-decisions.md` 7.1). Decision 35 should be closed or reworded when you approve this page.
 
 Academic buyers stay removed (your decision of 14 November): universities and schools buying for their students are not targets.
 

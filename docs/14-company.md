@@ -79,7 +79,7 @@ Your instruction of 15 November: the MVP builds what is useful, not details.
 
 - **Lean phases.** PH went from 14 tasks to 8, PA from 9 to 5, PB from 6 to 3. The separate hand-check phase (PT) is folded into the MVP test.
 - **What is not cut, and why.** A short list keeps a product that acts on your Mac from doing harm: the things he never touches, Stop, and stopping on surprises. It is one task, not a phase. It is also what any user, and any investor's diligence, will ask about first.
-- **Look and feel is now a phase in the MVP (PX).** For a product whose whole promise is "effortless", the experience is the product. The demo an investor sees is the UI.
+- **Look and feel is now built in the MVP, in one phase with acting (PH Hand and look).** For a product whose whole promise is "effortless", the experience is the product. The demo an investor sees is the UI.
 - **The MVP test asks the CEO question.** PM.3: of 5 real jobs you ask him to do, are 4 done right?
 - **After the MVP: L17 Venture readiness**, the right-hand column of 14.4, in the order of 14.3.
 

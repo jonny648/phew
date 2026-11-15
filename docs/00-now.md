@@ -4,41 +4,26 @@ Updated on 15 November 2026. One page. The details are in the docs linked at the
 
 ## What Phew does today
 
-Built and tested through phase P5.
+Built and tested through phase PS.
 
 - He lives in the menu bar. No main window, no Dock icon.
 - You call him with a shortcut and type a question.
-- He reads the screen only when you call him.
-- He explains what is on screen in a small text card.
-- He guides you step by step by pointing on the screen.
-- During a guide he follows what you do. You do not press Next.
+- He reads the screen only when you call him. Apps on your "Never read this app" list are never read.
+- He explains what is on screen in a card, and the card is a conversation: click it and reply.
+- He guides you step by step by pointing on the screen, and follows what you do. You do not press Next.
 - He remembers your projects in the Map. The Map is two encrypted files on your Mac. It is never uploaded. Only the few facts an answer needs go with your question.
 - He knows which project you are in, from the open file, web address or window.
-- You can ask what he remembers, tell him a fact, correct one, or say "forget that".
-- A forgotten fact waits 30 days in Recently deleted. Then it is wiped for real.
+- You can ask what he remembers, tell him a fact, correct one, or say "forget that". A forgotten fact waits 30 days in Recently deleted.
 - You can export the Map to one readable Markdown file.
+- He knows himself: what he is, what he can and cannot do.
+- A question costs about 1.3 cents; the first word comes in about 3 seconds.
 
-Not built yet: importing memory from other AI tools (PB), the faster guide (PS), agents that research a task alone (PA), voice (P6).
+Not built yet: acting in your apps (being built now, PH), agents that research a task alone and act in the background (PA), importing memory from other AI tools (PB), voice (P6).
 
-## What is still open from P5
+## Closed on 15 November
 
-- **P5.16 Conversation.** A follow-up is one message only. You cannot continue in the card. Designed and built in phase PS (PS.10, PS.11).
-- **P5.17 Speed.** Answers are slower with the Map: about 1.7 cents a question instead of 0.9, and a Map search adds a whole round. The speed phase sets a target and meets it.
-
-## The current phase: PD Direction and revision
-
-This phase picked one specific job for Phew. The direction is set; the phase closes when the competitor map is updated and the checker has read every doc.
-
-1. **PD.1** Tidy the folder: docs index, this page, long docs split, finished pages archived.
-2. **PD.2** Research 3 to 4 specific jobs Phew could do. Written in `11-direction.md`.
-3. **PD.3** You choose the direction.
-4. **PD.7 and PD.8** Your working direction validated from what users write, and the competitor map in Figma updated.
-5. **PD.5** The phases after P5 rewritten for the chosen job. You approve them.
-6. **PD.6** Phase closed: the checker finds no doc that disagrees with your choices.
-
-## Also running: PS Conversation and speed
-
-Started on 15 November beside PD, because it is needed whatever the direction: the conversation card, faster answers with the Map, and the faster guide.
+- **PS Conversation and speed**: the conversation card, the faster guide, faster answers with the Map.
+- **PD Direction and revision**: one specific job chosen, validated by desk research, the roadmap rewritten, the competitor map in Figma updated.
 
 ## The direction, set on 15 November
 

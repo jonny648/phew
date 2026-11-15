@@ -157,7 +157,7 @@ One motion language, one palette built on black and shell white, one type family
 | Learns from your other AI tools: a pasted memory list, Claude Code files | Reading export files, connections to other tools |
 | Researches a task alone, reports on the card, saves the report as a file | Scheduled work, lecture listening |
 
-The MVP must solve the main problem: understand and move forward on what is in front of you, with no re-explaining. The look and feel is its own phase inside the MVP (PX). The notch home and the character come after.
+The MVP must solve the main problem: understand and move forward on what is in front of you, with no re-explaining. The look and feel is built inside the MVP, in the same phase as acting (PH Hand and look). The notch home and the character come after.
 
 Lecture listening, when built, shows a recording notice in the way Granola does. For personal use now this is not a concern.
 

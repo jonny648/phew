@@ -116,7 +116,10 @@ enum Guide {
 
     static func request(_ question: String, packet: ContextPacket?, route: Route, shot: ScreenshotSize?,
                         earlier: [Turn] = [], recall: String? = nil, about: String? = nil) -> ModelRequest {
-        let task = route == .guide ? "Route: guide. Explain briefly, then give the steps." : "Route: explain. Leave the steps empty."
+        // "Never empty" (PS.15): since the self text joined the system prompt, about 1 guide in 3 came back as an
+        // empty skeleton, every field blank, with "Explain briefly". In the user turn, so the cached prefix stays.
+        let task = route == .guide ? "Route: guide. First the explanation: one or two sentences, never empty. Then the steps, each with its instruction."
+            : "Route: explain. Leave the steps empty."
         let screen = packet.map { context(route == .guide ? $0 : withoutElements($0), shot: shot) } ?? "No screen context."
         // An empty recall adds nothing, like an empty list in 5.11.
         let map = recall.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : [mapBlock($0)] } ?? []

@@ -169,7 +169,7 @@ Your idea: the answer card opens, on a click, into a chat-style card.
 
 ### What you see
 
-1. **Closed, as today.** The answer card, 360 points wide, beside the spot. One new line at its bottom, in grey: "Reply…". It shows the card can be continued.
+1. **Closed, as today.** The answer card, 400 points wide (was 360; one width everywhere since `15-design.md`), beside the spot. One new line at its bottom, in grey: "Reply…". It shows the card can be continued.
 2. **Opening.** A click anywhere on the card opens it. The same card grows downward. No second window appears and the answer does not jump anywhere. (Tab was in the first design. Built in PS.11 without it: while the card is closed your keys go to your app, so a Tab there belongs to your app and must not open the card.)
 3. **Open.** About 400 points wide and up to 520 tall.
    - Your questions and his answers, oldest at the top, newest at the bottom. Older ones scroll inside the card.

@@ -35,4 +35,9 @@ extension NSView {
     var firstTextField: NSTextField? {
         (self as? NSTextField) ?? subviews.lazy.compactMap(\.firstTextField).first
     }
+
+    /// The same for a multi-line box (SwiftUI's `TextEditor`).
+    var firstTextView: NSTextView? {
+        (self as? NSTextView) ?? subviews.lazy.compactMap(\.firstTextView).first
+    }
 }

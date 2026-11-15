@@ -29,6 +29,7 @@ extension AppDelegate {
             Task { await checkAddItems(marker) }
         }
         if arguments.contains("--debug-report") { Task { await checkReport() } }
+        if arguments.contains("--debug-import") { Task { await checkImport() } }
         if let flag = arguments.firstIndex(of: "--debug-menu"), let dir = arguments.dropFirst(flag + 1).first {
             Task { await checkMenu(dir) }
             if let flag = arguments.firstIndex(of: "--debug-list-windows"), let pid = arguments.dropFirst(flag + 1).first.flatMap({ Int32($0) }) {
@@ -107,6 +108,54 @@ extension AppDelegate {
         }
         try? FileManager.default.removeItem(at: tmp)
         shellLog("report check done: pdf saved \(saved != nil), temp removed \(!FileManager.default.fileExists(atPath: tmp.path))")
+        exit(0)
+    }
+
+    /// PB: the import panel on a stub Brain with made-up data, through each state, light and dark: the paste box, sorting,
+    /// the tick list (with the cut note), kept, a project folder's files (made up, no disk read), an error, and the undo
+    /// line. Logs sizes and focus only. No model call, no Map, no Keychain, no screen read. Quits at the end. Launch the
+    /// debug copy with `--debug-no-map --debug-import`.
+    private func checkImport() async {
+        try? await Task.sleep(for: .seconds(1))
+        NSApp.deactivate()
+        let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        func state(_ name: String) async {
+            try? await Task.sleep(for: .milliseconds(700))
+            guard let panel = menuPanel.panel else { return shellLog("import check \(name): no panel") }
+            shellLog("import check \(name): size=\(Int(panel.frame.width))x\(Int(panel.frame.height)) key=\(panel.isKeyWindow) firstResponderText=\(panel.firstResponder is NSTextView) phewFront=\(phewIsFront) frontUnchanged=\(NSWorkspace.shared.frontmostApplication?.processIdentifier == front)")
+        }
+        for dark in [false, true] {
+            NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            let mode = dark ? "dark" : "light"
+            let stub = ImportStubBrain(delay: .seconds(2))
+            let model = ImportModel(brain: stub)
+            showImport(model, title: "Import memory")
+            model.onImported = {}  // the menu's undo entry asks the real Brain, which would open the Map
+            await state("1-paste-empty-\(mode)")
+            model.text = "A made-up memory list."
+            model.sort()
+            await state("2-sorting-\(mode)")
+            await until { model.stage == .ticks }
+            await state("3-ticks-cut-note-\(mode)")
+            await model.keep()
+            await state("4-kept-\(mode)")
+            let folder = ImportModel(brain: stub)
+            folder.read(folder: URL(fileURLWithPath: "/made-up/Orbit Lamp"))
+            showImport(folder, title: "Import from a project folder")
+            await state("5-folder-files-\(mode)")
+            let failing = ImportModel(brain: ImportStubBrain(failure: .network))
+            showImport(failing, title: "Import memory")
+            failing.text = "A made-up memory list."
+            failing.sort()
+            await until { failing.problem != nil }
+            await state("6-error-\(mode)")
+            showImport(ImportModel(brain: stub, stage: .line(await ImportUndo(brain: stub).undo())), title: "Undo last import")
+            await state("7-undo-\(mode)")
+            menuPanel.close()
+            shellLog("import check \(mode): stub calls \(stub.calls)")
+        }
+        try? await Task.sleep(for: .milliseconds(500))
+        shellLog("import check done: panel closed=\(menuPanel.panel == nil) phewFront=\(phewIsFront) frontUnchanged=\(NSWorkspace.shared.frontmostApplication?.processIdentifier == front)")
         exit(0)
     }
 
@@ -719,6 +768,96 @@ final class DeletedStubBrain: Brain, @unchecked Sendable {
             items.remove(at: index)
             return true
         }
+    }
+}
+
+/// A stand-in Brain for the import panel's check and tests: twelve made-up candidates (one sensitive, one instruction,
+/// and a text cut short), a made-up project's files with no disk read, a made-up last import. Records each call by
+/// name and count only, and the candidates `keepImport` was given.
+final class ImportStubBrain: Brain, @unchecked Sendable {
+    private let lock = NSLock()
+    private var log: [String] = []
+    private var given: [ImportCandidate] = []
+    private var undone = false
+    let failure: BrainError?
+    let delay: Duration
+    let last: ImportInfo?
+    /// Nil: `keepImport` answers as a Brain without a Map does.
+    let number: Int64?
+    var calls: [String] { lock.withLock { log } }
+    var kept: [ImportCandidate] { lock.withLock { given } }
+
+    init(failure: BrainError? = nil, delay: Duration = .zero,
+         last: ImportInfo? = ImportInfo(number: 7, count: 12, source: "ChatGPT", date: "2026-11-15"), number: Int64? = 7) {
+        self.failure = failure
+        self.delay = delay
+        self.last = last
+        self.number = number
+    }
+
+    static let sentences = [
+        "Prefers short answers with the main point first.", "Has a made-up allergy to brindle pollen.",
+        "Always answer in a friendly, plain tone.", "Works on the Orbit Lamp, a made-up desk lamp.",
+        "The Orbit Lamp launch is planned for March 2027.", "Uses Figma for the lamp's drawings.",
+        "Writes the product copy in English and Italian.", "Quillan Vesh is the made-up engineer on the lamp.",
+        "Keeps the project notes in a folder called Lamp Notes.", "Prefers meetings in the morning.",
+        "The lamp's case is made of recycled aluminium.", "Is learning kerning for the lamp's poster.",
+    ]
+
+    static func sort(_ source: ImportSource) -> ImportSort {
+        ImportSort(candidates: sentences.enumerated().map { index, sentence in
+            ImportCandidate(id: index, sentence: sentence, kind: index == 2 ? "instruction" : "reference", aboutMe: true, things: [],
+                            date: "", sensitive: index == 1, instruction: index == 2, ticked: index != 2, source: source)
+        }, leftOut: 1_234)
+    }
+
+    static let project = ProjectMemory(projectName: "Orbit Lamp", files: [
+        .init(name: "CLAUDE.md", bytes: 3_412, text: "Made-up rules.", type: "", modified: "2026-11-10"),
+        .init(name: "memory/user_role.md", bytes: 512, text: "Made-up role.", type: "user", modified: "2026-11-12"),
+        .init(name: "memory/feedback_tone.md", bytes: 830, text: "Made-up tone.", type: "feedback", modified: "2026-11-13"),
+    ], refused: ["memory/huge_notes.md"])
+
+    private func record(_ call: String) { lock.withLock { log.append(call) } }
+
+    func answer(_ question: String, packet: ContextPacket?) -> AsyncThrowingStream<BrainEvent, Error> {
+        FakeBrain().answer(question, packet: packet)
+    }
+    func progress(steps: [GuideStep], current: Int, packet: ContextPacket?) async throws -> GuideProgress {
+        try await FakeBrain().progress(steps: steps, current: current, packet: packet)
+    }
+    func sortImport(_ text: String, source: ImportSource) async throws -> ImportSort {
+        record("sortImport text")
+        try await Task.sleep(for: delay)
+        if let failure { throw failure }
+        return Self.sort(source)
+    }
+    func projectMemory(folder: URL) -> ProjectMemory {
+        record("projectMemory")
+        return Self.project
+    }
+    func sortImport(_ memory: ProjectMemory) async throws -> ImportSort {
+        record("sortImport memory")
+        try await Task.sleep(for: delay)
+        if let failure { throw failure }
+        return Self.sort(.claudeCode)
+    }
+    func keepImport(_ candidates: [ImportCandidate]) async throws -> ImportKept {
+        record("keepImport \(candidates.count)")
+        if let failure { throw failure }
+        lock.withLock { given = candidates }
+        guard let number else { return ImportKept(card: "Phew can't remember things right now.") }
+        return ImportKept(number: number, stored: candidates.count, seen: 0,
+                          card: "Kept \(candidates.count) facts from ChatGPT. “Undo last import” in the menu takes them out again.")
+    }
+    func lastImport() async -> ImportInfo? {
+        record("lastImport")
+        return lock.withLock { undone } ? nil : last
+    }
+    func undoLastImport() async -> String? {
+        record("undoLastImport")
+        guard last != nil, !lock.withLock({ undone }) else { return nil }
+        lock.withLock { undone = true }
+        return "Took out the 12 facts imported from ChatGPT. Restore them from Recently deleted."
     }
 }
 

@@ -22,6 +22,10 @@ struct PhewApp: App {
             NeverReadEntry(front: delegate.front) { delegate.neverReadFrontApp() }
             Divider()
             Menu("Memory") {
+                Button("Import memory…") { delegate.importMemory() }
+                Button("Import from a project folder…") { delegate.importFromFolder() }
+                UndoImportEntry(undo: delegate.importUndo) { delegate.undoLastImport() }
+                Divider()
                 Button("Recently deleted…") { delegate.showRecentlyDeleted() }
                 Button("Export the Map…") { delegate.showExport() }
                 Button("Never-read apps…") { delegate.showNeverRead() }
@@ -71,6 +75,16 @@ private struct NeverReadEntry: View {
 
     var body: some View {
         Button(front.name.map { "Never read \($0)" } ?? "Never read this app", action: action).disabled(front.name == nil)
+    }
+}
+
+/// "Undo last import", off while there is nothing to undo.
+private struct UndoImportEntry: View {
+    @ObservedObject var undo: ImportUndo
+    let action: () -> Void
+
+    var body: some View {
+        Button(undo.title, action: action).disabled(undo.last == nil)
     }
 }
 
@@ -134,6 +148,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let front = FrontApp()
     /// The research tasks of this run (PA.2).
     lazy var tasks = TaskList(brain: brain)
+    /// The menu's "Undo last import" (PB.3).
+    lazy var importUndo = ImportUndo(brain: brain)
     /// The context read at the shortcut, kept only until the question is asked or the panel closes without one.
     var capture: Task<ContextPacket?, Never>?
     /// The ask panel's top-left corner: the card opens there, in its place.
@@ -145,10 +161,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Re-install once Accessibility is granted, so the shortcut works without a relaunch.
         setup.onAccessibilityGranted = { [unowned self] in hotKey.install() }
         card.onTask = { [unowned self] in tasks.start($0, packet: $1) }
+        importUndo.watchMenus()
         #if DEBUG
         runDebugChecks()
         // Made-up states only: no look at the Keychain or the permissions, and no first-run panel taking the keyboard.
-        if ["--debug-first-run", "--debug-report", "--debug-menu"].contains(where: CommandLine.arguments.contains) { return }
+        if ["--debug-first-run", "--debug-report", "--debug-menu", "--debug-import"].contains(where: CommandLine.arguments.contains) { return }
         #endif
         setup.showAtLaunch()
     }
@@ -176,20 +193,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The system folder window, the one focus exception (CLAUDE.md): Phew is active only while it is open, then the
     /// app that was in front is made active again. Cancel changes nothing.
     func chooseReportsFolder() {
+        chooseFolder("reports folder", message: "Phew saves each report as a new PDF in this folder.", create: true,
+                     from: TaskList.chosenFolder() ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first) {
+            UserDefaults.standard.set($0.path, forKey: TaskList.folderKey)
+        }
+    }
+
+    /// `log`: fixed words naming the use, for the log line. `chosen` runs after the front app is active again.
+    private func chooseFolder(_ log: String, message: String, create: Bool, from start: URL?, _ chosen: @escaping (URL) -> Void) {
         let front = NSWorkspace.shared.frontmostApplication
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
-        panel.canCreateDirectories = true
+        panel.canCreateDirectories = create
         panel.prompt = "Choose"
-        panel.message = "Phew saves each report as a new PDF in this folder."
-        panel.directoryURL = TaskList.chosenFolder() ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        panel.message = message
+        panel.directoryURL = start
         NSApp.activate()
         panel.begin { response in
-            if response == .OK, let url = panel.url { UserDefaults.standard.set(url.path, forKey: TaskList.folderKey) }
             let back = front.map { $0 != .current && $0.activate(from: .current, options: []) } ?? false
-            shellLog("reports folder: window closed, \(response == .OK ? "chosen" : "unchanged"), front app active again \(back)")
+            shellLog("\(log): window closed, \(response == .OK ? "chosen" : "unchanged"), front app active again \(back)")
+            if response == .OK, let url = panel.url { chosen(url) }
         }
+    }
+
+    // MARK: Imported memory (PB)
+
+    func importMemory() { showImport(ImportModel(brain: brain), title: "Import memory") }
+
+    /// The system folder window first; then the panel lists the files found. Nothing is sent before Sort.
+    func importFromFolder() {
+        chooseFolder("project folder", message: "Phew reads only this folder's CLAUDE.md and its Claude Code memory files.",
+                     create: false, from: nil) { [unowned self] folder in
+            let model = ImportModel(brain: brain)
+            model.read(folder: folder)
+            showImport(model, title: "Import from a project folder")
+        }
+    }
+
+    func undoLastImport() {
+        Task {
+            let line = await importUndo.undo()
+            showImport(ImportModel(brain: brain, stage: .line(line)), title: "Undo last import")
+        }
+    }
+
+    func showImport(_ model: ImportModel, title: String) {
+        model.onClose = { [unowned self] in menuPanel.close() }
+        model.onKeyProblem = { [unowned self] in setup.showKey(rejected: $0 == .badKey) }
+        model.onImported = { [unowned self] in Task { await importUndo.refresh() } }
+        // After SwiftUI has drawn the new stage, so the fit reads its size.
+        model.onStage = { [unowned self] stage in DispatchQueue.main.async { self.menuPanel.fit(keyboard: stage == .paste) } }
+        menuPanel.show(title: title, ImportView(model: model), onClose: { model.drop() })
+        menuPanel.fit(keyboard: model.stage == .paste)
     }
 
     func showRecentlyDeleted() {

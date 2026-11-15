@@ -2,16 +2,19 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// A small panel opened from the menu bar menu: Recently deleted, Export the Map, Never-read apps, About Phew.
+/// A small panel opened from the menu bar menu: Recently deleted, Export the Map, Never-read apps, About Phew, Import.
 /// Non-activating like the other panels, and it becomes key only if a click needs it (selecting text),
-/// so the front app keeps the focus. It opens centred the first time and where the user left it after that (15.5 E).
+/// so the front app keeps the focus; the import's paste box is the one that takes the keyboard while it shows.
+/// It opens centred the first time and where the user left it after that (15.5 E).
 @MainActor
 final class MenuPanel {
-    private(set) var panel: NSPanel?
+    private(set) var panel: EditPanel?
     /// Top-left corner of each panel when it last closed, for this run.
     private var places: [String: NSPoint] = [:]
+    private var closing: Any?
 
-    func show(title: String, _ view: some View) {
+    /// `onClose`: called when the panel closes by any way, its close button included.
+    func show(title: String, _ view: some View, onClose: (() -> Void)? = nil) {
         close()
         let panel = EditPanel(contentRect: .zero, styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.title = title
@@ -25,6 +28,11 @@ final class MenuPanel {
         if let place = places[title] { panel.setFrame(topLeft: place, size: panel.frame.size) } else { panel.center() }
         panel.orderFrontRegardless()
         self.panel = panel
+        if let onClose {
+            closing = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: panel, queue: .main) { _ in
+                MainActor.assumeIsolated { onClose() }
+            }
+        }
         shellLog("menu panel shown: \(title), key \(panel.isKeyWindow), phew front \(phewIsFront)")
     }
 
@@ -33,6 +41,25 @@ final class MenuPanel {
         panel?.contentView = nil
         panel?.close()
         panel = nil
+        closing.map(NotificationCenter.default.removeObserver)
+        closing = nil
+    }
+
+    /// Fits the panel to its content, its top-left corner kept. `keyboard`: it takes the keyboard for its text box
+    /// (the paste box); false gives the keyboard back to the front app, which stayed the active app all along.
+    func fit(keyboard: Bool) {
+        guard let panel, let content = panel.contentView else { return }
+        content.layoutSubtreeIfNeeded()
+        let size = panel.frameRect(forContentRect: NSRect(origin: .zero, size: content.fittingSize)).size
+        panel.setFrame(topLeft: NSPoint(x: panel.frame.minX, y: panel.frame.maxY), size: size)
+        if keyboard {
+            panel.makeKey()
+            panel.makeFirstResponder(content.firstTextView)  // so Command+V pastes at once
+        } else if panel.isKeyWindow {
+            // Out and in again at once: the key focus returns to the front app's window, the panel stays in place.
+            panel.orderOut(nil)
+            panel.orderFrontRegardless()
+        }
     }
 
     /// Closes with `leave`: opacity to 0, then gone.

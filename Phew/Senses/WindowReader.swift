@@ -196,7 +196,8 @@ enum WindowReader {
             }
         }
         visit(root, rootAttributes, depth: 0, pointClip: clip)
-        return (texts, pointables.filter { !$0.label.isEmpty || $0.role == "AXSecureTextField" }, webArea)
+        // A field with no name stays (an empty note body, a field with no placeholder): Phew may need to type into it (PH.5).
+        return (texts, pointables.filter { !$0.label.isEmpty || $0.role == "AXSecureTextField" || fieldRoles.contains($0.role) }, webArea)
     }
 
     /// What the Guide calls a control: its title or description, a pop-up's chosen item, a field's placeholder.

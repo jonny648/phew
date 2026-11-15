@@ -40,6 +40,8 @@ final class TextCard: EditPanel {
     /// The calm wait before a look, and the look itself (capture and Brain check).
     var waitTask: Task<Void, Never>?
     var lookTask: Task<Void, Never>?
+    /// The job of the act route while the Hand works (TextCardActing.swift); nil otherwise.
+    var handJob: HandJob?
     var lookPending: Bool { waitTask != nil || lookTask != nil }
     /// True while an answer streams in.
     var answering: Bool { task != nil }
@@ -91,7 +93,8 @@ final class TextCard: EditPanel {
     private func answer(_ question: String, capture: Task<ContextPacket?, Never>?, guiding: Bool = false) {
         guard let brain else { return }
         // PS.14: Phew's own state for questions about himself. States only, never words.
-        let state = ShellState(accessibility: AXIsProcessTrusted(), screenRecording: CGPreflightScreenCaptureAccess(), guideRunning: guiding)
+        let state = ShellState(accessibility: AXIsProcessTrusted(), screenRecording: CGPreflightScreenCaptureAccess(), guideRunning: guiding,
+                               acting: Hand.shared.allowed)
         idleTask?.cancel()
         idleTask = nil
         model.begin(question)
@@ -103,12 +106,19 @@ final class TextCard: EditPanel {
                 let packet = await capture?.value
                 guard !Task.isCancelled else { return }
                 if let packet, packet.neverRead { self?.model.note = CardModel.neverReadNote(packet.appName) }
+                var acts = false
                 for try await event in brain.answer(question, packet: packet, state: state) {
                     self?.model.apply(event)
+                    if case .route(.act) = event {
+                        acts = true
+                        // The consent screen (PH.5's own task) goes here; until then, with acting off, a guide.
+                        if !state.acting { self?.model.note = Self.actingOff }
+                    }
                     if case .steps(let steps) = event, !steps.isEmpty {
                         self?.startGuide(steps, targets: steps.map { Self.rect(for: $0.target, in: packet) })
                     }
                 }
+                if acts && state.acting { await self?.act(question) }
             } catch {
                 failure = BrainError(error)
             }
@@ -182,6 +192,7 @@ final class TextCard: EditPanel {
     /// off screen. Ordering out a key panel hands the keyboard back to the student's app, which never stopped being
     /// the active app.
     func dismiss() {
+        handJob?.stop()  // Stop: Escape, the close control and closing the card end a job within a second
         task?.cancel()
         task = nil
         idleTask?.cancel()

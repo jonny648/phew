@@ -1,0 +1,115 @@
+import AppKit
+
+/// One job on the act route (PH.5), run by the Shell: a fresh look, the Brain's next action, the Hand carries it out,
+/// and again, until the Brain says done or stuck, or the Hand ends any way but done (Stop, the user's own click or
+/// key, the Never list, a surprise, a ceiling). The Brain never acts, and nothing here acts by itself: every action
+/// goes through `Hand.act`, whose ceilings are the brake. Each look lives for one round only and is never kept.
+@MainActor
+struct ActJob {
+    let brain: any Brain
+    let hand: Hand
+    /// The app the user asked in, front when the job began. The Hand stops the job if another comes to the front.
+    let pid: pid_t
+    /// A fresh look at the front app, once per round.
+    let capture: () async -> ContextPacket?
+    /// Before each action, where it acts, screen points with a top-left origin: the card moves out of its way.
+    var aside: (CGRect) -> Void = { _ in }
+
+    enum Outcome: Equatable {
+        case done(String)
+        case stuck(String)
+        case ended(HandEnd)
+        case failed(BrainError)
+    }
+
+    /// `listed` gets one plain line per action the Hand made, as it happens. The caller closes `job`.
+    func run(_ request: String, job: HandJob, listed: (String) -> Void) async -> Outcome {
+        var done: [String] = []  // for the Brain: what was made, by name, and how it ended
+        while true {
+            if let end = job.end { return .ended(end) }
+            let packet = await capture()
+            if let end = job.end { return .ended(end) }
+            let next: NextAction
+            do {
+                next = try await brain.nextAction(request, packet: packet, done: done)
+            } catch {
+                return job.end.map(Outcome.ended) ?? .failed(BrainError(error))
+            }
+            // Stop or the user's own input during the call: nothing is sent.
+            if let end = job.end { return .ended(end) }
+            switch next {
+            case .done(let line): return .done(line)
+            case .stuck(let line): return .stuck(line)
+            case let .act(kind, target, menu, text):
+                guard let packet, let step = Self.step(kind, target: target, menu: menu, text: text, packet: packet, pid: pid) else {
+                    return .stuck(Self.noTarget)
+                }
+                if kind != .pick { aside(step.frame) }
+                let hand = hand
+                // Off the main thread: an app that hangs blocks for at most `Hand.timeout`.
+                let result = await Task.detached { hand.act(step, in: job) }.value
+                let line = Self.line(step)
+                done.append("\(line): \(result.end.rawValue)")
+                guard result.end == .done else { return .ended(result.end) }
+                listed(line)
+            }
+        }
+    }
+
+    static let noTarget = "I could not find that control on the screen, so I stopped."
+
+    /// The Brain's action as the Hand takes it: role, name and frame as this look saw the element. A name cut to the
+    /// packet's label length is left out, so it is not taken for a renamed control.
+    static func step(_ kind: HandStep.Kind, target: StepTarget?, menu: [String], text: String, packet: ContextPacket, pid: pid_t) -> HandStep? {
+        if kind == .pick {
+            guard !menu.isEmpty else { return nil }
+            return HandStep(kind: .pick, pid: pid, role: "AXMenuItem", name: menu.last!, menuPath: menu, opensWindow: opens(menu.last!))
+        }
+        guard let target, let frame = packet.screenRect(for: target) else { return nil }
+        guard case .element(let id) = target, let element = packet.pointables.first(where: { $0.id == id }) else {
+            return kind == .click ? HandStep(kind: .click, pid: pid, frame: frame) : nil  // a bare point: clicks only
+        }
+        let name = element.label.count < ContextPacket.labelCap ? element.label : ""
+        return HandStep(kind: kind, pid: pid, role: element.role, name: name, frame: frame, text: text, opensWindow: opens(name))
+    }
+
+    /// A Mac command whose name ends in an ellipsis opens a window or sheet: the next step takes it as expected.
+    static func opens(_ name: String) -> Bool { name.hasSuffix("…") || name.hasSuffix("...") }
+
+    /// One plain line for the card (docs/13-hand.md 13.4): a fixed word and the control's name. Memory only, never logged.
+    static func line(_ step: HandStep) -> String {
+        let name = step.name.isEmpty ? nil : step.name
+        switch step.kind {
+        case .press: return "Pressed \(name ?? "a control")"
+        case .set: return "Typed \(step.text.count) character\(step.text.count == 1 ? "" : "s") in \(name ?? "a field")"
+        case .pick: return "Picked \(step.menuPath.joined(separator: " > "))"
+        case .click: return "Clicked \(name ?? "a spot")"
+        }
+    }
+
+    /// Why the job stopped, in plain words (13.4).
+    static func sentence(for end: HandEnd) -> String {
+        switch end {
+        case .done: "Done."
+        case .stopped: "Stopped."
+        case .userInput: "You took over, so the job is yours now."
+        case .off: "Acting is off, so I did nothing."
+        case .secureField, .secureInput: "That is a password or other secure field. I never type there."
+        case .neverReadApp: "This app is on your Never read list, so I did nothing in it."
+        case .neverActApp: "I never act in this app."
+        case .ownApp: "I never act on Phew's own windows."
+        case .password: "I never touch passwords."
+        case .paying: "I never pay or enter card details."
+        case .signIn: "I never sign in or change account settings."
+        case .jobCeiling: "I reached the most actions one job may take, so I stopped."
+        case .minuteCeiling: "I reached the most actions in one minute, so I stopped."
+        case .gone: "The control is not there any more. I stopped."
+        case .moved: "The control is not where it was. I stopped."
+        case .surprise: "A window the job did not call for appeared. I stopped."
+        case .frontChanged: "Another app came to the front. I stopped."
+        case .failed: "I could not do it. Nothing changed, as far as I can see."
+        case .timeout: "The app did not answer in time. I stopped."
+        case .checkFailed: "I acted, but I could not see the change. Check before going on."
+        }
+    }
+}

@@ -78,7 +78,7 @@ Positions from the Accessibility API let Phew point at the exact button. When an
 | Librarian | Writes what was learned to the Map after each answer. Reading before an answer is done by Phew's own code, with no model call | Small | Yes |
 | Runner | Researches a task alone: reads the screen once, the Map, the project's Claude Code files when needed, and the web, in a loop with limits, then reports. The Runner itself has no tool that writes. When the report is ready, Phew's own code saves it as a new PDF in the folder you chose or in Downloads, with a Markdown copy in Phew's own storage | Main, with web search and web fetch | Yes |
 | Scribe | Lecture transcript to key points | Main | Later |
-| Hand | Actions in other apps. Not a new agent: the Guide plans the steps, the Follower checks them, and Phew's own acting function carries each one out (`13-hand.md`) | No model of its own | Yes, phase PH |
+| Doer and Hand | Actions in other apps. The Doer is an agent: from your words, a fresh look and what was done so far, it gives the next single action. The Hand is Phew's own acting function in Senses and carries it out; it has no model, and its rules (the Never list, Stop, the brake) are code (`13-hand.md`) | Main model for the Doer | Yes, phase PH, built 15 November |
 | Keeper | Nightly housekeeping of the Map | Small | Later |
 
 Model provider: Claude API. Small means the Haiku class, main means the Sonnet class. The coding agent must read the current model names from the API documentation instead of guessing them.

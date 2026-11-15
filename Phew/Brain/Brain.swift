@@ -15,6 +15,11 @@ protocol Brain: Sendable {
     /// `BrainError` like `answer`.
     func progress(steps: [GuideStep], current: Int, packet: ContextPacket?) async throws -> GuideProgress
 
+    /// During a job on the act route (PH.5): from a fresh `packet` and the actions made so far (`done`, one plain line
+    /// each, oldest first), the next single action, or that the job is done, or stuck. The Brain never acts: the
+    /// Shell carries the action out through the Hand. Errors are `BrainError`, like `answer`.
+    func nextAction(_ request: String, packet: ContextPacket?, done: [String]) async throws -> NextAction
+
     /// Drops the earlier questions and answers of the conversation. The Shell calls it when the card closes and on Quit.
     func forgetTurns()
 
@@ -34,6 +39,7 @@ extension Brain {
         answer(question, packet: packet)
     }
     func forgetTurns() {}
+    func nextAction(_ request: String, packet: ContextPacket?, done: [String]) async throws -> NextAction { .stuck("") }
     func recentlyDeleted() async -> [DeletedItem] { [] }
     func restore(_ id: Int64) async -> Bool { false }
     func deleteNow(_ id: Int64) async -> Bool { false }
@@ -54,7 +60,21 @@ struct GuideProgress: Sendable, Equatable {
 }
 
 enum Route: String, Sendable, CaseIterable {
-    case explain, guide, remember
+    /// `act` (PH.4): the user's words ask Phew to do it. The answer stream then ends after `.route`, and the Shell runs
+    /// the job; with acting off (`ShellState.acting` false) the Brain answers it as a guide instead.
+    case explain, guide, remember, act
+}
+
+/// The next step of a job on the act route, as the Brain chose it from a fresh look (PH.5).
+enum NextAction: Sendable, Equatable {
+    /// One action. `target`: for press and set the id of one of the packet's pointables; for click that, or a point
+    /// in screenshot pixels. Validated like `GuideStep.target`. `menu`: for pick, the path from the menu bar.
+    /// `text`: for set, what the field holds afterwards.
+    case act(HandStep.Kind, target: StepTarget?, menu: [String] = [], text: String = "")
+    /// The job is finished: one short line for the card, in the user's language.
+    case done(String)
+    /// The next action is not possible: one short plain reason for the card. Empty when there is none.
+    case stuck(String)
 }
 
 enum BrainEvent: Sendable, Equatable {

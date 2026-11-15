@@ -1,17 +1,23 @@
 import Foundation
 
-/// Understands the request and chooses who works: explain, guide or remember. Small model, a few lines of
+/// Understands the request and chooses who works: explain, guide, remember or act. Small model, a few lines of
 /// context (not the whole packet), an answer bound to a schema.
 enum Conductor {
+    /// act against guide (PH.4, docs/13-hand.md 13.4): asked to do, he does; asked how, he shows; unsure, he shows.
     static let system = """
         You route the requests the user sends to Phew, a companion on their Mac that explains what is \
-        on screen. Choose one route.
+        on screen and can also do things in the app in front of them. Choose one route.
         explain: they want to understand something they see, or they ask what Phew remembers or knows.
         guide: they want to know how to do something, where to click, or which steps to take.
         remember: they only ask Phew to remember, note or save something for later, to correct something it remembers, or to forget something.
+        act: they clearly ask Phew to do something in the app for them now, as an order or a request: "make the title bold", \
+        "add a row below", "can you tick this box?", "rendi il titolo in grassetto", "puoi aggiungere una riga?".
+        A question about how, where or which steps ("how do I make it bold?", "come faccio a…", "dove trovo…") is guide, \
+        never act. A wish or a goal that does not ask Phew to do it ("I need to export this", "devo esportarlo") is guide. \
+        When you are unsure between act and guide, choose guide. "Remember…" or "note that…" is remember, not act.
         """
 
-    static let schema = #"{"type":"object","properties":{"route":{"type":"string","enum":["explain","guide","remember"]}},"required":["route"],"additionalProperties":false}"#
+    static let schema = #"{"type":"object","properties":{"route":{"type":"string","enum":["explain","guide","remember","act"]}},"required":["route"],"additionalProperties":false}"#
 
     /// An empty question means "explain what is under the cursor": no call is needed.
     static func route(_ question: String, packet: ContextPacket?, provider: any ModelProvider) async throws -> Route {

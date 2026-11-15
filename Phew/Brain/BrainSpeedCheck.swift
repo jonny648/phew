@@ -20,6 +20,7 @@ enum BrainSpeedCheck {
         case "looks": await looks(count ?? 10)
         case "pages": await pages(count ?? 5)
         case "guides": await guides(count ?? 1)
+        case "routes": await routes()
         case "self":
             var passed = 0
             for item in BrainSelfCheck.selfCases {
@@ -218,6 +219,46 @@ enum BrainSpeedCheck {
     }
 
     // MARK: PS.16, every guide case of the brain check, again
+
+    /// PH.4: do or show, from the words. 20 made-up requests, 10 in English and 10 in Italian: asked to do, act;
+    /// asked how, guide; unclear, guide. Then the 12 Conductor cases of the full check again, so nothing else moved.
+    static let actCases: [(String, Route)] = [
+        ("Make the title bold", .act),
+        ("Tick the Done box", .act),
+        ("Can you add a new row below this one?", .act),
+        ("Please rename this layer to Header", .act),
+        ("How do I make the title bold?", .guide),
+        ("Where is the export button?", .guide),
+        ("What are the steps to add a column?", .guide),
+        ("I need to export this as a PDF", .guide),
+        ("bold title?", .guide),
+        ("Delete the empty rows", .act),
+        ("Rendi il titolo in grassetto", .act),
+        ("Spunta la casella Fatto", .act),
+        ("Puoi aggiungere una riga sotto questa?", .act),
+        ("Scrivi \"Piano settimanale\" nel titolo", .act),
+        ("Come faccio a mettere il titolo in grassetto?", .guide),
+        ("Dove trovo il pulsante per esportare?", .guide),
+        ("Quali sono i passaggi per aggiungere una colonna?", .guide),
+        ("Devo esportarlo in PDF", .guide),
+        ("titolo in grassetto?", .guide),
+        ("Mi mostri come si inserisce una tabella?", .guide),
+    ]
+
+    static func routes() async {
+        let provider = ClaudeProvider(), usd0 = CallLog.spentUSD
+        for (set, cases) in [("act", actCases), ("conductor", BrainSelfCheck.conductorCases)] {
+            var passed = 0
+            for (n, (question, expected)) in cases.enumerated() {
+                let route = try? await Conductor.route(question, packet: BrainSelfCheck.coursePage, provider: provider)
+                if route == expected { passed += 1 }
+                // The case number and the routes only: the request is made up, but no words go to the log.
+                shellLog("routes check \(route == expected ? "PASS" : "FAIL") \(set) \(n + 1): expected \(expected), got \(route.map { "\($0)" } ?? "error")")
+            }
+            shellLog("routes check \(set): \(passed)/\(cases.count) passed")
+        }
+        shellLog("routes check done: $\(CallLog.spentUSD - usd0)")
+    }
 
     /// The guide and click cases of the full check, `count` times, under the rule on blank answers. A case whose
     /// Guide made two calls was blank once and asked again.

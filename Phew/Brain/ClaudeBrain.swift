@@ -42,6 +42,15 @@ struct ClaudeBrain: Brain {
         }
     }
 
+    func nextAction(_ request: String, packet: ContextPacket?, done: [String]) async throws -> NextAction {
+        do {
+            // The packet was filtered by Senses; the words and the lines of done actions are filtered here.
+            return try await Doer.next(SecretsFilter.clean(request), packet: packet, done: done.map(SecretsFilter.clean), provider: provider)
+        } catch {
+            throw BrainError(error)
+        }
+    }
+
     func forgetTurns() { memory.clear() }
 
     // MARK: Recently deleted (5.5, roadmap P5.15)
@@ -73,7 +82,7 @@ struct ClaudeBrain: Brain {
         async let routing = Conductor.route(question, packet: packet, provider: provider)
         async let cleaned = Observer.clean(packet?.visibleText ?? "", question: question, provider: provider)
         async let recalled = recall(question, packet: packet)
-        let route: Route
+        var route: Route
         do {
             route = try await routing
         } catch BrainError.refused, BrainError.badOutput {
@@ -81,6 +90,9 @@ struct ClaudeBrain: Brain {
         }
         emit(.route(route))
         if route == .remember { return try await remember(question, packet: packet, emit: emit) }
+        // PH.4: the Shell runs an act job through `nextAction`. With acting off it is shown as a guide.
+        if route == .act && state.acting { return }
+        if route == .act { route = .guide }
         var packet = packet
         packet?.visibleText = await cleaned
         let earlier = memory.turns

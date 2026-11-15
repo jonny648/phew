@@ -81,4 +81,6 @@ struct ShellState: Sendable, Equatable {
     var accessibility: Bool?
     var screenRecording: Bool?
     var guideRunning = false
+    /// Acting is allowed (`Hand.allowed`). Off: an act request is answered as a guide (PH.4).
+    var acting = false
 }

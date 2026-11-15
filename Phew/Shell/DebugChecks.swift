@@ -19,6 +19,30 @@ extension AppDelegate {
         if arguments.contains("--debug-thread") { Task { await checkThread() } }
         if arguments.contains("--debug-deleted-check") { Task { await checkDeleted() } }
         if arguments.contains("--debug-export-check") { Task { await checkExport() } }
+        if let flag = arguments.firstIndex(of: "--debug-act"), let words = arguments.dropFirst(flag + 1).first {
+            Task { await checkAct(words) }
+        }
+    }
+
+    /// PH.5 live: `--debug-act "<words>"` asks Phew the words, through the real ask path, about the app in front, with
+    /// acting on for this process only: in memory (the argument domain), never written to the user's defaults. Real
+    /// model calls and real actions in the front app: run it only on a made-up window or a made-up note. The user's own
+    /// click or key stops the job. Logs counts and fixed words only, never the words or the card's lines. Quits at the end.
+    private func checkAct(_ words: String) async {
+        UserDefaults.standard.setVolatileDomain([Hand.allowedKey: true], forName: UserDefaults.argumentDomain)
+        try? await Task.sleep(for: .seconds(2))
+        NSApp.deactivate()
+        let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        shellLog("act check: allowed=\(Hand.shared.allowed) accessibility=\(AXIsProcessTrusted()) phewFront=\(phewIsFront)")
+        capture = Senses.capture()
+        let visible = NSScreen.screens.first?.visibleFrame ?? .zero
+        anchor = NSPoint(x: visible.minX + 20, y: visible.minY + 320)  // out of the way, bottom left
+        ask(words)
+        for _ in 0..<2400 where card.isVisible && (card.answering || card.model.thinking) { try? await Task.sleep(for: .milliseconds(100)) }
+        shellLog("act check done: lines=\(card.model.text.split(separator: "\n").count) problem=\(card.model.problem != nil) note=\(card.model.note != nil) steps=\(card.model.steps.count) frontUnchanged=\(NSWorkspace.shared.frontmostApplication?.processIdentifier == front) phewFront=\(phewIsFront) $\(CallLog.spentUSD)")
+        try? await Task.sleep(for: .seconds(2))
+        card.dismiss()
+        exit(0)
     }
 
     /// P5.10 without the save window: a made-up Map in memory, exported through the real Export panel and its model,

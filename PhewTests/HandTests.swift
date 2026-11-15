@@ -546,6 +546,8 @@ final class HandTests: XCTestCase {
     // MARK: - The practice window, through the real Accessibility API
 
     private func realHand() throws -> Hand {
+        // These tests open a window on the screen. Off unless asked for (phase PL): `TEST_RUNNER_PHEW_LIVE=1 xcodebuild … test`.
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["PHEW_LIVE"] == "1", "practice-window tests are off: they show a window on screen (run in phase PL)")
         try XCTSkipUnless(AXIsProcessTrusted(), "the test runner has no Accessibility permission: real-window tests skipped")
         try XCTSkipIf(IsSecureEventInputEnabled(), Self.secureInputSkip)
         // The practice window lives in the test process: it stands in for the front app and is not "Phew's own".

@@ -57,6 +57,7 @@ These rules are direction, not strict rules (your choice of 14 November). Follow
 | PS | `docs/03-experience.md`, `docs/11-direction.md` 11.10, `docs/04-architecture.md` 4.4 and 4.6, `docs/10-research-speed.md` 10.4 |
 | PA | `docs/03-experience.md` 3.5 and 3.6, `docs/04-architecture.md` 4.4 and 4.6, `docs/05-map.md` 5.11, `docs/10-research-agents.md` 10.2 |
 | PH (Hand and look) | `docs/13-hand.md`, `docs/15-design.md`, `docs/03-experience.md`, `docs/04-architecture.md` 4.3 to 4.6, `docs/02-vision.md` 2.3 to 2.5 |
+| PL | `roadmap.html` phase PL, `docs/13-hand.md` 13.6, `docs/apps/`. Live checks, only when the user says so |
 | P6 | `docs/03-experience.md` 3.3 |
 | PM | `docs/06-sprint.md` 6.3 |
 | PG | `docs/github-guide.html` sections 5 to 7. Ask before any push |

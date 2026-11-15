@@ -13,15 +13,12 @@ import SwiftUI
 /// student's app stays the active app. Every reply takes a fresh screen look; the thread lives in memory only.
 /// Closed by Escape, its close control, the shortcut (when the reply field is empty), 10 minutes without a reply,
 /// or, while the thread is closed, the last step done. Closing forgets the conversation in the Brain too.
+///
+/// The look is docs/15-design.md 15.5 B: one box at one width, open or closed, with a header (presence dot, the
+/// question, close), the body, and a footer (Reply). It opens where the ask panel was, in its place.
 final class TextCard: EditPanel {
-    static let width: CGFloat = 360
-    static let maxHeight: CGFloat = 420
-    static let openWidth: CGFloat = 400
-    static let openMaxHeight: CGFloat = 520
     /// The conversation ends after 10 minutes without a reply (3.10, your choice of 15 November).
     static let idleLimit: TimeInterval = 10 * 60
-    /// The open thread's top strip: the close control, and where the card is dragged.
-    static let header: CGFloat = 28
 
     let model = CardModel()
     private var task: Task<Void, Never>?
@@ -48,7 +45,7 @@ final class TextCard: EditPanel {
     var answering: Bool { task != nil }
 
     init() {
-        super.init(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 44),
+        super.init(contentRect: NSRect(x: 0, y: 0, width: Design.Size.width, height: Design.Size.bar),
                    styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         level = .floating
         hidesOnDeactivate = false
@@ -71,21 +68,20 @@ final class TextCard: EditPanel {
 
     /// Shows the card at once, thinking, then waits for the capture and plays the Brain's answer into it.
     /// `.noKey` and `.badKey` close the card and go to `onKeyProblem` instead.
+    /// `point` is the ask panel's top-left corner: the card takes its place with no fade, so it reads as the same box.
     func show(at point: NSPoint, question: String, capture: Task<ContextPacket?, Never>?, brain: any Brain,
               onKeyProblem: @escaping (BrainError) -> Void) {
         dismiss()
         model.reset()
         self.brain = brain
         self.onKeyProblem = onKeyProblem
-        // Beside the cursor, not under its tip; the thinking row; the view reports its real height as it grows.
-        setFrame(topLeft: NSPoint(x: point.x + 12, y: point.y - 12), size: NSSize(width: Self.width, height: 44))
-        alphaValue = 0
+        // The header alone while he thinks; the view reports its real height as it grows.
+        setFrame(topLeft: point, size: NSSize(width: Design.Size.width, height: Design.Size.bar))
         orderFrontRegardless()  // not key: keystrokes keep going to the student's app
         // Escape typed in the app closes the card. Observe only: the app gets its Escape too.
         escapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if event.keyCode == 53 { self?.dismiss() }
         }
-        NSAnimationContext.runAnimationGroup { $0.duration = 0.15; animator().alphaValue = 1 }
         shellLog("card shown, phew front \(phewIsFront), key \(isKeyWindow), escape monitor \(escapeMonitor != nil)")
         answer(question, capture: capture)
     }
@@ -222,8 +218,8 @@ final class TextCard: EditPanel {
             if let editor = firstResponder as? NSTextView, editor.isEditable, !editor.hasMarkedText() {
                 return event.modifierFlags.contains(.shift) ? editor.insertNewlineIgnoringFieldEditor(nil) : sendReply()
             }
-        // The open thread is dragged by its top strip.
-        case .leftMouseDown where model.open && point.y > frame.height - Self.header && !onClose:
+        // The open thread is dragged by its header.
+        case .leftMouseDown where model.open && point.y > frame.height - Design.Size.bar && !onClose:
             return performDrag(with: event)
         default:
             break
@@ -233,12 +229,23 @@ final class TextCard: EditPanel {
         if event.type == .leftMouseUp && !onClose { openThread() }
     }
 
-    /// Puts the top-left corner where it is now, so the card grows and shrinks downward, kept on screen.
+    /// Puts the top-left corner where it is now, so the card grows and shrinks downward (`grow`), kept on screen:
+    /// moved up, not shrunk, if it would leave it.
     private func fit(height: CGFloat) {
         guard height > 0 else { return }
-        let size = model.open ? NSSize(width: Self.openWidth, height: min(height.rounded(.up), Self.openMaxHeight))
-                              : NSSize(width: Self.width, height: min(height.rounded(.up), Self.maxHeight))
-        setFrame(topLeft: NSPoint(x: frame.minX, y: frame.maxY), size: size)
+        let size = NSSize(width: Design.Size.width,
+                          height: min(height.rounded(.up), model.open ? Design.Size.threadMax : Design.Size.cardMax))
+        guard size != frame.size else { return }
+        let top = NSPoint(x: frame.minX, y: frame.maxY)
+        guard isVisible, !Design.Motion.reduce else {
+            setFrame(topLeft: top, size: size)
+            return invalidateShadow()
+        }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = Design.Motion.growDuration
+            context.timingFunction = Design.Motion.growCurve
+            setFrame(topLeft: top, size: size, animated: true)
+        }, completionHandler: { [weak self] in self?.invalidateShadow() })
     }
 
     /// Moves the card out of the way when it covers the spot the pointer marks (3.10).
@@ -336,117 +343,165 @@ final class CardModel: ObservableObject {
     }
 }
 
+/// One box, 400 wide: header (36), body, footer (36). 15.5 B.
 private struct CardView: View {
     @ObservedObject var model: CardModel
     let onClose: () -> Void
     let onStep: (Int) -> Void
     let onHeight: (CGFloat) -> Void
-    @State private var threadHeight: CGFloat = 0
-    @State private var barHeight: CGFloat = 0
+    @State private var bodyHeight: CGFloat = 0
+    @State private var footerHeight: CGFloat = 0
+
+    /// Thinking on the closed card: the header alone, the dot breathing. The never-read note may come first.
+    private var hasBody: Bool { model.open || !model.thinking || model.note != nil }
+    /// "Reply…" once there is an answer or a problem; the reply field whenever the thread is open.
+    private var hasFooter: Bool { model.open || !model.thinking }
+    private var height: CGFloat {
+        Design.Size.bar + (hasBody ? bodyHeight : 0) + (hasFooter ? footerHeight : 0)
+    }
 
     var body: some View {
-        Group {
-            if model.open { thread } else { closed }
+        VStack(spacing: 0) {
+            header
+            if hasBody {
+                ScrollView {
+                    content
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, Design.Space.s16)
+                        .padding(.top, Design.Space.s4)
+                        .padding(.bottom, Design.Space.s16)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bodyHeight = $0 }
+                }
+                .defaultScrollAnchor(model.open ? .bottom : .top)  // the thread keeps the newest in view
+            }
+            if hasFooter {
+                footer.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { footerHeight = $0 }
+            }
         }
-        .frame(width: model.open ? TextCard.openWidth : TextCard.width)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(alignment: .topTrailing) {
+        .frame(width: Design.Size.width)
+        // minHeight 0: while the window still grows, the content overflows at the bottom, the header stays put.
+        .frame(minHeight: 0, maxHeight: .infinity, alignment: .top)
+        .surface()
+        .onChange(of: height, initial: true) { onHeight(height) }
+    }
+
+    /// The dot, your question on one line (none in the thread, where it is a bubble), close. The drag area once
+    /// the thread is open.
+    private var header: some View {
+        HStack(spacing: Design.Space.s12) {
+            PresenceDot(breathing: model.thinking && model.problem == nil)
+            Text(verbatim: model.open ? "" : model.question)
+                .font(Design.Text.small)
+                .foregroundStyle(Design.Ink.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
             Button(action: onClose) {
                 Image(systemName: "xmark")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(8)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Design.Ink.secondary)
+                    .frame(width: Design.Size.control, height: Design.Size.control)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close")
         }
+        .padding(.leading, Design.Space.s16)
+        .padding(.trailing, Design.Space.s4)
+        .frame(height: Design.Size.bar)
+        .contentShape(Rectangle())
+        .pointerStyle(model.open ? .grabIdle : nil)
     }
 
-    /// The answer card as before, with one grey line saying it can be continued.
-    private var closed: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                turn
-                Text("Reply…").foregroundStyle(.tertiary)
-            }
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
-            .padding(.trailing, 12)  // room for the close control
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onHeight($0) }
-        }
-    }
-
-    /// Oldest at the top, newest at the bottom, scrolling inside; the reply field below.
-    private var thread: some View {
-        VStack(spacing: 0) {
-            Color.clear.frame(height: TextCard.header)  // the close control and the drag strip
-            ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(Array(model.history.enumerated()), id: \.offset) { _, earlier in
+    /// Closed: the turn on the card. Open: oldest at the top, your messages as bubbles, 12 between turns.
+    @ViewBuilder private var content: some View {
+        if model.open {
+            VStack(alignment: .leading, spacing: Design.Space.s12) {
+                ForEach(Array(model.history.enumerated()), id: \.offset) { _, earlier in
+                    VStack(alignment: .leading, spacing: Design.Space.s8) {
                         asked(earlier.question)
-                        if !earlier.answer.isEmpty { Text(verbatim: earlier.answer) }
-                        // A guide in the thread: each step as one short line.
-                        ForEach(Array(earlier.steps.enumerated()), id: \.offset) { index, step in
-                            Text(verbatim: "\(index + 1). \(step)").foregroundStyle(.secondary)
+                        if !earlier.answer.isEmpty { answerText(earlier.answer) }
+                        // A past guide folds to one line, so the thread stays readable.
+                        if !earlier.steps.isEmpty {
+                            Text(verbatim: "Guide, \(earlier.steps.count) step\(earlier.steps.count == 1 ? "" : "s")")
+                                .font(Design.Text.body)
+                                .foregroundStyle(Design.Ink.secondary)
                         }
                     }
+                }
+                VStack(alignment: .leading, spacing: Design.Space.s8) {
                     asked(model.question)
                     turn
                 }
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 14)
-                .padding(.bottom, 10)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { threadHeight = $0; report() }
             }
-            .defaultScrollAnchor(.bottom)
-            Divider()
-            VStack(alignment: .leading, spacing: 4) {
-                TextField("Reply…", text: $model.draft, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .lineLimit(1...6)
-                if model.queued {
-                    Text("Sent when this answer is done.").font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            .padding(12)
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { barHeight = $0; report() }
+        } else {
+            VStack(alignment: .leading, spacing: Design.Space.s8) { turn }
         }
     }
 
-    private func report() {
-        guard threadHeight > 0, barHeight > 0 else { return }
-        onHeight(TextCard.header + threadHeight + 1 + barHeight)  // 1: the divider
+    private var footer: some View {
+        VStack(spacing: 0) {
+            Rectangle().fill(Design.Ink.hairline).frame(height: Design.Size.hairline)
+            if model.open {
+                VStack(alignment: .leading, spacing: Design.Space.s4) {
+                    TextField("Reply…", text: $model.draft, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(Design.Text.body)
+                        .lineLimit(1...6)
+                    if model.queued {
+                        Text("Sent when this answer is done.")
+                            .font(Design.Text.small)
+                            .foregroundStyle(Design.Ink.secondary)
+                    }
+                }
+                .padding(.horizontal, Design.Space.s16)
+                .padding(.vertical, Design.Space.s8)
+                .frame(maxWidth: .infinity, minHeight: Design.Size.bar, alignment: .leading)
+            } else {
+                // The whole closed card opens the thread on a click (TextCard.sendEvent).
+                Text("Reply…")
+                    .font(Design.Text.body)
+                    .foregroundStyle(Design.Ink.tertiary)
+                    .padding(.horizontal, Design.Space.s16)
+                    .frame(maxWidth: .infinity, minHeight: Design.Size.bar, alignment: .leading)
+            }
+        }
     }
 
-    /// The student's question, set apart on the right.
+    private func answerText(_ text: String) -> some View {
+        Text(verbatim: text)
+            .font(Design.Text.body)
+            .lineSpacing(Design.Text.bodySpacing)
+            .foregroundStyle(Design.Ink.primary)
+    }
+
+    /// The student's message, on the right.
     @ViewBuilder private func asked(_ question: String) -> some View {
         if !question.isEmpty {
             Text(verbatim: question)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                .font(Design.Text.body)
+                .lineSpacing(Design.Text.bodySpacing)
+                .padding(.horizontal, Design.Space.s12)
+                .padding(.vertical, Design.Space.s8)
+                .background(Design.Ink.fill, in: RoundedRectangle(cornerRadius: Design.Radius.bubble))
+                .frame(maxWidth: 300, alignment: .trailing)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
     }
 
-    /// The turn being answered: thinking, the words as they arrive, the step lines, or what went wrong.
+    /// The turn being answered: the note, the words as they arrive, the step lines, or what went wrong.
+    /// Thinking shows nothing here: the dot in the header breathes.
     @ViewBuilder private var turn: some View {
-        if let note = model.note { Text(verbatim: note).font(.footnote).foregroundStyle(.secondary) }
-        if model.thinking && model.problem == nil {
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                Text("Thinking…").foregroundStyle(.secondary)
-            }
+        if let note = model.note {
+            Text(verbatim: note).font(Design.Text.small).foregroundStyle(Design.Ink.secondary)
         }
-        if !model.text.isEmpty { Text(verbatim: model.text) }
+        if !model.text.isEmpty { answerText(model.text) }
         // No Next button: the guide follows the student. A step line jumps to that step.
+        // Step looks (done, current, coming) and "Step 2 of 5" come with the guide's pass, PX.4.
         ForEach(Array(model.steps.enumerated()), id: \.offset) { index, step in
             Button { onStep(index) } label: {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: Design.Space.s8) {
                     Text(verbatim: "\(index + 1).").monospacedDigit()
                     Text(verbatim: step).multilineTextAlignment(.leading)
                 }
@@ -454,11 +509,16 @@ private struct CardView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .fontWeight(index == model.current ? .semibold : .regular)
-            .foregroundStyle(index == model.current ? .primary : .secondary)
+            .font(index == model.current ? Design.Text.strong : Design.Text.body)
+            .foregroundStyle(index == model.current ? Design.Ink.primary : Design.Ink.secondary)
             .accessibilityAddTraits(index == model.current ? .isSelected : [])
         }
-        if let problem = model.problem { Text(verbatim: problem).foregroundStyle(.secondary) }
+        if let problem = model.problem {
+            HStack(alignment: .firstTextBaseline, spacing: Design.Space.s8) {
+                Image(systemName: "exclamationmark.circle").foregroundStyle(Design.Ink.problem)
+                Text(verbatim: problem).font(Design.Text.body).foregroundStyle(Design.Ink.primary)
+            }
+        }
     }
 }
 

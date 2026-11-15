@@ -19,13 +19,14 @@ class EditPanel: NSPanel {
     }
 
     /// Puts the top-left corner at `point`, kept inside the visible frame of that point's screen.
-    func setFrame(topLeft point: NSPoint, size: NSSize) {
+    /// `animated`: through the animator, inside the caller's animation group.
+    func setFrame(topLeft point: NSPoint, size: NSSize, animated: Bool = false) {
         var origin = NSPoint(x: point.x, y: point.y - size.height)
         if let visible = (NSScreen.screens.first { $0.frame.contains(point) } ?? NSScreen.main)?.visibleFrame {
             origin.x = min(max(origin.x, visible.minX), visible.maxX - size.width)
             origin.y = min(max(origin.y, visible.minY), visible.maxY - size.height)
         }
-        setFrame(NSRect(origin: origin, size: size), display: true)
+        (animated ? animator() : self).setFrame(NSRect(origin: origin, size: size), display: true)
     }
 }
 

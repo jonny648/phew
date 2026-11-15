@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let permissions = PermissionsWindow()
     /// The context read at the shortcut, kept only until the question is asked or the panel closes without one.
     var capture: Task<ContextPacket?, Never>?
-    /// Where the cursor was at the shortcut: the card opens beside it.
+    /// The ask panel's top-left corner: the card opens there, in its place.
     var anchor = NSPoint.zero
     private lazy var hotKey = HotKey { [unowned self] in shortcut() }
 
@@ -76,16 +76,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func shortcut() {
         // The panel is already open: a second capture would read Phew's own panel.
-        guard !panel.isVisible else { return }
+        guard !panel.isOpen else { return }  // not `isVisible`: it may still be fading out
         // 3.10: while a conversation is open the shortcut goes back to its reply field; no second card.
         if card.isVisible && card.model.open { return card.shortcutPressed() }
         card.dismiss()  // off screen first, so the capture reads the user's app and not the card
         shellLog("shortcut fired, phew front \(phewIsFront)")
         capture = Senses.capture()  // before the panel: it opens under the cursor
-        anchor = NSEvent.mouseLocation
         panel.open { [unowned self] question in
             if let question { ask(question) } else { capture = nil }
         }
+        anchor = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)  // 15.5 A: the card takes the panel's place
     }
 
     /// An empty question is fine: the Brain then explains what is under the cursor.

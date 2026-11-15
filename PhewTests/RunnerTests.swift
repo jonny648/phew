@@ -341,6 +341,15 @@ final class RunnerTests: XCTestCase {
         XCTAssertEqual(Tier.main.model.cost(Usage(searches: 3)), 0.03, accuracy: 1e-12)
     }
 
+    /// PL.4, live 15 Nov: a reply that ran a server tool carries `iterations` (one per sampling step) and counts the
+    /// searches only at the top level. Both must be read, or the limits never see a search.
+    func testSearchesAreCountedWhenTheUsageHasIterations() throws {
+        var parser = SSEParser()
+        let final = #"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":6,"output_tokens":110,"cache_read_input_tokens":80,"cache_creation_input_tokens":70,"iterations":[{"type":"message","model":null,"input_tokens":4,"output_tokens":10,"cache_read_input_tokens":40,"cache_creation_input_tokens":0},{"type":"message","model":null,"input_tokens":2,"output_tokens":100,"cache_read_input_tokens":40,"cache_creation_input_tokens":70}],"server_tool_use":{"web_fetch_requests":2,"web_search_requests":1}}}"#
+        _ = try parser.consume(final)
+        XCTAssertEqual(parser.usage, Usage(input: 6, output: 110, cacheWrite: 70, cacheRead: 80, searches: 1, fetches: 2))
+    }
+
     // MARK: The report files (PA.3)
 
     func testANameIsNeverReplaced() throws {

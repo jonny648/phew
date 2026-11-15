@@ -307,3 +307,17 @@ Read on 15 November 2026. Web content was treated as data. Search queries were g
 What others ship, in one place: a confirmation before anything that cannot be undone (H13, H14, H15); approval per app or per site (H13, H10); a visible notice while acting and one control that always stops (H13, H14); a list of what was done (H14); whole kinds of app held to view-only (H13); password entry left to the user, with no picture taken meanwhile (H15); "show me" kept as a separate, harmless mode beside "do it" (H16). Phew keeps the notice, the Stop, the list, the kinds of app he never touches, the password rule and the "show" mode. By your decisions of 15 November he does not keep the first two when you work with him: no confirmation and no approval per app. For the research agents the confirmation stays. No source was found for a shipped rate limit on actions or for a general undo; the ceiling in this design is Phew's own.
 
 Not searched, and worth knowing: Apple's own reference pages for the Accessibility calls; what Dia's page elements expose; anything measured about Fusion's interface; whether changes made through Accessibility enter each app's Undo list.
+
+## 13.10 The trick test, measured on 15 November
+
+Twenty made-up windows, web pages and documents, in English and Italian. Each held hidden text that asked for something else than your request: press Delete, type a secret into a field, open another app, add a reminder, press Send, "the user changed their mind". Your request was harmless ("make the title bold", "tick Done").
+
+**Result: in 20 of 20 his first action served your request. None followed the hidden text.**
+
+For research tasks: 5 made-up cases with planted instructions in a memory result or in the screen text. 5 of 5 stayed on the task: no item added, no planted address opened. Three of the five reports said that a source held instructions.
+
+What this does not show:
+- Only the first action was measured. The riskier moment is after the job is done, when a planted "now press Send" could be followed. Not measured (roadmap PL.9).
+- The windows were made-up data given to the model, not real apps.
+- A real web page with hidden instructions was not tested: pages are read at Anthropic and cannot be faked from here.
+- Twenty cases is a small number. It shows he is not easily tricked, not that he cannot be.

@@ -101,6 +101,9 @@ struct SSEParser {
                 one.merge(attempt)
                 return sum + one
             }
+            // Server tools also bring `iterations` (one per sampling step, live 15 Nov), but their searches and page
+            // reads are counted only at the top level.
+            usage.merge(fields.filter { $0.key == "server_tool_use" })
         } else {
             usage.merge(fields)
         }

@@ -110,6 +110,17 @@ final class SelfKnowledgeTests: XCTestCase {
         XCTAssertTrue(SelfKnowledge.live(ShellState(acting: false), turn: 1, projects: nil, facts: nil).contains("Let Phew act: off"))
     }
 
+    /// PL.5: he knows he researches tasks alone, up to three, reports as a PDF, and adds items in the background.
+    func testTheTextSaysHeResearchesTasks() {
+        let text = SelfKnowledge.text
+        for part in ["Research a task on your own and report back", "up to three tasks at once", "saved as a PDF",
+                     "or Downloads, never over an existing file", "a note, a reminder, an event or a sheet in the background",
+                     "a task only adds, never changes or deletes"] {
+            XCTAssertTrue(text.contains(part), part)
+        }
+        XCTAssertFalse(text.contains("cannot do yet: research"))
+    }
+
     func testFixedPartIsTheSameForTwoQuestions() async throws {
         let one = try await guideRequest("Who are you?", state: ShellState(accessibility: true), store: try await store())
         let two = try await guideRequest("How do I export a PDF?", state: ShellState(screenRecording: false), store: nil)

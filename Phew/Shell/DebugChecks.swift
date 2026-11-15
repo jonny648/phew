@@ -25,6 +25,46 @@ extension AppDelegate {
             Task { await checkAct(words) }
         }
         if arguments.contains("--debug-first-run") { Task { await checkFirstRun() } }
+        if let flag = arguments.firstIndex(of: "--debug-add-items"), let marker = arguments.dropFirst(flag + 1).first {
+            Task { await checkAddItems(marker) }
+        }
+    }
+
+    /// PL.7: a task's four background adds, as `TaskList.add` makes them (a job that does not watch the user, `kind:
+    /// .script` only, a sheet as a new workbook then its cells), on made-up items titled `marker` ("Phew test " and a
+    /// number). After each, whether the app in front is still the one that was. No model call. Everything made is
+    /// removed by id at the end, the workbook closed without saving. Logs fixed words only. Quits at the end.
+    private func checkAddItems(_ marker: String) async {
+        guard marker.range(of: #"^Phew test [0-9]{3,}$"#, options: .regularExpression) != nil else { return shellLog("add check: no marker") }
+        UserDefaults.standard.setVolatileDomain([Hand.allowedKey: true], forName: UserDefaults.argumentDomain)
+        try? await Task.sleep(for: .seconds(2))
+        NSApp.deactivate()
+        try? await Task.sleep(for: .seconds(1))
+        let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: Date()))! + 3600 * 9
+        let items: [(String, [HandScript])] = [
+            ("note", [.note(title: marker, body: "A made-up line.")]),
+            ("reminder", [.reminder(title: marker, due: nil)]),
+            ("event", [.event(title: marker, start: tomorrow, end: tomorrow + 1800)]),
+            ("sheet", [.workbook, .cells(top: "A1", rows: [["Phew test", "1"], ["made up", "2"]])]),
+        ]
+        for (name, scripts) in items {
+            let job = Hand.shared.begin(watchUser: false)
+            var end = HandEnd.done
+            let begun = Date()
+            for script in scripts where end == .done {
+                let step = HandStep(kind: .script, pid: 0, script: script)
+                end = await Task.detached { Hand.shared.act(step, in: job) }.value.end
+            }
+            Hand.shared.close(job)
+            try? await Task.sleep(for: .seconds(1))  // an app that activates itself does so within a moment
+            let now = NSWorkspace.shared.frontmostApplication
+            shellLog("add check \(name): ended \(end.rawValue) in \(Int(Date().timeIntervalSince(begun) * 1000)) ms, frontUnchanged=\(now?.processIdentifier == front) excelFront=\(now?.bundleIdentifier == "com.microsoft.Excel") phewFront=\(phewIsFront)")
+        }
+        let (removed, failed) = Hand.shared.removeTestItems()
+        try? await Task.sleep(for: .seconds(1))
+        shellLog("add check clean-up: removed \(removed) could not remove \(failed) frontUnchanged=\(NSWorkspace.shared.frontmostApplication?.processIdentifier == front)")
+        exit(0)
     }
 
     /// PX.5: the real first-run panel in each state, from made-up values (the Keychain and the permissions are not
@@ -88,20 +128,22 @@ extension AppDelegate {
             .flatMap { NSRunningApplication(processIdentifier: $0) }
             ?? (arguments.contains("--test-note") ? NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Notes").first : nil)
         if app == nil { shellLog("act check: no test app named; nothing sent") }
-        let look = { () async -> ContextPacket? in
+        // Each look reads the app the job works in now (`pid`: the test's app, then any app the job switched to, PH.7)
+        // and passes the same guard: a window there whose title carries the marker, or nothing is sent.
+        let look = { (pid: pid_t) async -> ContextPacket? in
             var why = "none"
-            guard let app, let bundle = app.bundleIdentifier else { return nil }
+            guard let target = NSRunningApplication(processIdentifier: pid), let bundle = target.bundleIdentifier else { return nil }
             // Up to three tries: while the user switches Spaces the window is briefly off screen and has no picture.
             for _ in 0..<3 {
-                let packet = await Senses.capture(app: app, windowOnly: true).value
+                let packet = await Senses.capture(app: target, windowOnly: true).value
                 guard let reason = packet.map({ $0.notTestWindow(marker: marker, app: bundle) }) ?? "none" else { return packet }
                 why = reason
                 try? await Task.sleep(for: .milliseconds(500))
             }
-            shellLog("act check: look refused, not the test's own made-up window (\(why)); nothing sent")
+            shellLog("act check: look refused in the \(pid == app?.processIdentifier ? "test's app" : "app switched to"), not the test's own made-up window (\(why)); nothing sent")
             return nil
         }
-        if let pid = app?.processIdentifier, let first = await look() {
+        if let pid = app?.processIdentifier, let first = await look(pid) {
             capture = Task { first }
             TextCard.testWindow = (pid, look)
             let visible = NSScreen.screens.first?.visibleFrame ?? .zero

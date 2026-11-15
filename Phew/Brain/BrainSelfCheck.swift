@@ -669,6 +669,7 @@ extension BrainSelfCheck {
         selfCase("what can you do", "What can you do?", studyNotes) {
             has($0, "explain") && has($0, "guide", "point", "step") && has($0, "remember", "memory", "Map")
                 && has($0, "press", "click", "type", "do it", "do the job", "do a job", "do jobs")
+                && has($0, "research") && has($0, "report")  // PL.5: tasks too
         },
         selfCase("do you watch my screen", "Do you watch my screen?", studyNotes) {
             has($0, "only when", "when you call", "when called", "when you ask", "when you press") && has($0, "guide")

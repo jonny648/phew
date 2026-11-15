@@ -10,7 +10,8 @@ import UniformTypeIdentifiers
 ///
 /// Parts: `speed [n]` plain questions with the Map, `search [n]` the "this month" question, `conversation` four
 /// replies in one conversation, `looks [n]` Follower looks on a full-size made-up window, `pages [n]` the guide case
-/// "native app with pointables" again, `guides [n]` every guide case of the brain check (PS.16), `self` the five self-questions (PS.14).
+/// "native app with pointables" again, `guides [n]` every guide case of the brain check (PS.16), `self` the five self-questions (PS.14),
+/// `routes` the Conductor cases, and the PL parts in `BrainTaskCheck`: `task`, `three`, `additem`, `hidden`, `tricks`.
 enum BrainSpeedCheck {
     static func run(_ part: String, count: Int?) async {
         switch part {
@@ -21,6 +22,12 @@ enum BrainSpeedCheck {
         case "pages": await pages(count ?? 5)
         case "guides": await guides(count ?? 1)
         case "routes": await routes()
+        // PL.4 and PL.2 (BrainTaskCheck): no window, no app, made-up words and packets only.
+        case "task": await BrainTaskCheck.task()
+        case "three": await BrainTaskCheck.three()
+        case "additem": await BrainTaskCheck.addItem()
+        case "hidden": await BrainTaskCheck.hidden()
+        case "tricks": await BrainTaskCheck.tricksCheck()
         case "self":
             var passed = 0
             for item in BrainSelfCheck.selfCases {

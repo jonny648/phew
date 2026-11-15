@@ -12,9 +12,9 @@ extension TextCard {
     static let actingOff = "Acting is off, so here is how to do it."
 
     #if DEBUG
-    /// PH.10: set only by `--debug-act`. The app of the test's own made-up window, and every look of the job, already
-    /// checked to be that window; nil when it is not, so nothing is sent.
-    static var testWindow: (pid: pid_t, look: () async -> ContextPacket?)?
+    /// PH.10: set only by `--debug-act`. The app of the test's own made-up window, and every look of the job at the app
+    /// it works in now (PH.7), already checked to be a window the test made; nil when it is not, so nothing is sent.
+    static var testWindow: (pid: pid_t, look: (pid_t) async -> ContextPacket?)?
     #endif
 
     /// Runs the job in `app`, the app the user asked in. Returns when it ends; the Hand's watch goes with it.
@@ -22,7 +22,7 @@ extension TextCard {
     func act(_ request: String, in app: NSRunningApplication?) async {
         var app = app
         // Each look reads the app the job works in, never whatever came to the front meanwhile (the Hand stops then).
-        var look: (() async -> ContextPacket?)?
+        var look: ((pid_t) async -> ContextPacket?)?
         var watchUser = true
         #if DEBUG
         // A live test acts in its own made-up app while the user works in others: their clicks are not a take-over.
@@ -35,7 +35,7 @@ extension TextCard {
             return
         }
         // The app the job works in now, by pid; one no longer running gives no look, never the front app's.
-        let capture: (pid_t) async -> ContextPacket? = look.map { look in { _ in await look() } } ?? { pid in
+        let capture: (pid_t) async -> ContextPacket? = look ?? { pid in
             guard let app = NSRunningApplication(processIdentifier: pid) else { return nil }
             return await Senses.capture(app: app).value
         }

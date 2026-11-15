@@ -85,6 +85,25 @@ final class ToolLoopTests: XCTestCase {
         XCTAssertEqual(fake.requests.map(\.toolChoice), [.auto, .auto, .none])
     }
 
+    /// PS.12 and the P5.4 regression: after a Map search that returned everything, the next round must answer.
+    func testAfterACompleteMapResultTheNextRoundMustAnswer() async throws {
+        let store = try MapStore()
+        for n in 1...3 { try await store.add(MapEvent(app: "Figma", kind: .ask, summary: "Asked made-up question \(n).")) }
+        let month = Reply(blocks: #"[{"type":"tool_use","id":"toolu_1","name":"search_map","input":{"query":"","since":"2020-01-01"}}]"#,
+                          stop: "tool_use")
+        let fake = FakeProvider(rounds: ["guide": [month, answer]])
+        _ = try await events(ClaudeBrain(provider: fake, tools: MapSearch(store: store)), "", packet("Week 47"))
+        let guide = fake.requests.filter { $0.agent == "guide" }
+        XCTAssertEqual(guide.map(\.toolChoice), [.auto, .none])  // one search, then the answer
+        let result = try XCTUnwrap(try blocks(guide[1].after[1].content).first?["content"] as? String)
+        XCTAssertTrue(result.hasSuffix(MapSearch.complete))
+
+        // A result that may hold more leaves the second search allowed.
+        let more = FakeProvider(rounds: ["guide": [searchRound(1), answer]])
+        _ = try await events(ClaudeBrain(provider: more, tools: FakeSearch()), "", packet("Week 47"))
+        XCTAssertEqual(more.requests.filter { $0.agent == "guide" }.map(\.toolChoice), [.auto, .auto])
+    }
+
     func testNoToolsWithoutARunnerAndNeverForTheFollower() async throws {
         let fake = FakeProvider(rounds: ["guide": [answer], "follower": [Reply(pieces: [#"{"step":1,"element":null,"point":null}"#])]])
         let brain = ClaudeBrain(provider: fake, tools: FakeSearch())

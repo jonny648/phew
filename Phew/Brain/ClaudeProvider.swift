@@ -62,6 +62,9 @@ struct ClaudeProvider: ModelProvider {
         }
     }
 
+    /// The 5-minute cache: a conversation's replies come minutes apart at most.
+    static let ephemeral = ["type": "ephemeral"]
+
     static func urlRequest(_ request: ModelRequest, key: String) throws -> URLRequest {
         var content: [[String: Any]] = []
         if let image = request.image {
@@ -70,7 +73,6 @@ struct ClaudeProvider: ModelProvider {
         }
         content.append(["type": "text", "text": request.text])
         // No `thinking` field: adaptive on both models; `effort` sets the depth. No sampling parameters (400s).
-        // No `cache_control`: the only stable prefix, the system prompt, is under the 512-token cache minimum.
         var output: [String: Any] = ["effort": request.effort]
         if let schema = request.schema {
             output["format"] = ["type": "json_schema", "schema": try JSONSerialization.jsonObject(with: Data(schema.utf8))]
@@ -78,6 +80,13 @@ struct ClaudeProvider: ModelProvider {
         // Earlier turns as text only, then the current turn with the fresh look, then the tool rounds unchanged.
         var messages: [[String: Any]] = request.earlier.flatMap { turn in
             [["role": "user", "content": turn.question], ["role": "assistant", "content": turn.answer]]
+        }
+        // Prompt caching (PS.13, docs: prompt caching): two of the 4 breakpoints. One ends the fixed part (tools, then
+        // the system prompt); one ends the earlier turns, so the next reply reads them from the cache and pays about
+        // a twentieth for them. A prefix under the model's minimum (512 tokens on both models) is simply not cached.
+        // The markers only wrap text already filtered: nothing is added, moved or left out.
+        if let last = messages.indices.last, let answer = messages[last]["content"] as? String, !answer.isEmpty {
+            messages[last]["content"] = [["type": "text", "text": answer, "cache_control": ephemeral]]
         }
         messages.append(["role": "user", "content": content])
         for message in request.after {
@@ -87,7 +96,7 @@ struct ClaudeProvider: ModelProvider {
             "model": request.tier.model.id,
             "max_tokens": request.maxTokens,
             "stream": true,
-            "system": request.system,
+            "system": [["type": "text", "text": request.system, "cache_control": ephemeral]],
             "messages": messages,
             "output_config": output,
         ]

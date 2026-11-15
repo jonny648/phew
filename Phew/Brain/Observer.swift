@@ -3,9 +3,10 @@ import Foundation
 /// Turns a long packet's visible text into a shorter clean one that keeps what matters for the question.
 /// Small model. Never fails the request: on any problem the original text goes on to the Guide.
 enum Observer {
-    /// Below this many characters (about 400 tokens) the text is already short: cleaning it would cost a round
-    /// trip and save little.
-    static let minChars = 1500
+    /// Up to this many characters the text is short enough for the Guide as it is. It is the packet's own cap, so
+    /// today the Observer is skipped on every answer (PS.12): measured on 15 Nov, cleaning 4,000 characters took 2 to
+    /// 3 s, all before the Guide could start, and saved the Guide about 700 tokens, 0.14 cents. Was 1,500.
+    static let minChars = ContextPacket.textCap + 1
 
     static let system = """
         You prepare screen text for another assistant, who will answer the user's question about \

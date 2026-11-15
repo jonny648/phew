@@ -102,8 +102,9 @@ struct ClaudeBrain: Brain {
     }
 
     /// Layers 1 and 2 of 5.11: the profile on top, then what code recalls for this question. Empty without a Map.
+    /// Does not wait for the last answer's Librarian (PS.12); the remember route does.
     private func recall(_ question: String, packet: ContextPacket?) async -> (MapStore?, String) {
-        guard let store = await map.ready() else { return (nil, "") }
+        guard let store = await map.now() else { return (nil, "") }
         let profile = await store.profile()
         let recall = await store.recall(question: question, appName: packet?.appName ?? "", windowTitle: packet?.windowTitle ?? "",
                                         documentPath: packet?.documentPath)

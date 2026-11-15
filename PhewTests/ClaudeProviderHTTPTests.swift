@@ -102,7 +102,11 @@ final class ClaudeProviderHTTPTests: XCTestCase {
         // Earlier turns: plain text, no picture.
         XCTAssertEqual(messages[0]["content"] as? String, "Question: q1")
         XCTAssertEqual(messages[1]["content"] as? String, "a1")
-        XCTAssertEqual(messages[3]["content"] as? String, "a2")
+        // The last earlier answer ends the cached part (PS.13): the same text, in a block with its cache marker.
+        let last = try XCTUnwrap(messages[3]["content"] as? [[String: Any]])
+        XCTAssertEqual(last.count, 1)
+        XCTAssertEqual(last[0]["text"] as? String, "a2")
+        XCTAssertEqual(last[0]["cache_control"] as? [String: String], ["type": "ephemeral"])
         // The current turn: picture, then text.
         let current = try XCTUnwrap(messages[4]["content"] as? [[String: Any]])
         XCTAssertEqual(current.map { $0["type"] as? String }, ["image", "text"])
@@ -125,6 +129,60 @@ final class ClaudeProviderHTTPTests: XCTestCase {
         XCTAssertEqual(auto as NSDictionary, ["type": "auto", "disable_parallel_tool_use": true])
         XCTAssertNotNil((sent["output_config"] as? [String: Any])?["format"])  // structured output with tools (docs)
         XCTAssertEqual(sent["fallbacks"] as? String, "default")
+    }
+
+    // MARK: Prompt caching (PS.13)
+
+    func testCacheMarkersEndTheFixedPartAndTheEarlierTurnsOnly() throws {
+        let secret = "sk-" + "ant-api03-" + String(repeating: "Zq7w", count: 10)  // made up, built from pieces
+        var request = Guide.request("Question two", packet: nil, route: .explain, shot: nil,
+                                    earlier: [Turn(question: "Question: one", answer: "Answer one with \(secret)")])
+        request.tools = [.searchMap]
+        let sent = try body(request)
+        // The system prompt: one block, the fixed text unchanged, with the marker. Tools come before it, so it ends both.
+        let system = try XCTUnwrap(sent["system"] as? [[String: Any]])
+        XCTAssertEqual(system.count, 1)
+        XCTAssertEqual(system[0]["text"] as? String, Guide.system)
+        XCTAssertEqual(system[0]["cache_control"] as? [String: String], ["type": "ephemeral"])
+        XCTAssertNil((sent["tools"] as? [[String: Any]])?.first?["cache_control"])
+        let messages = try XCTUnwrap(sent["messages"] as? [[String: Any]])
+        XCTAssertEqual(messages[0]["content"] as? String, "Question: one")
+        // The earlier answer, filtered as before the marker: the marker moves no text past the filter.
+        let answer = try XCTUnwrap((messages[1]["content"] as? [[String: Any]])?.first)
+        XCTAssertEqual(answer["text"] as? String, "Answer one with \(SecretsFilter.keyMarker)")
+        XCTAssertEqual(answer["cache_control"] as? [String: String], ["type": "ephemeral"])
+        // The current turn changes every time: no marker on it. Two markers in all, of the 4 allowed.
+        let current = try XCTUnwrap(messages[2]["content"] as? [[String: Any]])
+        XCTAssertTrue(current.allSatisfy { $0["cache_control"] == nil })
+        let all = String(decoding: try XCTUnwrap(ClaudeProvider.urlRequest(request, key: "k").httpBody), as: UTF8.self)
+        XCTAssertEqual(all.components(separatedBy: "cache_control").count - 1, 2)
+        XCTAssertFalse(all.contains(secret))
+    }
+
+    func testAFirstQuestionMarksOnlyTheSystemPrompt() throws {
+        let sent = try body(request)
+        XCTAssertEqual((sent["system"] as? [[String: Any]])?.first?["cache_control"] as? [String: String], ["type": "ephemeral"])
+        let messages = try XCTUnwrap(sent["messages"] as? [[String: Any]])
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertTrue((messages[0]["content"] as? [[String: Any]] ?? []).allSatisfy { $0["cache_control"] == nil })
+    }
+
+    func testCachedTokensReachCallsLogAsNumbers() async throws {
+        Stub.body = """
+            data: {"type":"message_start","message":{"usage":{"input_tokens":400,"cache_creation_input_tokens":0,"cache_read_input_tokens":3226,"output_tokens":1}}}
+
+            data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":7}}
+
+            data: {"type":"message_stop"}
+
+            """
+        for try await _ in provider.stream(request) {}
+        let line = try XCTUnwrap(try logLines().first)
+        XCTAssertEqual(line.cacheReadTokens, 3226)
+        XCTAssertEqual(line.cacheWriteTokens, 0)
+        XCTAssertEqual(line.inputTokens, 400)
+        // Haiku: 400 × $0.10 + 3,226 × $0.01 + 7 × $0.50, per million.
+        XCTAssertEqual(line.usd, (400 * 0.10 + 3226 * 0.01 + 7 * 0.50) / 1_000_000, accuracy: 1e-6)
     }
 
     func testNoToolsMeansNoToolFieldsAndOneUserMessage() throws {

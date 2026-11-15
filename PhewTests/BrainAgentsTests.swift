@@ -1,3 +1,5 @@
+import ImageIO
+import UniformTypeIdentifiers
 import XCTest
 @testable import Phew
 
@@ -186,6 +188,19 @@ final class BrainAgentsTests: XCTestCase {
                              .done])
     }
 
+    /// PS.12: an explanation gets no list of elements; a guide still does.
+    func testOnlyAGuideGetsTheElements() {
+        var p = packet()
+        p.cursor?.id = "e2"
+        let explain = Guide.request("What is this?", packet: p, route: .explain, shot: nil).text
+        XCTAssertFalse(explain.contains("Elements you can point at"))
+        XCTAssertFalse(explain.contains("\"Table\""))
+        XCTAssertTrue(explain.contains("Under the mouse pointer: AXTextArea \"Body\"\n"))  // without the id of a list it lacks
+        let guide = Guide.request("How do I add a table?", packet: p, route: .guide, shot: nil).text
+        XCTAssertTrue(guide.contains("e2 AXButton \"Table\""))
+        XCTAssertTrue(guide.contains("Under the mouse pointer: AXTextArea \"Body\" (e2)"))
+    }
+
     func testTheGuideMarksTheStepsThatNeedOnlyAClick() async throws {
         let fake = FakeProvider([
             "conductor": [#"{"route":"guide"}"#],
@@ -227,7 +242,8 @@ final class BrainAgentsTests: XCTestCase {
             "observer": ["Fourier series: a sum of sines."],
             "guide": [#"{"explanation":"ok","steps":[]}"#],
         ])
-        let long = String(repeating: "Fourier series text. ", count: 100)  // over the observer's threshold
+        // Over the observer's threshold, which today's packets never reach (PS.12).
+        let long = String(repeating: "Fourier series text. ", count: Observer.minChars / 20 + 1)
         _ = try await events(ClaudeBrain(provider: fake), "why does \(key) fail?", packet(text: long))
         XCTAssertEqual(Set(fake.requests.map(\.agent)), ["conductor", "observer", "guide"])
         for request in fake.requests {
@@ -280,11 +296,106 @@ final class BrainAgentsTests: XCTestCase {
         XCTAssertNoThrow(try JSONSerialization.jsonObject(with: Data(try XCTUnwrap(request.schema).utf8)))
         XCTAssertTrue(request.text.contains("e2 AXButton \"Table\" 90,10 60×28"))  // the screen, as the Guide sees it
         XCTAssertTrue(request.text.contains("Screenshot: attached, 400×300 pixels."))
-        XCTAssertTrue(request.text.contains("1. Click Insert\n2. Click Table\n3. Pick a style"))
-        XCTAssertTrue(request.text.contains("The user was on step 2."))
-        XCTAssertTrue(request.text.hasSuffix("a number from 1 to 3, or 4 when every step is done."))
+        // The steps are in the fixed part, the same on every look of this guide, so it is cached (PS.4).
+        XCTAssertTrue(request.system.hasPrefix(Follower.system))
+        XCTAssertTrue(request.system.contains("1. Click Insert\n2. Click Table\n3. Pick a style"))
+        XCTAssertTrue(request.system.hasSuffix("a number from 1 to 3, or 4 when every step is done."))
+        XCTAssertFalse(request.text.contains("1. Click Insert"))
+        XCTAssertTrue(request.text.hasSuffix("The user was on step 2."))
+        XCTAssertEqual(Follower.request(steps: guideSteps, current: 0, packet: p, shot: nil).system, request.system)
         // No picture: no image, positions in window pixels.
         XCTAssertNil(Follower.request(steps: guideSteps, current: 0, packet: packet(), shot: nil).image)
+    }
+
+    // MARK: Less per look (PS.4)
+
+    /// A real 1600×1000 PNG, white, with a red 20×20 square at 1300,700 (top-left origin).
+    private func display() -> Data {
+        let context = CGContext(data: nil, width: 1600, height: 1000, bitsPerComponent: 8, bytesPerRow: 0,
+                                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 1600, height: 1000))
+        context.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
+        context.fill(CGRect(x: 1300, y: 1000 - 700 - 20, width: 20, height: 20))
+        let data = NSMutableData()
+        let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil)!
+        CGImageDestinationAddImage(destination, context.makeImage()!, nil)
+        CGImageDestinationFinalize(destination)
+        return data as Data
+    }
+
+    /// Red, green and blue at x,y of a PNG, top-left origin.
+    private func rgb(_ png: Data, _ x: Int, _ y: Int) throws -> [UInt8] {
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(XCTUnwrap(CGImageSourceCreateWithData(png as CFData, nil)), 0, nil))
+        let context = CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(),
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        // Core Graphics counts y from the bottom: the wanted pixel lands on the 1×1 context's only pixel.
+        context.draw(image, in: CGRect(x: -x, y: y - image.height + 1, width: image.width, height: image.height))
+        let bytes = context.data!.assumingMemoryBound(to: UInt8.self)
+        return [bytes[0], bytes[1], bytes[2]]
+    }
+
+    func testTheCutIsCentredOnTheMouseAndKeptInsideThePicture() throws {
+        let png = display()
+        XCTAssertEqual(Follower.cutRect(png: png, mouse: CGPoint(x: 800, y: 500)), CGRect(x: 400, y: 200, width: 800, height: 600))
+        XCTAssertEqual(Follower.cutRect(png: png, mouse: CGPoint(x: 10, y: 10)), CGRect(x: 0, y: 0, width: 800, height: 600))
+        XCTAssertEqual(Follower.cutRect(png: png, mouse: CGPoint(x: 1590, y: 990)), CGRect(x: 800, y: 400, width: 800, height: 600))
+        XCTAssertNil(Follower.cutRect(png: png, mouse: CGPoint(x: 1700, y: 500)))  // the mouse is off the picture
+        XCTAssertNil(Follower.cutRect(png: TestPNG.make(width: 800, height: 600), mouse: CGPoint(x: 400, y: 300)))  // small already
+        // Only one side larger: cut on that side only.
+        XCTAssertEqual(Follower.cutRect(png: TestPNG.make(width: 1200, height: 500), mouse: CGPoint(x: 600, y: 250)),
+                       CGRect(x: 200, y: 0, width: 800, height: 500))
+    }
+
+    func testALookSendsTheCutPictureAndPointsBackInTheWholeScreenshot() async throws {
+        let png = display()
+        let frame = CGRect(x: 100, y: 50, width: 1600, height: 1000)
+        var p = packet(screenshot: png)
+        p.screenshotFrame = frame
+        p.mouse = CGPoint(x: frame.minX + 1310, y: frame.minY + 710)  // on the red square
+        let (look, offset) = Follower.less(p, steps: guideSteps, current: 0)
+        let cut = try XCTUnwrap(look.screenshot)
+        XCTAssertEqual(ScreenshotSize(png: cut).map { [$0.width, $0.height] }, [800, 600])
+        XCTAssertEqual(offset.x, 800)
+        XCTAssertEqual(offset.y, 400)
+        XCTAssertEqual(look.screenshotFrame, CGRect(x: 900, y: 450, width: 800, height: 600))
+        // Red within a colour-space conversion; the square spans 1300 to 1320 both ways.
+        func red(_ c: [UInt8]) -> Bool { c[0] > 200 && c[1] < 100 && c[2] < 100 }
+        func white(_ c: [UInt8]) -> Bool { c.allSatisfy { $0 > 240 } }
+        XCTAssertTrue(red(try rgb(png, 1310, 710)))
+        XCTAssertTrue(red(try rgb(cut, 1310 - 800, 710 - 400)))  // the square, moved by the cut
+        XCTAssertTrue(white(try rgb(cut, 1295 - 800, 710 - 400)))  // just left of it
+        XCTAssertTrue(white(try rgb(cut, 1310 - 800, 725 - 400)))  // just below it
+        XCTAssertEqual(look.windowFrame, p.windowFrame)
+
+        // The model answers in the cut picture's pixels; the Shell gets whole-screenshot pixels.
+        let fake = FakeProvider(["follower": [#"{"step":1,"element":null,"point":{"x":510,"y":310}}"#]])
+        let result = try await ClaudeBrain(provider: fake).progress(steps: guideSteps, current: 0, packet: p)
+        XCTAssertEqual(result.target, .point(x: 1310, y: 710))
+        let sent = try XCTUnwrap(fake.requests.first)
+        XCTAssertEqual(sent.image, cut)
+        XCTAssertTrue(sent.text.contains("Screenshot: attached, 800×600 pixels."))
+    }
+
+    func testALookSendsFewerElementsAndLessText() {
+        let mouse = CGPoint(x: 1000, y: 500)
+        var p = packet(text: String(repeating: "x", count: 4000))
+        p.mouse = mouse
+        // 80 elements, one per 20 points to the right of the mouse; the step names "Color", the farthest.
+        p.pointables = (1...80).map { n in
+            Pointable(id: "e\(n)", role: "AXButton", label: n == 80 ? "Color" : "Item \(n)",
+                      frame: CGRect(x: mouse.x + CGFloat(n) * 20, y: mouse.y, width: 10, height: 10))
+        }
+        let steps = [GuideStep(instruction: "Click the note", target: nil), GuideStep(instruction: "Click Color in the toolbar", target: nil)]
+        let (look, _) = Follower.less(p, steps: steps, current: 0)
+        XCTAssertEqual(look.pointables.count, Follower.maxElements)
+        XCTAssertEqual(look.pointables.map(\.id), (1...29).map { "e\($0)" } + ["e80"])  // nearest, plus the one named; ids kept
+        XCTAssertEqual(look.visibleText.count, Follower.maxText)
+        // A step already passed no longer keeps its element.
+        XCTAssertFalse(Follower.less(p, steps: steps, current: 2).0.pointables.contains { $0.label == "Color" })
+        // A short list is sent whole.
+        p.pointables = Array(p.pointables.prefix(5))
+        XCTAssertEqual(Follower.less(p, steps: steps, current: 0).0.pointables, p.pointables)
     }
 
     func testFollowerTargetIsValidatedAgainstTheFreshPacket() async throws {

@@ -40,8 +40,12 @@ final class SelfKnowledgeTests: XCTestCase {
         let state = ShellState(accessibility: true, screenRecording: false, guideRunning: true)
         let request = try await guideRequest("Who are you?", state: state, store: try await store())
 
-        XCTAssertTrue(request.system.hasSuffix(SelfKnowledge.text))
+        XCTAssertTrue(request.system.contains(SelfKnowledge.text))
         XCTAssertEqual(request.system, Guide.system)
+        // The Map rules come last, after the self text, so the rule "a period needs one search" keeps its force.
+        let selfText = try XCTUnwrap(request.system.range(of: SelfKnowledge.text))
+        XCTAssertNotNil(request.system.range(of: "What Phew remembers", range: selfText.upperBound..<request.system.endIndex))
+        XCTAssertTrue(request.system.hasSuffix("nothing more is there: do not search again."))
         XCTAssertTrue(request.text.contains("</map>\n\n<self>\n"))  // next to the Map's block, before the screen
         let block = try XCTUnwrap(request.text.components(separatedBy: "<self>").last?.components(separatedBy: "</self>").first)
         XCTAssertTrue(block.contains("Accessibility permission: on"))

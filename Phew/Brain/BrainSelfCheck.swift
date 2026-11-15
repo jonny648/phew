@@ -9,9 +9,25 @@ import UniformTypeIdentifiers
 /// Costs a few cents. Logs pass or fail per item with timings and cost, then one summary line. Counts only:
 /// no model text goes to the log.
 enum BrainSelfCheck {
+    /// The whole check, or one part of it when a word follows the flag (`BrainSpeedCheck`). Phew quits when it ends,
+    /// so the checker's run returns.
     static func run() {
         Task.detached {
+            await check()
+            _ = CallLog.spentUSD  // waits for the last calls.log line to be written
+            exit(0)
+        }
+    }
+
+    private static func check() async {
+        let arguments = CommandLine.arguments
+        let after = arguments.firstIndex(of: "--debug-brain-check").map { Array(arguments.dropFirst($0 + 1).prefix(2)) } ?? []
+        do {
             guard KeyStore().read() != nil else { return shellLog("brain check: no API key in the Keychain, stopping") }
+            if let part = after.first, !part.hasPrefix("-") {
+                await BrainSpeedCheck.run(part, count: after.dropFirst().first.flatMap { Int($0) })
+                return shellLog("brain check done: part \(part), $\(CallLog.spentUSD) in all")
+            }
             let provider = ClaudeProvider()
             let start = Date()
             var passed = 0, total = 0

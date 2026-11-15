@@ -24,12 +24,21 @@ actor BrainMap {
         }
     }
 
-    /// The Map, once every Librarian run started before has finished. Nil when it cannot be opened.
+    /// The Map, once every Librarian run started before has finished. Nil when it cannot be opened. For what must
+    /// see the last answer's facts: remember and forget, Recently deleted, the export.
     func ready() async -> MapStore? {
         while let task = learning {
             await task.value
             if learning == task { learning = nil }
         }
+        return opened()
+    }
+
+    /// The Map as it is now, without waiting for a Librarian still running (PS.12): for the recall and the search
+    /// of the next answer, which has the last answer in its turns anyway. The wait was about 3.2 s on 14 Nov.
+    func now() -> MapStore? { opened() }
+
+    private func opened() -> MapStore? {
         if store == nil, !unavailable {
             do {
                 store = try open()
@@ -88,4 +97,6 @@ struct MapSearch: ToolRunner {
         if !out.isEmpty, out.split(separator: "\n").count < 10 { out += "\n" + Self.complete }
         return out
     }
+
+    func isComplete(_ result: String) -> Bool { result.hasSuffix(Self.complete) }
 }

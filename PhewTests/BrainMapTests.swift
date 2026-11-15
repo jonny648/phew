@@ -104,36 +104,94 @@ final class BrainMapTests: XCTestCase {
         XCTAssertEqual(past.count, 1)
     }
 
-    /// Delays only the Librarian, so the next question starts while it still runs.
-    struct SlowLibrarian: ModelProvider {
+    /// Holds the first Librarian call until `release`, and notes when Librarian calls start and end.
+    final class HeldLibrarian: ModelProvider, @unchecked Sendable {
         let base: FakeProvider
+        private let lock = NSLock()
+        private var log: [String] = []
+        private var held: CheckedContinuation<Void, Never>?
+        private var waiting = false, released = false
+        init(base: FakeProvider) { self.base = base }
+        var order: [String] { lock.withLock { log } }
+
+        func release() {
+            let gate = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+                released = true
+                defer { held = nil }
+                return held
+            }
+            gate?.resume()
+        }
+
         func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
             guard request.agent == "librarian" else { return base.stream(request) }
+            let first = lock.withLock { () -> Bool in
+                log.append("librarian start")
+                defer { waiting = true }
+                return !waiting
+            }
             return AsyncThrowingStream { continuation in
                 Task {
-                    try? await Task.sleep(for: .milliseconds(300))
-                    do {
-                        for try await event in base.stream(request) { continuation.yield(event) }
-                        continuation.finish()
-                    } catch { continuation.finish(throwing: error) }
+                    if first {
+                        await withCheckedContinuation { gate in
+                            let open = self.lock.withLock { () -> Bool in
+                                if !self.released { self.held = gate }
+                                return self.released
+                            }
+                            if open { gate.resume() }
+                        }
+                    }
+                    for try await event in self.base.stream(request) { continuation.yield(event) }
+                    self.lock.withLock { self.log.append("librarian end") }
+                    continuation.finish()
                 }
             }
         }
     }
 
-    func testTheNextRecallWaitsForTheLibrarian() async throws {
+    /// PS.12: the answer ends, and the next one is answered, while the last Librarian still runs. Its facts reach
+    /// the answer after.
+    func testTheNextAnswerDoesNotWaitForTheLibrarian() async throws {
         let store = try MapStore()
         let fake = FakeProvider(rounds: [
             "conductor": [Reply(pieces: [#"{"route":"explain"}"#])], "guide": [answer],
             "librarian": [Reply(pieces: [Made.reply(things: [Made.thing("t1", "Topic", "Quokka grammar")], summary: "Asked about it.")]),
                           Reply(pieces: [Made.reply()])],
         ])
-        let brain = brain(SlowLibrarian(base: fake), store)
-        // The first answer ends at once; its Librarian is still running when the second question arrives.
-        for try await _ in brain.answer("What is quokka grammar?", packet: packet()) {}
-        _ = try await events(brain, "Tell me more about quokka grammar", packet())
+        let held = HeldLibrarian(base: fake)
+        let brain = brain(held, store)
+        var first: [BrainEvent] = []
+        for try await event in brain.answer("What is quokka grammar?", packet: packet()) { first.append(event) }
+        XCTAssertEqual(first.last, .done)  // the answer ended…
+        XCTAssertFalse(held.order.contains("librarian end"))  // …with its Librarian still held
+        for try await _ in brain.answer("Tell me more about quokka grammar", packet: packet()) {}
         let second = try XCTUnwrap(fake.requests.last { $0.agent == "guide" })
-        XCTAssertTrue(second.text.contains("Quokka grammar (Topic)"))
+        XCTAssertEqual(fake.requests.filter { $0.agent == "guide" }.count, 2)
+        XCTAssertFalse(second.text.contains("Quokka grammar (Topic)"))  // not waited for
+        held.release()
+        _ = await brain.map.ready()
+        _ = try await events(brain, "And quokka grammar again?", packet())
+        let third = try XCTUnwrap(fake.requests.last { $0.agent == "guide" })
+        XCTAssertTrue(third.text.contains("Quokka grammar (Topic)"))
+    }
+
+    /// Remember and forget still wait for the last Librarian, so a forget finds what the last answer stored.
+    func testRememberWaitsForTheLibrarian() async throws {
+        let store = try MapStore()
+        let fake = FakeProvider(rounds: [
+            "conductor": [Reply(pieces: [#"{"route":"explain"}"#]), Reply(pieces: [#"{"route":"remember"}"#])], "guide": [answer],
+            "librarian": [Reply(pieces: [Made.reply(things: [Made.thing("t1", "Topic", "Quokka grammar")], summary: "Asked about it.")]),
+                          Reply(pieces: [Made.reply()])],
+        ])
+        let held = HeldLibrarian(base: fake)
+        let brain = brain(held, store)
+        for try await _ in brain.answer("What is quokka grammar?", packet: packet()) {}
+        let remember = Task { try await self.events(brain, "Forget quokka grammar", packet()) }
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(held.order, ["librarian start"])  // the remember route has not called its Librarian yet
+        held.release()
+        _ = try await remember.value
+        XCTAssertEqual(held.order, ["librarian start", "librarian end", "librarian start", "librarian end"])
     }
 
     // MARK: P5.8: the remember route and forget

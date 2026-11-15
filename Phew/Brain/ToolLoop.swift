@@ -7,6 +7,12 @@ protocol ToolRunner: Sendable {
     var tools: [ToolSpec] { get }
     /// `input` is the tool call's JSON object. Returns the result as text.
     func run(_ name: String, input: Data) async throws -> String
+    /// True when `result` says there is nothing more to find: the next round must answer, with no more searches.
+    func isComplete(_ result: String) -> Bool
+}
+
+extension ToolRunner {
+    func isComplete(_ result: String) -> Bool { false }
 }
 
 extension ToolSpec {
@@ -28,7 +34,8 @@ extension ToolSpec {
 }
 
 /// The search loop of the Guide (and later the Runner): answer, or call a tool and then answer.
-/// At most `maxCalls` tool calls, then one more request with `tool_choice: none`, so the model must answer.
+/// At most `maxCalls` tool calls, then one more request with `tool_choice: none`, so the model must answer. The same
+/// after a result its runner calls complete.
 /// Every round is its own call: one cost-log line each, with stop "tool_use" for a round that searched.
 /// The rounds and results are held in memory only and dropped when the answer ends.
 enum ToolLoop {
@@ -45,9 +52,9 @@ enum ToolLoop {
                 do {
                     var request = request
                     request.tools = runner.tools
-                    var calls = 0
+                    var calls = 0, complete = false
                     while true {
-                        request.toolChoice = calls < maxCalls ? .auto : .none
+                        request.toolChoice = calls < maxCalls && !complete ? .auto : .none
                         var content = Data(), stop = ""
                         for try await event in provider.stream(request) {
                             if case .content(let blocks) = event { content = blocks }
@@ -60,6 +67,8 @@ enum ToolLoop {
                         for use in uses {
                             calls += 1
                             results.append(await result(of: use, runner: runner, allowed: calls <= maxCalls))
+                            // The prompt says not to search again after a complete result; the code makes sure (PS.12).
+                            if runner.isComplete(results.last?["content"] as? String ?? "") { complete = true }
                         }
                         shellLog("tool loop: \(calls) of \(maxCalls) tool calls used")
                         request.after += [ModelMessage(role: "assistant", content: content),

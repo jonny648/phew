@@ -129,6 +129,28 @@ Today the code sends "what do you remember?" to the remember route and answers i
 
 Keeping it cheap and quick in the MVP: small model for three of six agents, window text and one picture together on every call (the window under the mouse, or the whole screen when the mouse is not on the front window), one pixel per point, short context packets, streamed answers, cost and latency logged for every call. How similar tools do this is in `10-research-agents.md` 10.2 and `10-research-speed.md` 10.4.
 
+### Speed and cost, measured (phase PS, 15 November)
+
+All numbers come from live calls on made-up data: a full display picture (1512×982), the most text and elements a packet holds, a made-up Map. Cents include every call of the question, its Librarian too.
+
+**Target for a plain question with the Map (PS.12):** the first word within 3 s on average, and at most 1.5 cents a question. Met over 10 questions: 2.7 s on average (slowest 3.3 s), 1.3 cents.
+
+| Measured | Before | After | What changed |
+|---|---|---|---|
+| Wait before the Guide starts | 3.2 s | 1.1 s | Only the Conductor is waited for now |
+| Observer | 2.0 to 3.1 s, all before the Guide | Skipped | It cut 4,000 characters to about 1,300 and saved the Guide about 0.14 cents. It now runs only on text longer than the packet's cap, so today never |
+| Wait for the last Librarian | Up to 1.1 s here, 3.2 s on 14 November | None | The next answer reads the Map as it is. Remember and forget still wait for it |
+| First word | 4.9 s | 2.7 s | |
+| Text the Guide reads | 8,000 to 9,000 tokens, all at full price | 4,000 to 5,100 new, 3,226 from the cache | An explanation no longer gets the list of elements; the fixed part is cached |
+| Cost a question | 2.1 cents | 1.3 cents | |
+| "What did I do this month?", the search round | 1 of 2 runs searched twice; 2.0 and 2.9 cents | 3 of 3 runs searched once; 0.75 cents | After a result that says it is complete, the code makes the next round answer. The Map rules moved to the end of the Guide's instructions |
+
+The search round itself stays (1.5 to 1.9 s): that question needs it. The cache lives 5 minutes, so the first question after a quiet spell pays to write it, about 0.8 cents more.
+
+**A reply in a conversation (PS.13).** The fixed part (the Map search tool and the Guide's instructions) and the earlier turns are cached. In a conversation of 4 replies the Guide read 0, 3,226, 3,576 and 3,812 tokens from the cache. A reply costs about 1.2 to 1.3 cents from the second reply on; the first costs 1.9 cents because it writes the cache. Without the cache a later reply would cost 0.6 to 0.7 cents more.
+
+**A look while following a guide (PS.4).** A look sends the picture cut to 800×600 around the mouse, at most 30 elements (those the remaining steps name, then the nearest to the mouse) and the first 1,000 characters of text; the instructions and the steps are cached. Over 10 looks: 1,885 new and 876 cached tokens, 0.41 cents a look, 10 of 10 right; the first look of a guide costs about 0.2 cents more, as it writes the cache. Before: 6,419 tokens and 1.31 cents a look. A dialog far from the mouse is seen only in the text and the elements.
+
 ## 4.5 Backend, later
 
 | Part | What it does | Service |

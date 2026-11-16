@@ -54,6 +54,7 @@ You see skills in the menu under **Memory, Skills…**: the name, what it does, 
 ## 21.6 Known weak points
 
 - A skill that got out of the helper's fence could still learn whether a path on your Mac exists: macOS answers "refused" for a path that is there and "not there" for one that is not. It can read nothing either way.
+- Found by the second check, left as they are: a skill out of the fence could read the Mac's own system files, among them device and boot identifiers under `/System/Volumes` (not your files); it could learn your user name and the name of your home folder; and it can see that the folders on the way to Node exist.
 - The memory watch looks a hundred times a second. A skill can pass 384 MB by a few hundred MB in the instant before it is ended.
 
 - The sandbox tool (`sandbox-exec`) is marked deprecated by Apple. It works on this Mac. If an update removes it, skills stop running until the box is rebuilt, for example as a helper with Apple's App Sandbox.

@@ -239,7 +239,7 @@ final class TaskTests: XCTestCase {
         XCTAssertEqual(try result(script, 2), "<skill>\n42\n</skill>")
         XCTAssertEqual(try result(script, 3), "The skill failed: There is no skill named \"no-such-skill\".")
         XCTAssertEqual(store.all().map(\.name), ["sum-list"])
-        XCTAssertEqual(item.report?.markdown, report + "\n\n## Skills he used\n\n- sum-list\n- no-such-skill")
+        XCTAssertEqual(item.report?.markdown, report + "\n\n## Skills he used\n\n- sum-list", "a skill that does not exist is not listed")
         XCTAssertEqual(fake.scripts, [], "a skill never reaches the Hand")
     }
 

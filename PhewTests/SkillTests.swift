@@ -33,6 +33,11 @@ final class SkillTests: XCTestCase {
         const tryIt = (name, f) => { try { f(); out[name] = "open"; } catch (e) { out[name] = "refused"; } };
         tryIt("write", () => fs.writeFileSync(os.tmpdir() + "/phew-box-probe.txt", "made up"));
         tryIt("home", () => fs.readdirSync(os.homedir()));
+        tryIt("temporary", () => fs.readdirSync(os.tmpdir()));
+        tryIt("applications", () => fs.readdirSync("/Applications"));
+        tryIt("log", () => fs.readFileSync("/private/var/log/system.log"));
+        tryIt("accounts", () => fs.readFileSync("/etc/passwd"));
+        tryIt("signal", () => process.kill(process.ppid, 0));
         tryIt("program", () => cp.execFileSync("/bin/echo", ["made up"]));
         out.environment = Object.keys(process.env).filter(k => !k.startsWith("__CF")).length;
         const answer = () => { process.stdout.write(JSON.stringify({ ok: true, output: JSON.stringify(out) }) + "\\n"); process.exit(0); };
@@ -44,7 +49,7 @@ final class SkillTests: XCTestCase {
         box.engine = probe
         guard case .done(let text) = await box.run(code: "", input: "") else { return XCTFail("the probe did not answer") }
         let got = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
-        for door in ["write", "home", "program", "network"] { XCTAssertEqual(got[door] as? String, "refused", door) }
+        for door in ["write", "home", "temporary", "applications", "log", "accounts", "signal", "program", "network"] { XCTAssertEqual(got[door] as? String, "refused", door) }
         XCTAssertEqual(got["environment"] as? Int, 0, "nothing of yours is in its environment")
         XCTAssertFalse(FileManager.default.fileExists(atPath: NSTemporaryDirectory() + "phew-box-probe.txt"))
     }
@@ -94,6 +99,43 @@ final class SkillTests: XCTestCase {
         XCTAssertEqual(end, .done("3"))
     }
 
+    /// Memory outside the JavaScript heap, which Node's own limit does not count: Swift's watch ends the process.
+    func testMemoryOutsideTheHeapIsEndedBySwift() async {
+        var box = SkillBox.shared
+        box.engine = "const kept = []; setInterval(() => { kept.push(Buffer.alloc(64 * 1024 * 1024, 1)); }, 5);"
+        let end = await box.run(code: "", input: "")
+        XCTAssertEqual(end, .failed("The skill used more than \(SkillBox.realMegabytes) MB of memory and was ended."))
+    }
+
+    /// A helper that floods its answer pipe is ended at the limit; Phew never holds the flood.
+    func testAFloodOfOutputIsEnded() async {
+        var box = SkillBox.shared
+        box.engine = "const piece = 'x'.repeat(65536); for (;;) { require('fs').writeSync(1, piece); }"
+        let started = Date()
+        let end = await box.run(code: "", input: "")
+        XCTAssertEqual(end, .failed("The skill wrote far too much and was ended."))
+        XCTAssertLessThan(Date().timeIntervalSince(started), 3)
+    }
+
+    /// The way out of the context the checker found, and typed arrays by name: closed in the helper.
+    func testTheWayOutOfTheContextIsClosed() async {
+        for way in ["this.constructor.constructor('return process')()", "new Uint8Array(1500000000)"] {
+            let end = await SkillBox.shared.run(code: "function run() { return typeof (\(way)); }", input: "")
+            if case .done(let text) = end { XCTAssertEqual(text, "undefined", way) }
+        }
+    }
+
+    /// What is kept is what was tested, whatever line breaks the description holds.
+    func testTheKeptCodeIsTheTestedCode() async throws {
+        let code = "var run = function (i) { return 'A'; }\nfunction later(i) { return 'B'; }"
+        for about in ["x\r", "x\r\ny", "x\u{2028}y", ""] {
+            try await store.write(name: "kept-as-tested", about: about, code: code, testInput: "", expected: "A")
+            XCTAssertEqual(store.find("kept-as-tested")?.code, code, about.debugDescription)
+            let end = await store.run("kept-as-tested", input: "")
+            XCTAssertEqual(end, .done("A"))
+        }
+    }
+
     func testTooMuchOutputIsCutAndTooMuchInputIsRefused() async {
         let end = await SkillBox.shared.run(code: "function run() { return 'x'.repeat(50000); }", input: "")
         guard case .done(let text) = end else { return XCTFail("\(end)") }
@@ -116,7 +158,10 @@ final class SkillTests: XCTestCase {
         // What comes back when the sandbox tool exits without starting Node: a failure, never a result.
         XCTAssertEqual(SkillBox.answer(Data(), status: 65), .failed("The skill did not finish."))
         XCTAssertEqual(SkillBox.answer(Data(#"{"ok":true,"output":"made up"}"#.utf8), status: 1), .failed("The skill did not finish."))
-        XCTAssertTrue(SkillBox.profile(node: "/made up/\"node").contains(#"(literal "/made up/\"node")"#))
+        let profile = SkillBox.profile(node: "/made up/\"app/node")
+        XCTAssertTrue(profile.contains(#"(allow process-exec (literal "/made up/\"app/node"))"#))
+        XCTAssertTrue(profile.contains(#"(literal "/made up/\"app") (literal "/made up")"#), "the folders on the way, by name only")
+        XCTAssertTrue(profile.contains("(deny file-read*)(deny file-read-metadata)") && profile.contains("(deny signal)"))
     }
 
     // MARK: The store

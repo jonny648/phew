@@ -22,6 +22,9 @@ built=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Con
 # is signed again, since its contents changed. Without Node the image is not made: skills would silently not run.
 node="$root/Vendor/node/node"
 [[ -x $node ]] || fail "no Node program: run Tools/fetch-node.sh first"
+# The fetched copy must still be the Node.js project's own, unchanged since the download was checked.
+codesign --verify --strict "$node" || fail "the fetched Node program was changed: delete Vendor/ and run Tools/fetch-node.sh"
+[[ $(codesign -dvv "$node" 2>&1) == *TeamIdentifier=HX7739G8FX* ]] || fail "the fetched Node program is not signed by the Node.js project"
 [[ -f $app/Contents/Resources/engine.js ]] || fail "the helper (engine.js) is not in the app: run Tools/build-engine.sh"
 identity=$(security find-identity -v -p codesigning | awk '/Apple Development/{print $2; exit}')
 [[ -n $identity ]] || fail "no signing certificate found"

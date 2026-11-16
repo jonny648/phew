@@ -18,10 +18,23 @@ export interface Answer {
   error?: string;
 }
 
+const outsideHeap = [
+  "ArrayBuffer", "SharedArrayBuffer", "DataView", "WebAssembly", "Atomics", "Int8Array", "Uint8Array", "Uint8ClampedArray",
+  "Int16Array", "Uint16Array", "Int32Array", "Uint32Array", "Float16Array", "Float32Array", "Float64Array", "BigInt64Array",
+  "BigUint64Array",
+];
+
 export function runSkill(request: Request): Answer {
   try {
     // A fresh context: the language's own objects only. No `process`, `require`, `fetch`, timers or console.
-    const context = vm.createContext({ input: String(request.input) }, { codeGeneration: { strings: false, wasm: false } });
+    // The object behind the context has no prototype: with one, `this.constructor.constructor` would be the outer
+    // Function and hand out `process`. The input goes in as plain text, so nothing of the outer realm is reachable.
+    const sandbox = Object.create(null) as Record<string, unknown>;
+    sandbox.input = String(request.input);
+    const context = vm.createContext(sandbox, { codeGeneration: { strings: false, wasm: false } });
+    // Memory outside the JavaScript heap is not under Node's heap limit: take away the ways to ask for it.
+    // Swift watches the process's real memory as well and ends it; that is the lock, this is the first fence.
+    vm.runInContext(`for (const name of ${JSON.stringify(outsideHeap)}) delete globalThis[name];`, context);
     const out: unknown = vm.runInContext(`${request.code}\n;run(input)`, context, { timeout: request.ms ?? 4000 });
     if (typeof out !== "string") return { ok: false, error: "The skill did not return text." };
     return { ok: true, output: out };

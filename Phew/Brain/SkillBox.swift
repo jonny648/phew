@@ -19,7 +19,12 @@ enum SkillEnd: Equatable, Sendable {
 /// One process per run: nothing is left between two skills, and killing it is Stop.
 struct SkillBox: Sendable {
     static let seconds: TimeInterval = 5
+    /// Node's own heap limit, and the ceiling on the process's real memory, which Swift watches: Node's limit does
+    /// not count memory outside the JavaScript heap.
     static let megabytes = 128
+    static let realMegabytes = 384
+    /// The most the helper may write back before it is ended: far over any honest answer.
+    static let rawOutputLimit = 1_000_000
     static let outputLimit = 20_000
     static let inputLimit = 100_000
 
@@ -45,17 +50,39 @@ struct SkillBox: Sendable {
         return places.first { FileManager.default.isExecutableFile(atPath: $0.path) }
     }
 
-    /// The sandbox profile. Later rules win. Reading is closed for your folders and outside disks; the one file under
-    /// them the box may read is Node itself (the app may sit in a folder of yours).
+    /// The sandbox profile. Later rules win. Everything is refused first: the network, writing, starting or signalling
+    /// another program, and reading any file. Then only what Node needs to start is opened: itself, the system's own
+    /// libraries, and the names of the folders on the way to itself. Nothing of yours, no temporary folder, no log.
+    /// One thing it cannot hide: asking about a path under a closed folder answers "refused" when the path exists and
+    /// "not there" when it does not. Nothing can be read either way.
     static func profile(node: String) -> String {
-        let quoted = "\"" + node.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
+        func quoted(_ path: String) -> String {
+            "\"" + path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
+        }
+        var parents: [String] = [], path = (node as NSString).deletingLastPathComponent
+        while path != "/", !path.isEmpty {
+            parents.append("(literal \(quoted(path)))")
+            path = (path as NSString).deletingLastPathComponent
+        }
         return """
         (version 1)(allow default)
         (deny network*)
         (deny file-write*)(allow file-write* (literal "/dev/null"))
-        (deny process-fork)(deny process-exec)(allow process-exec (literal \(quoted)))
-        (deny file-read* (subpath "/Users") (subpath "/Volumes"))(allow file-read* (literal \(quoted)))(allow file-read-metadata)
+        (deny process-fork)(deny process-exec)(allow process-exec (literal \(quoted(node))))
+        (deny signal)(allow signal (target self))
+        (deny file-read*)(deny file-read-metadata)
+        (allow file-read* (literal \(quoted(node))) (subpath "/System") (subpath "/usr/lib") (subpath "/usr/share") (subpath "/private/var/db/dyld") (literal "/dev/null") (literal "/dev/urandom") (literal "/dev/random") (literal "/"))
+        (allow file-read-metadata \(parents.joined(separator: " ")) (literal "/private") (literal "/var") (literal "/tmp") (literal "/etc") (literal "/dev"))
         """
+    }
+
+    /// The real memory of a process, in megabytes: what the system charges it, heap or not.
+    static func megabytes(of pid: pid_t) -> Int {
+        var info = rusage_info_current()
+        let ok = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_CURRENT, $0) }
+        }
+        return ok == 0 ? Int(info.ri_phys_footprint / 1_048_576) : 0
     }
 
     /// Runs `code` (JavaScript that defines `run(input)`) on `input`. `stop` is asked ten times a second.
@@ -88,16 +115,34 @@ struct SkillBox: Sendable {
                 try? stdin.fileHandleForWriting.close()
                 let out = OutputBox()
                 let reader = DispatchQueue(label: "phew.skillbox.read")
-                reader.async { out.data = stdout.fileHandleForReading.readDataToEndOfFile() }
+                // Read in pieces and stop at the limit: a flood must never fill Phew's own memory.
+                reader.async {
+                    let handle = stdout.fileHandleForReading
+                    while let piece = try? handle.read(upToCount: 65_536), !piece.isEmpty {
+                        out.data.append(piece)
+                        if out.data.count > Self.rawOutputLimit {
+                            out.flooded = true
+                            kill(process.processIdentifier, SIGKILL)
+                            break
+                        }
+                    }
+                }
                 let started = Date()
                 var end: SkillEnd?
                 while process.isRunning {
-                    if stop() || cancelled.on { end = .stopped } else if Date().timeIntervalSince(started) > seconds { end = .timeout }
+                    if stop() || cancelled.on {
+                        end = .stopped
+                    } else if Date().timeIntervalSince(started) > seconds {
+                        end = .timeout
+                    } else if Self.megabytes(of: process.processIdentifier) > Self.realMegabytes {
+                        end = .failed("The skill used more than \(Self.realMegabytes) MB of memory and was ended.")
+                    }
                     if end != nil { kill(process.processIdentifier, SIGKILL); break }
-                    Thread.sleep(forTimeInterval: 0.02)
+                    Thread.sleep(forTimeInterval: 0.01)
                 }
                 process.waitUntilExit()
                 reader.sync {}
+                if out.flooded { end = .failed("The skill wrote far too much and was ended.") }
                 done.resume(returning: end ?? Self.answer(out.data, status: process.terminationStatus))
             }
         } }, onCancel: { cancelled.on = true })
@@ -105,7 +150,7 @@ struct SkillBox: Sendable {
 
     private final class Flag: @unchecked Sendable { var on = false }
 
-    private final class OutputBox: @unchecked Sendable { var data = Data() }
+    private final class OutputBox: @unchecked Sendable { var data = Data(); var flooded = false }
 
     /// The helper's one line. Anything else (the sandbox tool refused the profile, Node died, memory ran out) is a failure.
     static func answer(_ data: Data, status: Int32) -> SkillEnd {

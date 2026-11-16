@@ -51,10 +51,12 @@ struct SkillStore: Sendable {
 
     func find(_ name: String) -> Skill? {
         guard Self.valid(name), let text = try? String(contentsOf: file(name), encoding: .utf8) else { return nil }
-        let first = text.prefix { $0 != "\n" }
-        let about = first.hasPrefix("// ") ? String(first.dropFirst(3)) : ""
+        // By bytes, not characters: "\r\n" is one character in Swift, and the first line ends at the first "\n" byte.
+        let bytes = Array(text.utf8), cut = bytes.firstIndex(of: 10) ?? bytes.count
+        let first = String(decoding: bytes[..<cut], as: UTF8.self)
         let made = (try? file(name).resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
-        return Skill(name: name, about: about, code: about.isEmpty ? text : String(text.dropFirst(first.count + 1)), made: made)
+        guard first.hasPrefix("// "), cut < bytes.count else { return Skill(name: name, about: "", code: text, made: made) }
+        return Skill(name: name, about: String(first.dropFirst(3)), code: String(decoding: bytes[(cut + 1)...], as: UTF8.self), made: made)
     }
 
     /// Keeps a skill only if its own test passes in the box: `run(testInput)` must give exactly `expected`.
@@ -71,8 +73,15 @@ struct SkillStore: Sendable {
         case .noBox: throw SkillProblem.testFailed("skills cannot run on this Mac right now")
         }
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let line = about.replacingOccurrences(of: "\n", with: " ").prefix(Self.aboutLimit)
+        // Every kind of line break out of the first line: a lone carriage return there once joined with the next
+        // character and made the kept code differ from the tested code.
+        let line = String(about.map { $0.isNewline ? " " : $0 }).prefix(Self.aboutLimit)
         try "// \(line)\n\(code)".write(to: file(name), atomically: true, encoding: .utf8)
+        // What is kept must be exactly what was tested.
+        guard find(name)?.code == code else {
+            delete(name)
+            throw SkillProblem.testFailed("it could not be kept as written")
+        }
     }
 
     func run(_ name: String, input: String, stop: @escaping @Sendable () -> Bool = { false }) async -> SkillEnd {
@@ -137,7 +146,8 @@ struct SkillTools: ToolRunner {
             }
         case "run_skill":
             let run = try JSONDecoder().decode(Run.self, from: input)
-            ran(run.name)
+            // Only a skill that exists is listed as used.
+            if store.find(run.name) != nil { ran(run.name) }
             switch await store.run(run.name, input: run.input, stop: stop) {
             case .done(let text): return Guide.block("skill", text)
             case .failed(let why): return "The skill failed: " + Guide.inert(why)

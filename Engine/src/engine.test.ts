@@ -32,3 +32,24 @@ test("anything but text is an error, and so is a throw or no run function", () =
   assert.equal(runSkill({ code: "function run() { throw new Error('made up'); }", input: "" }).error, "made up");
   assert.equal(runSkill({ code: "const x = 1;", input: "" }).ok, false);
 });
+
+test("the known ways out of the context give nothing of Node", () => {
+  const ways = [
+    "this.constructor.constructor('return process')()",
+    "(function(){}).constructor('return process')()",
+    "input.constructor.constructor('return process')()",
+    "Object.getPrototypeOf(async function(){}).constructor('return process')()",
+    "(() => { try { null.x } catch (e) { return e.constructor.constructor('return process')() } })()",
+    "globalThis.constructor.constructor('return require')()",
+  ];
+  for (const way of ways) {
+    const answer = runSkill({ code: `function run(input) { return typeof (${way}); }`, input: "" });
+    assert.ok(answer.ok === false || answer.output === "undefined", `${way}: ${JSON.stringify(answer)}`);
+  }
+});
+
+test("memory outside the heap cannot be asked for by name", () => {
+  for (const name of ["ArrayBuffer", "Uint8Array", "SharedArrayBuffer", "WebAssembly", "Float64Array"]) {
+    assert.deepEqual(runSkill({ code: `function run() { return typeof ${name}; }`, input: "" }), { ok: true, output: "undefined" }, name);
+  }
+});

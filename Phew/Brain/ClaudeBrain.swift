@@ -190,22 +190,40 @@ extension ClaudeBrain {
 
     func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?) -> AsyncThrowingStream<TaskEvent, Error> {
         let injected = tools, map = map, brain = self
-        // The task was counted when its words were routed. Today's dollars left cap its cost: past them, the task
-        // ends through its own cost limit, with its report so far.
+        // The task was counted when its words were routed. N2.12: it sets aside its budget out of today's ceiling, so
+        // tasks side by side cannot pass it together; a smaller reserve caps its cost, and past it the task ends
+        // through its own cost limit, with its report so far. Nothing left: it does not start.
         var taskLimits = TaskLimits()
         if let limits {
-            taskLimits.dayLeft = limits.dayLeft()
+            taskLimits.dayLeft = limits.reserve(task: number, usd: taskLimits.usd)
             taskLimits.dayCeiling = limits.usdPerDay
             guard taskLimits.dayLeft > 0 else {
                 return AsyncThrowingStream { $0.finish(throwing: BrainError.limited(.dayUSD(limits.usdPerDay))) }
             }
         }
-        return Runner.stream(words, packet: packet, spoken: spoken, number: number, folder: folder, tools: {
+        let stream = Runner.stream(words, packet: packet, spoken: spoken, number: number, folder: folder, tools: {
             let search: (any ToolRunner)? = if let injected { injected } else { await map.now().map { MapSearch(store: $0, forRunner: true) } }
             return search.map(RunnerTools.init)
         }, projectMemory: {
             await brain.projectMemoryBlock(SecretsFilter.clean(words), packet: packet, store: await map.now()).map(Runner.withoutAddresses)
         }, add: add, provider: provider, limits: taskLimits)
+        guard let limits else { return stream }
+        // What the task did not spend goes back when it ends, fails or is stopped.
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    for try await event in stream { continuation.yield(event) }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+                limits.release(task: number)
+            }
+            continuation.onTermination = { _ in
+                task.cancel()
+                limits.release(task: number)
+            }
+        }
     }
 
     func limitsToday() async -> LimitsToday? {
@@ -253,6 +271,13 @@ extension ClaudeBrain {
         do {
             try limits?.start()
             return try await Importer.sort(export, provider: provider, progress: progress)
+        } catch { throw BrainError(error) }
+    }
+
+    func sortReport(_ markdown: String) async throws -> ImportSort {
+        do {
+            try limits?.start()
+            return try await Importer.sort(report: markdown, provider: provider)
         } catch { throw BrainError(error) }
     }
 

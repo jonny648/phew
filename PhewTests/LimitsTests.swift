@@ -49,7 +49,7 @@ final class LimitsTests: XCTestCase {
 
     private func limits(_ lines: [CallLog.Line] = []) -> Limits {
         let clock = clock
-        return Limits(defaults: defaults, now: { clock.now }, calendar: rome, log: { lines })
+        return Limits(defaults: defaults, now: { clock.now }, calendar: rome, log: { lines }, spend: Spend())
     }
 
     // MARK: Limits
@@ -141,7 +141,122 @@ final class LimitsTests: XCTestCase {
         XCTAssertEqual(lines.count, 3)
         XCTAssertEqual(CallLog.spent(lines, on: clock.now, calendar: rome), 0.75, accuracy: 1e-9)
         let clock = clock
-        XCTAssertEqual(Limits(defaults: defaults, now: { clock.now }, calendar: rome).dayLeft(), 2.25, accuracy: 1e-9)
+        XCTAssertEqual(Limits(defaults: defaults, now: { clock.now }, calendar: rome, spend: Spend()).dayLeft(), 2.25, accuracy: 1e-9)
+    }
+
+    // MARK: N2.12 Two money guards
+
+    /// $2.10 spent of $3.00: the first task sets aside 50 cents, the second the 40 left, the third does not start.
+    /// What a finished task did not spend comes back; what it spent stays spent.
+    func testTasksReserveTheirBudgetAndCannotPassTheCeilingTogether() {
+        let limits = limits([line("2026-11-16T08:00:00Z", usd: 2.10)])
+        XCTAssertEqual(limits.reserve(task: 1, usd: 0.50), 0.50, accuracy: 1e-9)
+        XCTAssertEqual(limits.reserve(task: 2, usd: 0.50), 0.40, accuracy: 1e-9)
+        XCTAssertEqual(limits.reserve(task: 3, usd: 0.50), 0)
+        // Task 1 spends 20 cents, then ends: 30 cents of its reserve come back.
+        limits.spend.add(taskLine("2026-11-16T10:00:00Z", usd: 0.20, task: 1))
+        XCTAssertEqual(limits.reserve(task: 4, usd: 0.50), 0, "task 1 still holds what it did not spend")
+        limits.release(task: 1)
+        XCTAssertEqual(limits.reserve(task: 4, usd: 0.50), 0.30, accuracy: 1e-9)
+        // Ordinary questions keep working while the reserves hold the rest of the day.
+        XCTAssertNoThrow(try limits.start())
+        XCTAssertEqual(limits.today().spentUSD, 2.30, accuracy: 1e-9)
+        // No ceiling: no reserve needed.
+        defaults.set(0, forKey: Limits.usdKey)
+        XCTAssertEqual(limits.reserve(task: 5, usd: 0.50), .infinity)
+    }
+
+    /// Through the Brain: two tasks run, the third is refused with the day's sentence and sends nothing; once one is
+    /// stopped, its reserve comes back and a later task starts.
+    func testTheThirdTaskDoesNotStartUntilAReserveIsReleased() async throws {
+        let script = RunnerTests.Script([.init(hang: true)])
+        let brain = ClaudeBrain(provider: script, map: BrainMap(open: { throw MapError.underTests }, maintenance: false),
+                                limits: limits([line("2026-11-16T08:00:00Z", usd: 2.00)]))
+        let folder = FileManager.default.temporaryDirectory.appending(path: "phew-reserve-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        func run(_ number: Int) -> Task<BrainError?, Never> {
+            Task {
+                do {
+                    for try await _ in brain.runTask("Find made-up sources", packet: nil, number: number, folder: folder, add: nil) {}
+                    return nil
+                } catch { return error as? BrainError }
+            }
+        }
+        let one = run(1), two = run(2)
+        try await waitUntil { script.requests.count == 2 }
+        let third = await run(3).value
+        XCTAssertEqual(third, .limited(.dayUSD(3)))
+        XCTAssertEqual(script.requests.count, 2, "the third sent nothing")
+        one.cancel()
+        _ = await one.value
+        let four = run(4)
+        try await waitUntil { script.requests.count == 3 }
+        two.cancel()
+        four.cancel()
+        _ = await (two.value, four.value)
+    }
+
+    /// The total in memory matches calls.log after several calls and across a day change, and calls.log is read once
+    /// at the first request and once more on the new day: never per request.
+    func testTheRunningTotalMatchesTheLogWithoutAReadPerRequest() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "phew-total-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (savedURL, savedSpend) = (CallLog.url, CallLog.spend)
+        CallLog.url = folder.appending(path: "calls.log")
+        CallLog.spend = Spend()
+        defer { (CallLog.url, CallLog.spend) = (savedURL, savedSpend) }
+        try [CallLog.encode(line("2026-11-15T09:00:00Z", usd: 9)), CallLog.encode(line("2026-11-16T07:00:00Z", usd: 0.25))]
+            .reduce(Data(), +).write(to: CallLog.url)
+        let reads = Counter()
+        let clock = clock
+        let limits = Limits(defaults: defaults, now: { clock.now }, calendar: rome, log: { reads.add(); return CallLog.lines() })
+        func logged(_ usage: Usage, _ tier: Tier = .main) {
+            CallLog.record(ModelRequest(agent: "guide", tier: tier, system: "", text: "", maxTokens: 1), usage: usage, msFirst: nil,
+                           msTotal: 1, stop: "end_turn", error: nil, at: clock.now)
+        }
+        func fromFile() -> Double { CallLog.spent(CallLog.lines(), on: clock.now, calendar: rome) }
+
+        try limits.start()
+        for n in 1...6 {
+            logged(Usage(input: 10_000 * n, output: 500), n.isMultiple(of: 2) ? .small : .main)
+            clock.now = clock.now.addingTimeInterval(61)
+            try limits.start()
+        }
+        XCTAssertEqual(limits.today().spentUSD, fromFile(), accuracy: 1e-9)
+        XCTAssertGreaterThan(limits.today().spentUSD, 0.25)
+        XCTAssertEqual(reads.count, 1, "calls.log read once, not per request")
+
+        // 00:30 in Rome on the 17th: a call logged before any request of the new day, then requests.
+        clock.now = date("2026-11-16T23:30:00Z")
+        logged(Usage(input: 50_000))
+        for _ in 0..<5 { try limits.start() }
+        logged(Usage(input: 20_000, output: 1000))
+        XCTAssertEqual(limits.today().spentUSD, fromFile(), accuracy: 1e-9)
+        XCTAssertEqual(limits.today().spentUSD, 0.1 + 0.05, accuracy: 1e-9, "only the new day's two calls")
+        XCTAssertEqual(reads.count, 2, "read again once when the day changed")
+        XCTAssertEqual(limits.spend.reads, 2)
+    }
+
+    private func taskLine(_ iso: String, usd: Double, task: Int) -> CallLog.Line {
+        var line = line(iso, usd: usd)
+        line.task = task
+        return line
+    }
+
+    private func waitUntil(_ condition: () -> Bool) async throws {
+        let end = Date() + 5
+        while !condition() {
+            guard Date() < end else { return XCTFail("timed out") }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+    }
+
+    final class Counter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = 0
+        func add() { lock.withLock { value += 1 } }
+        var count: Int { lock.withLock { value } }
     }
 
     /// A task that would pass today's ceiling ends through its cost limit, with its report and today's line.

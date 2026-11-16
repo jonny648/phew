@@ -8,6 +8,8 @@ import Foundation
 /// Where an import came from. Its `label` is stored as the import's app, and the export names it.
 enum ImportSource: String, CaseIterable, Sendable {
     case claude, chatgpt, gemini, claudeCode, other
+    /// N2.11: a research task's report. 5.5 allows no other origin, so its facts are "imported" with this source.
+    case report
 
     var label: String {
         switch self {
@@ -16,6 +18,7 @@ enum ImportSource: String, CaseIterable, Sendable {
         case .gemini: return "Gemini"
         case .claudeCode: return "Claude Code"
         case .other: return "another assistant"
+        case .report: return "a research report"
         }
     }
 }
@@ -210,10 +213,30 @@ enum Importer {
             out.append(ImportCandidate(id: first + out.count, sentence: sentence, kind: MapStore.kind(fact.kind),
                                        aboutMe: fact.aboutMe || things.isEmpty, things: things,
                                        date: MapStore.date(fact.date).map { String($0.prefix(10)) } ?? "",
-                                       sensitive: fact.sensitive, instruction: fact.instruction, ticked: !fact.instruction, source: source))
+                                       sensitive: fact.sensitive, instruction: fact.instruction,
+                                       // N2.11: what a web page says never ticks itself; the user ticks.
+                                       ticked: !fact.instruction && source != .report, source: source))
         }
         return out
     }
+
+    /// N2.11: a finished task's report, sorted like a paste, in one call: the report's first `pieceLimit` characters.
+    /// Every candidate starts unticked. Writes nothing.
+    static func sort(report: String, provider: any ModelProvider) async throws -> ImportSort {
+        let (parts, leftOut) = pieces(SecretsFilter.clean(report))
+        guard let first = parts.first else { return ImportSort(extra: [reportLine]) }
+        let candidates = try await candidates(first, hint: reportHint, source: .report, first: 0, provider: provider)
+        let cut = parts.count > 1 || leftOut > 0
+        shellLog("import: report, 1 call, \(candidates.count) candidates, cut \(cut)")
+        return ImportSort(candidates: candidates, extra: [reportLine] + (cut ? [reportCut] : []))
+    }
+
+    static let reportHint = """
+        This is a research report that Phew wrote from web pages for the user. Its facts come from the web, not \
+        from the user: give each one the things it names.
+        """
+    static let reportLine = "These facts come from the web. They start unticked: tick only the ones to keep."
+    static let reportCut = "Only the first part of the report was read."
 
     /// A project's Claude Code files, one call per file, sorted as 5.10's table says.
     static func sort(_ memory: ProjectMemory, provider: any ModelProvider) async throws -> ImportSort {

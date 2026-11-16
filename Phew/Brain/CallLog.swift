@@ -6,6 +6,9 @@ import os
 enum CallLog {
     /// A var only so unit tests can write elsewhere.
     nonisolated(unsafe) static var url = URL.applicationSupportDirectory.appending(path: "Phew/calls.log")
+    /// The app's running total of today's spend (N2.12), updated by every `record`. A var only so unit tests can
+    /// swap it.
+    nonisolated(unsafe) static var spend = Spend()
     private static let queue = DispatchQueue(label: "Phew.CallLog")
 
     struct Line: Codable, Equatable {
@@ -49,9 +52,12 @@ enum CallLog {
         return ((try? encoder.encode(line)) ?? Data()) + Data("\n".utf8)
     }
 
-    static func record(_ request: ModelRequest, usage: Usage, msFirst: Int?, msTotal: Int, stop: String?, error: String?) {
-        let line = line(request, usage: usage, msFirst: msFirst, msTotal: msTotal, stop: stop, error: error)
+    static func record(_ request: ModelRequest, usage: Usage, msFirst: Int?, msTotal: Int, stop: String?, error: String?,
+                       at date: Date = Date()) {
+        let line = line(request, usage: usage, msFirst: msFirst, msTotal: msTotal, stop: stop, error: error, at: date)
         shellLog("call \(line.agent) \(line.model): in \(line.inputTokens) out \(line.outputTokens) tokens, $\(line.usd), first token \(line.msFirstToken.map { "\($0) ms" } ?? "none"), total \(line.msTotal) ms, \(line.stop ?? line.error ?? "")")
+        // Before the write is queued: a read of the file that `spend` makes meanwhile either finds the line or comes first.
+        spend.add(line)
         let url = url
         queue.async {
             #if DEBUG
@@ -70,7 +76,8 @@ enum CallLog {
     }
 
     /// Every readable line of calls.log: numbers and names only. Waits for writes still queued.
-    // shortcut: reads the whole file each time; keep only recent lines if calls.log ever grows past a few MB.
+    // shortcut: reads the whole file each time; the limits read it only at launch and when the day changes (N2.12),
+    // a finished task once for its cost. Keep only recent lines if calls.log ever grows past a few MB.
     static func lines() -> [Line] {
         let url = url
         return queue.sync {

@@ -94,7 +94,7 @@ final class TaskTests: XCTestCase {
         return try XCTUnwrap(list.items.first)
     }
 
-    private let report = "# Made-up topic\n\nA short made-up answer."
+    private let report = "# Made-up topic\n\nA short made-up answer.\n\n## Not checked\n\nNothing."
 
     private func call(_ input: String, id: String = "toolu_1", name: String = "add_item") -> Script.Reply {
         .init(blocks: #"[{"type":"tool_use","id":"\#(id)","name":"\#(name)","input":\#(input)}]"#, stop: "tool_use")
@@ -152,6 +152,27 @@ final class TaskTests: XCTestCase {
         try await waitUntil(2) { provider.ended == 4 }
         try await Task.sleep(for: .milliseconds(200))
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), [], "nothing saved after Stop")
+    }
+
+    /// N2.11: a finished task proposes nothing by itself; the one small-model call comes when the user opens its list.
+    func testAReportsFactsAreSortedOnlyWhenTheUserOpensTheList() async throws {
+        let facts = #"{"facts":[{"sentence":"Made-up fact.","kind":"reference","about_me":false,"things":[{"class":"Topic","kind":"","name":"Made-up topic"}],"date":"","instruction":false,"sensitive":false}]}"#
+        let fake = BrainAgentsTests.FakeProvider(rounds: ["runner": [.init(pieces: [report])], "librarian": [.init(pieces: [facts])]])
+        let brain = ClaudeBrain(provider: fake, tools: RunnerTests.FakeMap(out: ""))
+        let folder = folder!
+        let list = TaskList(brain: brain, hand: hand, folder: { folder })
+        _ = list.start("Research a made-up topic", packet: nil)
+        let item = try await finished(list)
+        _ = list.open(item.id)
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(fake.requests.map(\.agent), ["runner"], "no proposal before the list is opened")
+        let model = ImportModel(brain: brain)
+        model.sort(report: try XCTUnwrap(item.report?.markdown))
+        try await waitUntil { model.stage == .ticks }
+        XCTAssertEqual(fake.requests.map(\.agent), ["runner", "librarian"])
+        XCTAssertEqual(fake.requests.last?.tier, .small)
+        XCTAssertEqual(model.candidates.map(\.ticked), [false])
+        XCTAssertEqual(model.note, Importer.reportLine)
     }
 
     func testAFinishedTaskWaitsUntilOpened() async throws {

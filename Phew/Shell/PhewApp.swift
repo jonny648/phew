@@ -34,6 +34,7 @@ struct PhewApp: App {
             }
             Menu("Reports") {
                 Button("Choose reports folder…") { delegate.chooseReportsFolder() }
+                ReportFactsEntries(tasks: delegate.tasks) { delegate.reportFacts($0) }
             }
             Button("Limits…") { delegate.showLimits() }
             Divider()
@@ -75,6 +76,21 @@ private struct TaskEntries: View {
             }
         }
         if !tasks.running.isEmpty || !tasks.waiting.isEmpty || !tasks.confirms.isEmpty { Divider() }
+    }
+}
+
+/// N2.11: one entry per finished task with a report. A click opens its facts in the import's tick list; nothing is
+/// sent before.
+private struct ReportFactsEntries: View {
+    @ObservedObject var tasks: TaskList
+    let open: (Int) -> Void
+
+    var body: some View {
+        let done = tasks.items.filter { $0.report != nil }
+        if !done.isEmpty {
+            Divider()
+            ForEach(done) { item in Button("Keep facts from “\(item.title)”…") { open(item.id) } }
+        }
     }
 }
 
@@ -280,6 +296,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let line = await importUndo.undo()
             showImport(ImportModel(brain: brain, stage: .line(line)), title: "Undo last import")
         }
+    }
+
+    /// N2.11: a finished task's facts, opened by the user from the menu: the report is sorted now, in one call, and
+    /// shown in the import's tick list, every fact unticked. Only ticked facts are written.
+    func reportFacts(_ number: Int) {
+        guard let markdown = tasks.items.first(where: { $0.id == number })?.report?.markdown else { return }
+        let model = ImportModel(brain: brain)
+        model.sort(report: markdown)  // first, so the panel opens on Sorting and never takes the keyboard
+        showImport(model, title: "Facts from a report")
     }
 
     func showImport(_ model: ImportModel, title: String) {

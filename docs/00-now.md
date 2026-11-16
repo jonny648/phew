@@ -41,6 +41,10 @@ Proven live on made-up data: acting in a practice window, clicking on a canvas, 
 
 Under Memory in the menu: paste a memory list from Claude, ChatGPT or Gemini and tick what he keeps; import from a project folder (only its `CLAUDE.md` and its Claude Code memory files); undo last import. Verified by the checker on made-up data. Not seen on a real screen yet: the folder window and the panel in use.
 
+## Now: phase N2, acting and agents second pass
+
+Started 17 November 2026 (`roadmap-next.html`). Built and tested with stand-ins, not live: changing and deleting with Undo, the "cannot be undone" class, an agent's one confirm, menus read before acting, apps that draw their own interface, the exact window, two displays, deeper research, reports that teach the memory, two money guards. Open: the live checks (N2.L1 to N2.L3), only at your word. N1 (your real use, your notes) runs beside it. The installed app is 0.1.1 and does not hold this work yet.
+
 ## The MVP is built: version 0.1.0, 16 November 2026
 
 Online, private: https://github.com/jonny648/phew. The installer is now `Phew-0.1.1.dmg` (0.1.0 was the MVP), on the release page and in `~/Downloads/Phew-release/`.

@@ -288,7 +288,9 @@ A question that also states a fact ("the deadline is the 20th, what do I do firs
 
 ### After a research task
 
-Phew's own code writes one past question of kind "task": your task cut to one line, and the Project. The report is not sent to the Librarian in version 1, so nothing read on the web becomes a fact in the Map.
+Phew's own code writes one past question of kind "task": your task cut to one line, and the Project. The report is not sent to the Librarian, so nothing read on the web becomes a fact in the Map by itself.
+
+Since N2.11, you can open a finished task's facts from the menu (Reports, "Keep facts from …"). Only then is the report sorted, by the paste box's steps 2 to 9, in one small-model call, and shown in the same tick list with every fact unticked. Only the facts you tick are written, with origin "imported" (5.5 has no other origin for this) and the import's source "a research report"; "Undo last import" removes them like any import.
 
 ### What is never stored
 

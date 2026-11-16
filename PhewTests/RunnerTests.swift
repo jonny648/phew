@@ -71,7 +71,7 @@ final class RunnerTests: XCTestCase {
         try? FileManager.default.removeItem(at: folder.deletingLastPathComponent())
     }
 
-    private let report = "# Kerning sources\n\nThree good guides.\n\n## Findings\n\n- **Spacing** basics: [Type guide](https://example.com/kerning)"
+    private let report = "# Kerning sources\n\nThree good guides.\n\n## Findings\n\n- **Spacing** basics: [Type guide](https://example.com/kerning)\n\n## Not checked\n\nNothing."
     private let mapCall = #"[{"type":"tool_use","id":"toolu_1","name":"search_map","input":{"query":"kerning"}}]"#
 
     private func events(_ stream: AsyncThrowingStream<TaskEvent, Error>) async throws -> [TaskEvent] {
@@ -163,8 +163,47 @@ final class RunnerTests: XCTestCase {
         let report = try done(try await run(script, map: map, limits: limits))
         XCTAssertEqual(report.limit, limit, file: file, line: line)
         XCTAssertTrue(report.markdown.hasSuffix("\n\n---\n\n" + Runner.line(limit, limits)), file: file, line: line)
+        XCTAssertTrue(report.markdown.contains("\n\n\(Runner.notChecked)\n\n"), "N2.10: every report has its Not checked section",
+                      file: file, line: line)
         XCTAssertNotNil(report.saved, file: file, line: line)
         return (report, script)
+    }
+
+    // MARK: N2.10 Research that goes deeper
+
+    /// The plan the agent writes in its own turn, and any text between searches, never reach the report.
+    func testThePlanAndTextBeforeTheTitleStayOutOfTheReport() async throws {
+        let plan = "<plan>\n- What kerning is\n- Which tools do it\n</plan>\nI'll search for each part now.\n"
+        let web = #"[{"type":"server_tool_use","id":"srvtoolu_1","name":"web_search","input":{"query":"kerning"}}]"#
+        // The plan in a paused round, then the report: one turn across two requests.
+        let script = Script([.init(text: plan, blocks: web, usage: Usage(searches: 2), stop: "pause_turn"),
+                             .init(text: "Reading done.\n" + report, usage: Usage(fetches: 2))])
+        let done = try done(try await run(script))
+        XCTAssertEqual(done.markdown, report)
+        XCTAssertNil(done.limit)
+        // An unclosed plan is cut at the title too.
+        XCTAssertEqual(Runner.cleaned("<plan>\n- A part\n" + report), report)
+        XCTAssertEqual(Runner.cleaned("No title, only text."), "No title, only text.")
+    }
+
+    /// A report the model wrote without "Not checked" gets the section in Phew's fixed words.
+    func testAReportWithoutNotCheckedGetsTheFixedSection() async throws {
+        let done = try done(try await run(Script([.init(text: "# Kerning\n\nThe short answer.")])))
+        XCTAssertEqual(done.markdown, "# Kerning\n\nThe short answer.\n\n## Not checked\n\n" + Runner.notListed)
+        XCTAssertEqual(Runner.checked(report), report, "never twice")
+    }
+
+    /// The fixed prompt asks for the plan, a search per part, reading before citing, and the section; the limits are
+    /// unchanged, and the system prompt is one fixed text for every task, so its cache holds.
+    func testThePromptAsksForDepthWithinTheSameLimits() {
+        for words in ["<plan>", "several searches", "Before you cite a page, read it with web fetch", "## Not checked"] {
+            XCTAssertTrue(Runner.system.contains(words), words)
+        }
+        let limits = TaskLimits()
+        XCTAssertEqual([limits.searches, limits.pages, limits.rounds], [5, 8, 12])
+        XCTAssertEqual(limits.usd, 0.50)
+        XCTAssertEqual(limits.seconds, 300)
+        XCTAssertEqual(Runner.request("One task", packet: nil, number: 1).system, Runner.request("Another", packet: nil, number: 2).system)
     }
 
     func testSearchLimit() async throws {

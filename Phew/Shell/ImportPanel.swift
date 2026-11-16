@@ -126,6 +126,23 @@ final class ImportModel: ObservableObject {
             call = { try await brain.sortImport(text, source: source) }
             shellLog("import panel: sort asked, \(text.count) characters, source \(source.rawValue)")
         }
+        run(back: back, call)
+    }
+
+    /// N2.11: the list of a finished task's report comes from it, not from a paste. Nothing to go back to: a
+    /// failure shows its line, Cancel closes.
+    private(set) var fromReport = false
+
+    /// N2.11: the user opened a finished task's facts from the menu. The one moment the report is sent, for one
+    /// small-model call; its candidates all start unticked.
+    func sort(report: String) {
+        fromReport = true
+        let brain = brain
+        shellLog("import panel: report sort asked, \(report.count) characters")
+        run(back: .paste) { try await brain.sortReport(report) }
+    }
+
+    private func run(back: Stage, _ call: @escaping @Sendable () async throws -> ImportSort) {
         problem = nil
         stage = .sorting
         work = Task {
@@ -138,8 +155,9 @@ final class ImportModel: ObservableObject {
                 shellLog("import panel: \(candidates.count) candidates, \(tickedCount) ticked, cut \(note != nil)")
             } catch {
                 guard !Task.isCancelled else { return }
-                stage = back
-                fail(BrainError(error))
+                let error = BrainError(error)
+                stage = fromReport ? .line(TextCard.sentence(for: error)) : back
+                fail(error)
             }
         }
     }
@@ -147,6 +165,7 @@ final class ImportModel: ObservableObject {
     /// Cancel while sorting: the call is cancelled and its answer, if one still comes, is thrown away.
     func cancel() {
         guard stage == .sorting else { return }
+        if fromReport { return close() }
         work?.cancel()
         work = nil
         stage = export != nil ? .export : memory == nil ? .paste : .files

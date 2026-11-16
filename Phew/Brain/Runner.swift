@@ -66,8 +66,11 @@ enum Runner {
         from the screen or from memory into a search unless the task itself asks for them. Open only pages your \
         searches found, or an address the user typed in the task.
 
-        Searches and page reads are limited. Plan a few searches, then read the best two or three pages, and stop \
-        as soon as you can answer.
+        First write a short plan between <plan> and </plan>: what the task needs you to find out, one short line \
+        each. Phew takes the plan out of the report. Then search for each part on its own: a task with several \
+        parts needs several searches. Before you cite a page, read it with web fetch; cite only pages you read. \
+        Searches and page reads are limited: when one part is answered, move to the next, and stop as soon as you \
+        can answer the task.
 
         When you have add_item, use it only for what the task asks to add on the Mac: a note, a reminder, an event \
         or a sheet, or to change or delete one note, reminder or event the task names. It answers in one word. When \
@@ -79,10 +82,12 @@ enum Runner {
         # A short title
         The short answer first, in one to three sentences.
         ## Findings
-        Each finding in a short paragraph or bullet, with its source as a Markdown link: [page or site name](address).
-        ## Not found
-        What you looked for and did not find or could not confirm. Leave this section out when nothing is missing.
-        Write only the report: nothing before the title, nothing after the last section.
+        Each finding in a short paragraph or bullet, with the page you read as a Markdown link: [page or site name](address).
+        ## Not checked
+        What the task needed that you could not find or confirm, and what you saw only in a search result without \
+        reading the page. Write "Nothing." when everything was checked.
+        Keep the two section headings in English, exactly as written here. Write only the report: nothing before the \
+        title, nothing after "Not checked".
 
 
         """ + Spoken.rule
@@ -208,9 +213,25 @@ enum Runner {
             // Only if Anthropic did not hold `max_uses` across the task: Phew's own count stops the research.
             if searches > limits.searches || pages > limits.pages { last = true }
         }
-        let body = report.trimmingCharacters(in: .whitespacesAndNewlines)
-        let text = body.isEmpty ? "# \(Report.name(words))\n\n\(noReport)" : body
+        let body = cleaned(report)
+        let text = checked(body.isEmpty ? "# \(Report.name(words))\n\n\(noReport)" : body)
         return (limit.map { "\(text)\n\n---\n\n\(line($0, limits))" } ?? text, limit)
+    }
+
+    /// N2.10: the model's text as a report: its plan taken out, and anything written before the title (text between
+    /// searches) dropped. With no title, the text stays whole.
+    static func cleaned(_ text: String) -> String {
+        var text = text.replacing(#/(?s)<plan>.*?</plan>/#, with: "").replacing("<plan>", with: "")
+        if let title = text.firstRange(of: #/(?m)^# /#) { text = String(text[title.lowerBound...]) }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static let notChecked = "## Not checked"
+    /// When the model wrote no "Not checked" section: fixed words, so every report ends with one.
+    static let notListed = "The report does not say what it could not check. Treat anything without a linked source as unchecked."
+
+    static func checked(_ text: String) -> String {
+        text.firstRange(of: #/(?mi)^## Not checked\s*$/#) == nil ? "\(text)\n\n\(notChecked)\n\n\(notListed)" : text
     }
 
     struct Round: Sendable {

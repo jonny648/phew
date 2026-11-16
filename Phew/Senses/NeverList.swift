@@ -75,10 +75,16 @@ enum NeverList {
     /// Such a step still runs, with a mark (13.5).
     static func careful(name: String, texts: [String]) -> Bool {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return true }
-        let recognizer = NLLanguageRecognizer()
-        recognizer.processString(([name] + texts).joined(separator: ". "))
-        guard let (language, p) = recognizer.languageHypotheses(withMaximum: 1).first, p >= 0.6 else { return false }
+        guard let (language, p) = guessLanguage(([name] + texts).joined(separator: ". ")), p >= 0.6 else { return false }
         return ![.english, .italian].contains(language)
+    }
+
+    /// The system's guess of a text's language and how sure it is. Tests replace it, so they do not depend on the
+    /// language model of the Mac they run on (R45).
+    nonisolated(unsafe) static var guessLanguage: (String) -> (NLLanguage, Double)? = { text in
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(text)
+        return recognizer.languageHypotheses(withMaximum: 1).first.map { ($0.key, $0.value) }
     }
 
     /// The "cannot be undone or leaves your Mac" class (13.5): words in a control's name or menu path. English and

@@ -268,6 +268,13 @@ final class HandTests: XCTestCase {
     }
 
     func testCarefulSide() {
+        // R45: a fixed guess, not this Mac's language model. German and sure; English and sure; anything unsure.
+        let system = NeverList.guessLanguage
+        defer { NeverList.guessLanguage = system }
+        NeverList.guessLanguage = { $0.contains("bestellen") ? (.german, 0.9) : $0.contains("vielleicht") ? (.german, 0.5) : (.english, 0.9) }
+        XCTAssertTrue(NeverList.careful(name: "Jetzt bestellen", texts: []))
+        XCTAssertFalse(NeverList.careful(name: "vielleicht", texts: []), "an unsure guess is not the careful side")
+        XCTAssertTrue(NeverList.careful(name: " ", texts: ["made up"]), "no name at all")
         let unnamed = fake.add("", frame: frame(0))
         let german = fake.add("Jetzt bestellen und sofort bezahlen", frame: frame(1))
         let english = fake.add("Make the selected text bigger", frame: frame(2))

@@ -174,7 +174,7 @@ private struct MenuIcon: View {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The one place the Brain is made. Everything else in the Shell sees only the `Brain` protocol.
     /// `answerEarly` (R57) is built and off: on, every typed question would also send the screen to the main model
-    /// before the route is known, also for "remember" and jobs, and pay for a dropped call. Yours to decide (decision 50).
+    /// before the route is known, also for "remember" and jobs, and pay for a dropped call. Decided 16 November 2026: off (docs/07-decisions.md 7.1).
     var brain: any Brain = {
         #if DEBUG
         // A test copy under another bundle id: no Map maintenance at launch, so it never touches the user's Map folder.

@@ -68,7 +68,7 @@ The screen's text. You approved it on 14 November. Lines were then brought in li
 
 After Allow the screen is not shown again. After Not now the task does not start, agents stay off, and the screen comes back the next time you give a task.
 
-The line "What he changes on your Mac" was rewritten on 15 November, on your word that he must act. An agent acts in the background in the narrow way described in 3.6. Acting with you in the app has its own short consent screen, in 3.6.
+The line "What he changes on your Mac" was rewritten on 15 November, on your word that he must act. An agent acts in the background in the narrow way described in 3.6. Acting with you in the app has no consent screen: it is on from the start, with a switch in the menu (3.6).
 
 ## 3.6 What he may do alone: consent levels
 
@@ -79,7 +79,7 @@ Decided on 13 November 2026 after the research in `10-research-agents.md` 10.2. 
 | A. Read and research | Read the screen once when you give the task, read the Map and the project's Claude Code files when needed, search and read the web, open an address you type, report on the card | MVP |
 | B1. New files | Save the report as a new PDF in the folder you chose, or in Downloads, and a Markdown copy in Phew's own storage. He never overwrites and never deletes. Each report is listed with Reveal and Delete. Delete is your own click | MVP |
 | B2. Edit files | Change existing files in that folder, each change shown and approved, with a backup | Later |
-| C. Act in apps | When you ask him to do something, he clicks, types and picks menus in your apps: the whole job, with no confirm. A research agent acts only in the background, in the narrow way below. Off until you press Allow on the acting consent screen | MVP, phase PH. For agents, phase PA |
+| C. Act in apps | When you ask him to do something, he clicks, types and picks menus in your apps: the whole job, with no confirm. A research agent acts only in the background, in the narrow way below. On from the start; the menu switch "Let Phew act" turns it off | MVP, phase PH. For agents, phase PA |
 
 Rules for a research task, each with how it is kept: by Phew's own code or by the request, not by asking the model to behave. The rules for acting are under "Acting in your apps" below.
 
@@ -89,7 +89,7 @@ Rules for a research task, each with how it is kept: by Phew's own code or by th
 - He never opens a web address that came from the screen, the Map or a file. Two guards. Phew's own code removes every web address from the screen text, the Map facts (also the ones a Map search returns) and file text before they reach him. And a setting of the web fetch tool lets him open only addresses he found by his own searches, on pages he already opened, or typed by you in the task. Anthropic's server refuses any other. An address you type is opened: your decision of 14 November. It leaves Phew's own removal as the only guard for the screen text, which is the risk you accepted.
 - Each task has a limit on searches, pages and cost: 5 searches, 8 pages, 50 cents, approved 14 November. Rate limits on usage come after the MVP. The limits on searches and pages are set in the request itself, so they hold while the work runs at Anthropic. Phew's own code adds up the cost after each reply. At a limit he stops, reports what he has, and says which limit he reached.
 - He reads the screen once, when you give the task, and not again. What he read stays in memory until the task ends or is stopped. Then it is dropped.
-- The secrets filter runs on everything Phew sends. He writes his search words at Anthropic, from text that already passed the filter. They may contain names or words from your screen or the Map, with no limit: your decision of 14 November. The consent screen says so.
+- The secrets filter runs on everything Phew sends. He writes his search words at Anthropic, from text that already passed the filter. They may contain names or words from your screen or the Map, with no limit: your decision of 14 November. No consent screen says so: there is none since 15 November.
 - A mark shows while he works, and Stop always works. Stop ends the task within 2 seconds. Nothing is reported and what he read is dropped. Approved 14 November.
 - Several tasks can run at the same time, at most 3 (first proposal). Each has its own limits, its own Stop, and its own screen read. A fourth task is not started, and the card says so in one line.
 - A finished report is saved at once, as below, and waits in the menu until you open it. Nothing is lost if Phew quits.
@@ -107,7 +107,7 @@ How a report is saved. Approved 14 November:
 
 ### Acting in your apps
 
-Your decisions of 15 November 2026. The full design, the guards and what can still go wrong are in `13-hand.md`. Phase PH; not built yet.
+Your decisions of 15 November 2026. The full design, the guards and what can still go wrong are in `13-hand.md`. Phase PH; built.
 
 There are no "Do it" buttons and no confirm. Whether he acts or shows comes from your words and from what you do.
 
@@ -124,7 +124,7 @@ There are no "Do it" buttons and no confirm. Whether he acts or shows comes from
 | Acts | Click, type, pick a menu, fill cells. Also send, delete, publish and replace, when that is the job | Done when your words ask for it. No confirm |
 | Never | Passwords and secure fields, paying and card details, sign-in and account settings, System Settings, Terminal and code editors, password managers, apps on the "Never read this app" list, Phew's own windows | Not done, whatever the words. Phew's own code decides, never the model |
 
-- **Off until Allow.** Before his first action a short consent screen is shown once (text in `13-hand.md` 13.8). One consent covers all apps. After Not now he keeps pointing only.
+- **On from the start.** There is no consent screen and nothing to allow (your word of 15 November, `13-hand.md` 13.8). The menu has a switch, "Let Phew act"; with it off he keeps pointing only.
 - **Every action is listed on the card** as it happens, and a mark shows while he acts. An action that cannot be undone carries a mark in the list.
 - **He checks after each action** by looking again. When something is not as expected he stops by himself and says so. He never retries blindly.
 - **Stop ends a job within one second.** Stop is on the card the whole time. The shortcut stops too, and so does using the app yourself.
@@ -157,7 +157,7 @@ One motion language, one palette built on black and shell white, one type family
 | Learns from your other AI tools: a pasted memory list, Claude Code files | Reading export files, connections to other tools |
 | Researches a task alone, reports on the card, saves the report as a file | Scheduled work, lecture listening |
 
-The MVP must solve the main problem: understand and move forward on what is in front of you, with no re-explaining. The look and feel is built inside the MVP, in the same phase as acting (PH Hand and look). The notch home and the character come after.
+The MVP must solve the main problem: understand and move forward on what is in front of you, with no re-explaining. The look and feel is built inside the MVP, in the same phase as acting (PH Hand and look). The notch home and the character come after; only the listening shape at the notch, shown while you hold the key to talk, is in the MVP.
 
 Lecture listening, when built, shows a recording notice in the way Granola does. For personal use now this is not a concern.
 

@@ -25,7 +25,7 @@ Phew works with people who create projects on a Mac: he does the second-level jo
 - Called Phew!. When voice input is built (P6), he answers to phew, few, phiu, pheoo.
 - Mac only for now. He may decide to come out to other devices later.
 
-Changed here: the old text said he "shows instead of telling" and lived "in the notch or the menu bar". He now also acts when asked, and there is no notch surface today.
+Changed here: the old text said he "shows instead of telling" and lived "in the notch or the menu bar". He now also acts when asked, and the only notch surface today is the listening shape, shown while you hold the key to talk.
 
 ## 2.4 Values as rules
 
@@ -34,15 +34,15 @@ Five values. Each is true of what is built, or of what you decided on 15 Novembe
 | Value | Rule for Phew | Status today |
 |---|---|---|
 | Called, not watching | He reads the screen only when you call him. During a guide he may watch until the guide ends. What he sees stays in memory and is dropped after | Built |
-| Works with you, you decide | You choose what he does, by what you ask. With you in the app, he works in front of you. A task you hand over, he does alone in the background and reports back | Decided 15 November. Being built in phases PH and PA |
-| Does when asked, shows when asked | Asked to do, he does the whole job by himself. Asked how, he explains or points. When unsure, he shows | Explaining and pointing are built. Acting is being built (phase PH) |
+| Works with you, you decide | You choose what he does, by what you ask. With you in the app, he works in front of you. A task you hand over, he does alone in the background and reports back | Decided 15 November. Built in phases PH and PA, little tried on real work |
+| Does when asked, shows when asked | Asked to do, he does the whole job by himself. Asked how, he explains or points. When unsure, he shows | Explaining, pointing and acting are built. Acting is little tried on real work |
 | Memory is yours | The Map lives on your Mac, encrypted. You can ask what he remembers, correct it, forget it, and export it | Built |
 | Stays out of the way | He never takes focus from your app. He never appears unasked. A finished result waits in the menu bar | Built |
 
 Removed because they are false today:
 
 - "Everything he knows is visible and editable in the Map on the dashboard." There is no dashboard. Today you ask him what he remembers, and you can export the Map to one file.
-- "Lives in the notch." He lives in the menu bar.
+- "Lives in the notch." He lives in the menu bar. At the notch there is only the listening shape while you hold the key to talk.
 - "No setup beyond permissions." The MVP needs a Claude API key, pasted once and kept in the Keychain.
 - "Consumer value-dense" and "Frontier, where needed". These were aims, not rules anyone could check.
 
@@ -58,10 +58,10 @@ Four things you see, in this order. Everything else serves them.
 
 | # | What | Status today |
 |---|---|---|
-| 1 | **Work together and act.** You hand him a second-level job. He does it on the Mac, in the app you are in, while you are there | Being built in phase PH. Design approved 15 November |
+| 1 | **Work together and act.** You hand him a second-level job. He does it on the Mac, in the app you are in, while you are there | Built in phase PH, little tried on real work. Design approved 15 November |
 | 2 | **Explain and guide.** He explains what is on screen and guides you step by step by pointing | Exists |
-| 3 | **Memory and second brain.** He remembers your projects in the Map and recalls them when needed | Most of it exists: the Map, recall, correct, forget, export. Importing memory from other tools (PB) is being built |
-| 4 | **Research.** You give him a task, he researches it and reports back | Being built (PA) |
+| 3 | **Memory and second brain.** He remembers your projects in the Map and recalls them when needed | Most of it exists: the Map, recall, correct, forget, export. Importing memory from other tools (PB) is built |
+| 4 | **Research.** You give him a task, he researches it and reports back | Built (PA) |
 
 Underneath, never the user's job: context understanding, the conversation card and speed (PS), voice input (P6).
 

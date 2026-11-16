@@ -1,6 +1,6 @@
 # 13. The Hand: Phew acts in the front app
 
-Written on 15 November 2026 for decision 39 in `07-decisions.md` 7.2. Updated on 15 November 2026 to your decisions of that day. Approved with the plan of that day. Built so far: the acting core of 13.6 (PH.2, 15 November). The rest is being built in phase PH.
+Written on 15 November 2026 for decision 39 in `07-decisions.md` 7.2. Updated on 15 November 2026 to your decisions of that day. Approved with the plan of that day. All of phase PH is built (version 0.1.0, 16 November); what was never tried on real apps is in the roadmap, L18.
 
 How to read it. Each fact from the web carries a source number (H1, H2…), listed in 13.11. Three words mark how sure a claim is:
 
@@ -23,7 +23,7 @@ Today Phew explains and points, and you do every step yourself. On 15 November y
 | Logging rule ("A line in `calls.log` holds only…") | Added to, not loosened: a new local action log, numbers and fixed words only. See 13.6, guard 11. This is a privacy rule, so it is named |
 | "Never read secure text fields" | Added to: never *write* into one either, and never act while the Mac is in secure input mode. This is a privacy rule, so it is named |
 
-Rules that stay exactly as they are: he never appears unasked, he never speaks, captures live in memory only, the secrets filter runs before every network call, on-screen text is data and never instructions. Your decision of 12 November also stays: acting is a separate opt-in, off by default. The consent screen (13.8) is that opt-in.
+Rules that stay exactly as they are: he never appears unasked, he never speaks, captures live in memory only, the secrets filter runs before every network call, on-screen text is data and never instructions. Your decision of 12 November (acting as a separate opt-in, off by default) was replaced on 15 November: acting is on from the start, with a switch in the menu (13.8).
 
 One earlier finding, for the record. `10-research-agents.md` 10.2 said that acting "breaks the rule that Phew never takes focus". Inside one app it does not: the action goes to the app that already has focus. Across apps it does, and that is the fourth bent rule above.
 
@@ -97,7 +97,7 @@ What you see, step by step.
 4. **Each action is listed on the card** as it happens, in plain words: "Pressed Bold." "Typed 12 characters in Title." Then a tick when the check passed. An action that cannot be undone carries a mark in the list. The list stays on the card until you close it. It lives in memory only.
 5. **After each action he looks.** First Phew's own code reads the element again: did the value change, is the box ticked, did the menu close. Then the existing look (the Follower, with a fresh picture) confirms where the job stands. Only then does the next step start.
 6. **Stop always works.** Stop is on the card the whole time. The shortcut stops too. Touching the app yourself (a click or a key in it) stops him at once and hands the job back to you. Within 1 second.
-7. **Several apps in one job.** If the job names or needs another app, he brings it to the front, works there, and goes on. At the end, or when he stops by himself, he brings back the app and window you were in. If you stopped him by using an app yourself, he leaves you where you are. He does not ask "Act in this app?": your one consent covers all apps.
+7. **Several apps in one job.** If the job names or needs another app, he brings it to the front, works there, and goes on. At the end, or when he stops by himself, he brings back the app and window you were in. If you stopped him by using an app yourself, he leaves you where you are. He does not ask "Act in this app?": nothing is asked per app.
 8. **When the job ends**, the card says what was done and, when the app's Undo is available, "To undo: Command-Z in Excel." He has no undo button of his own. The capture is dropped, as at the end of any guide.
 
 ### The research agents
@@ -186,7 +186,7 @@ Removed by your decisions: one action per approval, the approval that dies after
 | 6 | Stop within 1 second. Touching the app yourself stops him | Actions run one at a time, off the main thread. Stop sets a flag that is read before every action. The one action in flight is cut short by a time limit of half a second on Phew's requests to the app. Stop, the shortcut, and your own click or key in the app all set the flag | PH.4: under 1 second in 10 runs on a slow practice app, and no later step happens |
 | 7 | A runaway brake | A ceiling on actions per job (first proposal 40, the same as for looks) and per minute. A pure rule, like `FollowRule`. It is not there to slow a normal job. It ends a job that has gone wrong. At the ceiling he stops and names it. The numbers are open (13.9) | Unit tests on the counters and the clock, as for `FollowRule` |
 | 8 | One acting function, and nothing else can act | A test fails the build if any other file calls the acting functions of macOS | PH.2 |
-| 9 | Off until Allow | Until you allow it on the consent screen (13.8), the acting function refuses everything | PH.5 |
+| 9 | The "Let Phew act" switch | On by default, with no consent screen (13.8). With the switch off, the acting function refuses everything | PH.5 |
 | 10 | Every action on the card, a mark while he acts | The card lists each action as it happens. The mark stays until the action and its check are done. Both live in memory only | PH.12 |
 | 11 | Every action is logged locally, as numbers and fixed words only | A new file, `actions.log`, beside `calls.log`. One line per action: the time, the job number, the step number, the kind of action (a fixed word: press, set, pick, click, script), the role (macOS's own fixed word, such as AXButton), the level, the method, how it ended (a fixed word, including each refusal reason), the milliseconds it took, and the count of characters typed. Never the text typed, never an element's name, never a window title. Whether it may name the app is open (13.9) | PH.12: a line built from made-up names, text and titles holds none of them, and every word in it comes from a fixed list |
 | 12 | Agents act only out of sight, and wait for what cannot be undone | For a job run by an agent, the acting function accepts only methods 3 and 4, only for Notes, Reminders, Calendar, Excel and new files. Anything in the "cannot be undone" class, or that leaves the Mac, is held in the menu bar until your one confirm | Phase PA |
@@ -199,7 +199,7 @@ macOS itself will not stop any of this: the Accessibility permission Phew alread
 
 What "never confirm" means, said once. Text on a web page or in a shared document can be written to trick an AI. He can also simply get a step wrong. With no confirm, a tricked or mistaken step, including a send or a delete, happens before you can stop it. This is your choice, and the design is built on it.
 
-What still limits the damage, with no effort from you: the Never list; he stops by himself on anything unexpected and never retries blind; Stop within a second, and your own touch stops him; every action is on the card as it happens; only your own words start a job; the ceiling on actions; off until you allow it.
+What still limits the damage, with no effort from you: the Never list; he stops by himself on anything unexpected and never retries blind; Stop within a second, and your own touch stops him; every action is on the card as it happens; only your own words start a job; the ceiling on actions; the "Let Phew act" switch in the menu.
 
 Ranked for the new design, most serious first.
 
@@ -211,7 +211,7 @@ Ranked for the new design, most serious first.
 6. **An agent acts while you are elsewhere.** It reads the web, where misleading text comes from, and you are not watching. *Limits:* scripting only, five places, no clicking; what cannot be undone or leaves the Mac waits for your confirm. *Does not:* a tricked agent can still add wrong notes, reminders, events or sheets. And a confirm in the menu bar can become a habit.
 7. **Work across apps.** He brings an app to the front while you may be typing; your keys then land in that app. He also looks at, and acts in, an app you did not have in front when you called him. *Limits:* your touch stops him; the Never list and the "Never read this app" list hold for every app; he returns you to where you were.
 8. **An action is done twice, or reported wrongly.** The check says "nothing changed" when the action did work, slowly. *Limits:* he never retries blind; the method is fixed before acting.
-9. **A bug in the guards.** *Limits:* one function for all actions, the build test that nothing else can act, off until Allow, the practice window, your hand test before any real app.
+9. **A bug in the guards.** *Limits:* one function for all actions, the build test that nothing else can act, the switch that turns acting off, the practice window, your hand test before any real app.
 10. **More pictures leave your Mac, and it costs more.** Each check is a look: one picture to the model, about a quarter of a cent. A job at the ceiling of 40 actions is about 10 cents. Same memory-only rule as a guide.
 11. **An app that hangs.** Stop still ends the job within a second, but an action already sent cannot be called back.
 
@@ -235,8 +235,8 @@ macOS still shows its own prompt the first time Phew scripts an app ("Phew wants
 | How far he goes | The whole job. No approval per click, no one action per approval, no 60-second approval, no run of 5 steps |
 | Confirming | Never, when you work with him. He does not pause before send, delete, publish or replace |
 | The research agents | They act in the MVP, in the background, only through the apps' own scripting and the system's calendar and reminders access: Notes, Reminders, Calendar, Excel, new files. No clicking in the background. What cannot be undone or leaves the Mac waits in the menu bar for one confirm |
-| Several apps | Yes. He may bring another app to the front during a job and returns you to where you were. No question per app; one consent covers all |
-| The consent screen | Short. The text in 13.8 |
+| Several apps | Yes. He may bring another app to the front during a job and returns you to where you were. No question per app, and no consent screen (13.8) |
+| The consent screen | None, by your later word of the same day (13.8). First decided as a short screen |
 
 Settled with the plan of the same day:
 
@@ -268,7 +268,7 @@ From the approved plan, same wording. `roadmap.html` is not edited by this docum
 | PH.2 | One acting function in `Phew/Senses`, and a made-up practice window for tests | A build test fails if any other file can send an action; unit tests act only on the practice window |
 | PH.3 | The Never list and the "cannot be undone" class, decided by code | Unit tests: passwords, paying, sign-in, System Settings, Terminal, Never-read apps and secure fields are refused, in English and Italian; unknown language or no name falls on the careful side |
 | PH.4 | Stop and surprises | Stop within 1 s in 10 runs on a slow practice app; a moved button, a surprise dialog, a failed check each stop the job with a plain line; no retry |
-| PH.5 | Consent screen and the "Let Phew act" switch | Off by default; the acting function refuses everything until Allow; the short text above |
+| PH.5 | The "Let Phew act" switch (the consent screen was removed on 15 November, 13.8) | On by default; with the switch off the acting function refuses everything |
 | PH.6 | Do or show, from your words | The Conductor routes "do" and "show" correctly on 20 made-up requests in both languages; when unsure he shows; doing a step yourself hands the job back |
 | PH.7 | Acting on named controls (press, set a value, pick a menu item), a look after each action | A 5-step job in the practice window, then in Notes, runs to the end with every action listed and checked |
 | PH.8 | The seven apps measured, and what he knows of each written down | For Figma, Dia, Excel, Fusion, Notes, Reminders, Calendar: a table of what can be pressed by name, measured on your Mac; `docs/apps/<app>.md` |

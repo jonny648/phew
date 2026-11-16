@@ -6,7 +6,7 @@ Phew is a macOS companion for people who create projects. When called, he works 
 There is no fixed deadline. Since 15 November the MVP phases are lean: they build what is useful. Detail work is kept to what keeps the product safe and working, and no new detail work is added without your say.
 
 ## Roadmap protocol. Follow it in every session.
-1. At the start, read `roadmap.html`. State the current phase: the first phase with an unticked task.
+1. At the start, read `roadmap.html`. State the current phase: the first phase with an unticked task. The MVP is complete since 16 November 2026: the phases after it are in `roadmap-next.html`, and none starts until the user names it.
 2. Work only on that phase unless the user names another.
 3. A task is ticked only after its "done when" has been verified by building and running, by the checker subagent.
 4. To tick a task, edit its line in `roadmap.html`: change `<input type="checkbox" disabled>` to `<input type="checkbox" disabled checked>` and set `data-done` to today's date as YYYY-MM-DD. Change nothing else on the line.
@@ -18,7 +18,7 @@ There is no fixed deadline. Since 15 November the MVP phases are lean: they buil
 ## Rules (direction)
 These rules are direction, not strict rules (your choice of 14 November). Follow them. When the work needs to bend one, bend it, then say which rule and why in the session report and in the log line. A bent privacy rule (the key, captures, logs, the secrets filter) is always named.
 - Four things you see, in this order: he works with you and acts on the Mac when you ask; he explains and guides; he remembers your projects; he researches a task. Everything else serves them.
-- No main window and no Dock icon. Menu bar, input panel, pointer overlay, text card, and the listening shape at the notch while you hold the key to talk. Small panels you open yourself from the menu are allowed, and the consent screen shown at your first task. They are non-activating too.
+- No main window and no Dock icon. Menu bar, input panel, pointer overlay, text card, and the listening shape at the notch while you hold the key to talk. Small panels you open yourself from the menu are allowed. They are non-activating too.
 - He never speaks aloud. Voice is input only.
 - He never appears unasked. An agent's result waits in the menu bar.
 - He reads the screen only when called. During a guide he may watch the screen until the guide ends, to know when it has settled, and look again after the user acts. What he watches stays in memory. After each of his own actions he looks again, to check it worked. Never otherwise.

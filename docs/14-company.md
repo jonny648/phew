@@ -6,9 +6,9 @@ This is a view to argue with, not a decision. Numbers come from `11-direction.md
 
 ## 14.1 Where Phew stands
 
-**What is real.** A working Mac companion, built in five days of work: it reads the screen when called, explains, guides by pointing and follows your clicks, remembers your projects in an encrypted memory, continues as a conversation, and knows itself. 217 automatic tests. A question costs about 1.7 cents.
+**What is real.** A working Mac companion, built in five days of work: it reads the screen when called, explains, guides by pointing and follows your clicks, remembers your projects in an encrypted memory, continues as a conversation, and knows itself. 415 automatic tests. A question costs about 1.3 cents.
 
-**What is decided but not built.** He acts in your apps by himself. He researches alone. He imports what other AI tools know. Voice. A finished look and feel.
+**What was built after this was written, and is little tried.** He acts in your apps by himself. He researches alone. He imports what other AI tools know. Voice. A finished look and feel. All are in version 0.1.0 (16 November); none was tried on real work.
 
 **What is missing, in order of weight.**
 
@@ -57,13 +57,13 @@ Firms differ, but an early-stage review covers the same ground. Each row is a qu
 |---|---|---|---|---|
 | **Problem** | Who hurts, how much, how often? | A named person, a painful moment, proof they already spend time or money on it | A reasoned problem, no interviews | 20 interviews; the 5 jobs people most want done for them |
 | **Customer (ICP)** | Who buys first, exactly? | One narrow group you can list and reach | "People who create projects on a Mac": too wide | One first group, with where to find 100 of them |
-| **Product** | What is it, and does it work? | A demo that makes the point in 60 seconds | Works for explain, guide, memory. Acting not built | A 60-second demo of him doing a real job across two apps |
+| **Product** | What is it, and does it work? | A demo that makes the point in 60 seconds | Works for explain, guide, memory. Acting is built, tried only on made-up data | A 60-second demo of him doing a real job across two apps |
 | **Why now** | Why could this not exist 2 years ago? | A change in technology or behaviour | Models can now read screens and act reliably; people now accept AI at work | One paragraph with dated facts |
 | **Market** | How big can it get? | A bottom-up sum: users you can reach × price | No credible figure for this category | A bottom-up size for the first group, then the wider one |
 | **Competition** | Who else, and why do you win? | An honest map and one thing they cannot easily copy | 45 products mapped. Edge is a combination, not a wall | A one-page map, and the edge stated as a test passed |
 | **Edge (moat)** | What gets stronger as you grow? | Data, habit, a network, a cost advantage | The memory of your projects grows with use. Unproven as a lock | Evidence that people who have a full memory leave less |
 | **Business model** | How does money come in? | A price people already pay, and who pays | None tested | A price test with real users |
-| **Unit economics** | Does each user earn more than they cost? | Cost to serve, cost to win, how long they stay | Cost to serve is known: about $10 a month for a heavy user | Margin at the tested price; the cost-cutting work (L16) |
+| **Unit economics** | Does each user earn more than they cost? | Cost to serve, cost to win, how long they stay | Cost to serve, computed in `costs.html`: about $13 a month for a normal user and $39 for a heavy one, on assumed days | Margin at the tested price; the cost-cutting work (L16) |
 | **Go-to-market** | How do the first 1,000 find you? | One channel that already works a little | None | One channel tried: a community, creators, or a launch |
 | **Traction** | What has happened so far? | Use that grows, people who stay, money | One user | The numbers of steps 2 and 3 |
 | **Team** | Why you? What is missing? | A reason this founder wins; a plan for the gaps | A designer-founder building with AI. No co-founder, no engineer | A plain page: what you bring, what you would hire first |

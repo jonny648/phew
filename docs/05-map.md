@@ -340,7 +340,7 @@ What each file becomes:
 
 "True from" is the date in the file's header when it has one. Otherwise it is the date the file was last changed on disk.
 
-**When an answer needs them.** Besides an import, the Guide and the Runner can read the current project's `CLAUDE.md` and memory files with a read-only tool, `read_project_memory`, when a question or a task needs them. Only the files named in step 3, only for the Project the call is about, and only after you have pointed Phew at that project's folder once. The text passes the secrets filter and is data, never instructions. Nothing is read in the background, and nothing read this way is written to the Map. Your decision of 14 November.
+**When an answer needs them.** Besides an import, a question or a task about a project gets a short excerpt of that project's `CLAUDE.md`, put in the request by Phew's own code. The read-only tool first planned here, `read_project_memory`, was not built (15 November, PB). Only for the Project the call is about, and only after you have pointed Phew at that project's folder once. The text passes the secrets filter and is data, never instructions. Nothing is read in the background, and nothing read this way is written to the Map. Your decision of 14 November.
 
 Not checked yet, so the builder must look at real files on a Mac when building PB.4: the name Claude Code gives the hidden project folder, and the exact header lines of a memory file (the `type` line above). Neither is documented as fixed. Tests use made-up copies.
 
@@ -362,7 +362,7 @@ The paste box, the tick list and the file list are small panels you open from th
 |---|---|---|
 | 1. Always loaded | The profile, and the last turns of the conversation (5.8) | No wait. An estimated 500 to 1,500 tokens for a usual profile, more near the 200-line limit. Cheaper once caching is built, see below |
 | 2. Before every answer, by Phew's own code | The Project this is about, its last 3 past questions, and up to about 6 Notes or things found by a text search with your question, the app name and the window title. Also, with no search, the lists from the defined terms in 5.6: the Tasks due soon, the Events coming up, the next step, and the open points of that Project. At most 3 lines each. An empty list adds nothing | A few milliseconds, estimated. No model call. An estimated 400 to 1,500 tokens |
-| 3. By the model, when it needs more | One search tool, `search_map`. Given to the Guide and the Runner, never to the Follower. They also get `read_project_memory` (5.10) | One more request each time it is used: an estimated 1 to 3 seconds more before the first word, and the question, the picture and the screen text are sent a second time |
+| 3. By the model, when it needs more | One search tool, `search_map`. Given to the Guide and the Runner, never to the Follower. The excerpt of a project's `CLAUDE.md` is not a tool: it goes in the request (5.10) | One more request each time it is used: an estimated 1 to 3 seconds more before the first word, and the question, the picture and the screen text are sent a second time |
 
 - **When needed** is layer 2: memory appears without you asking.
 - **When called** is layer 3 and plain questions: "what do you know about me?", "what did we decide about pricing?".
@@ -414,12 +414,12 @@ The path of the open document is not in the context packet today. Senses adds on
 
 Correcting him: "this is the Acme project" is a told fact. The Librarian links the open Document to that Project with "part of", so the next call from the same file finds it at step 1.
 
-### What is not built yet
+### What recall needed in the Brain (built since)
 
-Today the Brain sends one question and gets one answer: no tools, no earlier turns, no caching. Recall needs the changes below inside the Brain. The `Brain` interface that Shell and Senses use does not change.
+When this was written the Brain sent one question and got one answer: no tools, no earlier turns, no caching. Recall needed the changes below inside the Brain; all are built now. The `Brain` interface that Shell and Senses use does not change.
 
 - **Request.** A request can carry several messages and a list of tools, not one question only.
-- **Loop.** The Guide answers, or calls `search_map` or `read_project_memory` and then answers. At most 2 such calls per question, then it must answer (kept 14 November, tuned after the MVP test). While it searches no words arrive, so the card stays in its waiting state.
+- **Loop.** The Guide answers, or calls `search_map` and then answers. At most 2 such calls per question, then it must answer (kept 14 November, tuned after the MVP test). While it searches no words arrive, so the card stays in its waiting state.
 - **Sending back.** When the model calls the tool, its whole reply goes back unchanged together with the search result, including the model's hidden "thinking" blocks. The Claude API requires this: check its documentation when building. The first message, with the picture, is sent again unchanged. All of it is dropped when the answer is done.
 - **Caching.** The system prompt, the tool definition and the profile are marked for caching. They are identical from call to call, and the profile text changes only when a fact in it changes. By the price table in the code, a cached part costs about a twentieth of the normal price. It lasts 5 minutes from the last call, the first call pays a quarter more on that part, and a part that is too short is not cached at all (about 512 tokens today: check the Claude API documentation for the current figure). Until caching is built (roadmap PS.4 at the latest) nothing is cached: layer 1 is paid in full on every call and a search pays for the picture twice.
 - **Kept turns.** As in 5.8: text only, never an earlier look.

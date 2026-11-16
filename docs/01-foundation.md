@@ -99,7 +99,7 @@ What is an edge, and what is not (`12-validation.md` 12.7):
 
 | Claim | What it is |
 |---|---|
-| He works with you, in your app, and you decide each job | The possible edge. Not built yet, not tested with users |
+| He works with you, in your app, and you decide each job | The possible edge. Built in version 0.1.0, little tried, not tested with users |
 | He remembers your projects, and you can see, correct and delete what he remembers | A possible edge, if the memory is right. Memory that invents things loses trust |
 | He points, and is right on the current version of the app | An edge only if it is reliably right. Not measured yet (test 1 in 12.6) |
 | He looks only when called. Memory is encrypted on the Mac | The price of entry, not an edge. People ask for it. Nobody was found who buys or stays because of it |
@@ -113,7 +113,7 @@ The experience is the product. Memory, context, agents and the Map work undernea
 ## 1.6 Risks
 
 - **Payment and staying are unproven.** Nobody was found paying for a tool like this, and nothing shows people keep using one. AI apps get first payments easily and lose subscribers sooner. Only a test with real users can answer this.
-- **Acting on the Mac is a safety and trust risk.** A wrong click can delete, send or overwrite something. A page or file he reads can try to trick him with hidden instructions. So the design with its guards comes first, in `docs/13-hand.md` (not written yet, decision 39): what he may do, what he asks first, what he never does. No acting code before you approve it. Your decision of 12 November stands until you change it: acting is a separate opt-in, off by default.
+- **Acting on the Mac is a safety and trust risk.** A wrong click can delete, send or overwrite something. A page or file he reads can try to trick him with hidden instructions. So the design with its guards came first, in `docs/13-hand.md` (decision 39): what he may do and what he never does. Your decision of 12 November (acting off by default) was replaced on 15 November: acting is on from the start, with a switch in the menu to turn it off.
 - **Platform makers are one feature away.** Apple, OpenAI, Anthropic and Google already ship screen view, memory and actions. Working with you step by step is a small change for them. Gemini's task mode already asks approval for each step.
 - **Model cost.** A question with the Map costs about 1.7 cents today. Acting needs many looks and many calls per job. Its cost is not measured yet. It must fit under what a person would pay.
 - **Scope.** This is several products in one: acting, explaining and guiding, memory, research, speech. There is no deadline, so nothing is skipped, but each part must work.

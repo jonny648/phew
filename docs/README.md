@@ -7,15 +7,15 @@ Start with `00-now.md`.
 | Path | What it is for | Status |
 |---|---|---|
 | `docs/00-now.md` | One page: what Phew does today, what is open, the current phase, your open decisions | current |
-| `docs/01-foundation.md` | Problem, user, market, who pays. To be rewritten after you choose the direction (PD.3) | current |
-| `docs/02-vision.md` | Vision, mission, values, who Phew is. To be rewritten after PD.3 | current |
+| `docs/01-foundation.md` | Problem, user, market, who pays. Rewritten on 15 November for the direction chosen that day (PD.3) | current |
+| `docs/02-vision.md` | Vision, mission, values, who Phew is. Rewritten on 15 November (PD.3) | current |
 | `docs/03-experience.md` | Surfaces, states, ways to call him, what is in the MVP and later | current |
 | `docs/04-architecture.md` | How the app is built in the MVP, and the full target | current |
 | `docs/05-map.md` | The Map's model: classes, links, defined terms, rules, recall, the Librarian, forgetting (5.1 to 5.11) | current |
 | `docs/05-map-storage.md` | The Map's storage, encryption design and export (5.12 onwards) | current |
 | `docs/06-sprint.md` | Phases of the MVP and after, with sizes | current |
 | `docs/07-decisions.md` | Your decisions, open decisions, parking list, session log | current |
-| `docs/08-b2b-targets.md` | Who could pay. To be rewritten after PD.3 | current |
+| `docs/08-b2b-targets.md` | Who could pay. Rewritten on 15 November (PD.3) | current |
 | `docs/09-claude-code.md` | How to start and run the build with Claude Code | current |
 | `docs/10-research-market.md` | 10.1 Market and competitors, with sources | reference |
 | `docs/10-research-agents.md` | 10.2 How similar tools see the screen and work alone, with sources | reference |
@@ -27,6 +27,14 @@ Start with `00-now.md`.
 | `docs/12-validation.md` | Validation of the direction from what users write, with its page `validation.html` | current |
 | `docs/13-hand.md` | How Phew acts on the Mac, with its page `hand.html` (phase PH) | current |
 | `docs/14-company.md` | CEO review, growth path, and what an investor reviews (L17) | current |
+| `docs/15-design.md` | The look and feel: principles, every surface and its states, colours, type, motion, as designed and as built (phase PH) | current |
+| `docs/16-control.md` | The last management control of the whole project on 16 November 2026: folder, online, docs, rules, ticks, open points, verdict | current |
+| `docs/costs.html` | What Phew costs: prices, cost per agent and per feature, a month of use with sliders, projections to 10,000 users, and the plan to cut the cost. 16 November 2026 |
+| `roadmap-next.html` | The phases after the MVP, N1 to N9. General, no task lists yet |
 | `docs/direction.html` | The direction research as one page to read (phase PD) | current |
+| `docs/hand.html` | The acting design of `13-hand.md` as one page to read | current |
+| `docs/validation.html` | The validation of `12-validation.md` as one page to read | current |
+| `docs/apps/` | One short file per app Phew acts in (Calendar, Dia, Excel, Figma, Fusion, Notes, Reminders): what he can and cannot do there, from the live checks | reference |
 | `docs/github-guide.html` | What GitHub is, how projects are structured and shipped (used in phase PG) | reference |
+| `docs/archive/choices.html` | The page of four choices put to you before the direction was set | archive |
 | `docs/archive/review.html` | Your review page of phase PV, answered on 14 November 2026 | archive |

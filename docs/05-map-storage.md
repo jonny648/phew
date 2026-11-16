@@ -71,7 +71,7 @@ It is the simplest way to meet all five of your needs. It is the same SQLite wit
 - In Xcode, add the package `https://github.com/sqlcipher/SQLCipher.swift`, rule "Exact version" `4.20.0`, to the Phew target. Source: https://github.com/sqlcipher/SQLCipher.swift/blob/master/Package.swift
 - Set the Preprocessor Macro `SQLITE_HAS_CODEC=1` for Debug and Release. Source: https://www.zetetic.net/sqlcipher/ios-tutorial/
 - Every Swift file that talks to the Map writes `import SQLCipher`. No file anywhere writes `import SQLite3`, and nothing links `libsqlite3`. Source: https://www.zetetic.net/sqlcipher/sqlcipher-apple-integrators/
-- The Map is not built yet, so there is no plain database to convert. It is encrypted from the first day.
+- The Map was not built when this was decided, so there was no plain database to convert. It is encrypted from the first day.
 - From the terminal, `xcodebuild -project Phew.xcodeproj -scheme Phew build` fetches the package and builds. The package is a ready-made, signed framework. Source: https://github.com/sqlcipher/SQLCipher.swift/blob/master/Package.swift
 - The licence asks for its notice where you can reach it, for example an "About and licences" item in the menu bar menu. Source: https://www.zetetic.net/sqlcipher/license/
 

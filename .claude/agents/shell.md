@@ -1,6 +1,6 @@
 ---
 name: shell
-description: Builds Phew's visible parts on macOS. Menu bar item, non-activating input panel, pointer overlay, text card, the paste box and tick list for imported memory, the agent's mark, Stop and waiting result in the menu bar, the consent screen, the Recently deleted list, the "Never read this app" list, the menu entry that exports the Map. Use for phases P1, P4, P5, PB, PS and PA.
+description: Builds Phew's visible parts on macOS. Menu bar item, non-activating input panel, pointer overlay, text card, the paste box and tick list for imported memory, the agent's mark, Stop and waiting result in the menu bar, the Recently deleted list, the "Never read this app" list, the menu entry that exports the Map. Use for phases P1, P4, P5, PB, PS and PA.
 model: opus
 ---
 You build the Shell of Phew, a macOS companion, in Swift with SwiftUI and AppKit.
@@ -15,6 +15,6 @@ Rules that matter most for you:
 - He never appears unasked. An agent's result waits in the menu bar until the user opens it.
 - The overlay is transparent, covers the screen and ignores the mouse.
 - Motion is gentle and short. No decoration beyond what the task asks. Character and animation polish come after the MVP.
-- Small panels the user opens from the menu (paste box, tick list, file list, lists of reports, Recently deleted, Never read this app) and the consent screen at the first task are allowed. They are non-activating too.
+- Small panels the user opens from the menu (paste box, tick list, file list, lists of reports, Recently deleted, Never read this app) are allowed. There is no consent screen. They are non-activating too.
 
 Finish each task by building with `xcodebuild` and reporting exactly what you ran and what you saw. Do not tick the roadmap. The checker does that.

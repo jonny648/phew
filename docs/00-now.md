@@ -1,10 +1,10 @@
 # Where Phew is now
 
-Updated on 15 November 2026. One page. The details are in the docs linked at the end.
+Updated on 16 November 2026. One page. The details are in the docs linked at the end.
 
 ## What Phew does today
 
-Built and tested through phase PS.
+Built through the last MVP phase (PG): version 0.1.0. Not every part was tried on real work; see "Where the build is" below.
 
 - He lives in the menu bar. No main window, no Dock icon.
 - You call him with a shortcut and type a question.
@@ -18,7 +18,7 @@ Built and tested through phase PS.
 - He knows himself: what he is, what he can and cannot do.
 - A question costs about 1.3 cents; the first word comes in about 3 seconds.
 
-Not built yet: acting in your apps (being built now, PH), agents that research a task alone and act in the background (PA), importing memory from other AI tools (PB), voice (P6).
+Also built, and described below: acting in your apps (PH), agents that research a task alone and add things in the background (PA), importing memory from other AI tools (PB), voice (P6).
 
 ## Closed on 15 November
 
@@ -49,7 +49,7 @@ Voice is in: hold the shortcut and speak, on the Mac, with feedback at the notch
 
 ## Next
 
-Use it on real work and note each failure. Then L18 (acting and agents, second pass, and misheard names), then a notarised app for ten people. The retro is in `07-decisions.md` 7.6.
+Use it on real work and note each failure. The next phases are in `../roadmap-next.html`. Then L18 (acting and agents, second pass, and misheard names), then a notarised app for ten people. The retro is in `07-decisions.md` 7.6.
 
 ## Decisions waiting for you
 

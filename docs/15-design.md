@@ -303,7 +303,7 @@ Working                                        (heading, only while tasks run)
 Ready                                          (heading, only when a result waits)
   Kerning sources
 ─────────────────────────────
-✓ Let Phew act                                 (after the acting consent)
+✓ Let Phew act                                 (on from the start)        
   Never read Notes                             (names the app in front)
 ─────────────────────────────
 Memory                    ▸   Recently deleted… · Export the Map… · Never-read apps…
@@ -328,6 +328,8 @@ Quit Phew
 - **Error:** the sentence replaces the help line, with the `exclamationmark.circle` in `problem`.
 
 ### F. Consent screens: research and acting
+
+Not in the app: both consent screens were removed on 15 November (see the note at the top). Kept as the record of the design.
 
 One shape for both, 440 wide, non-activating, floating, centred. Standard title bar with no title text.
 

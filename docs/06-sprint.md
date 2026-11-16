@@ -6,7 +6,7 @@ No fixed deadline since 13 November 2026. The first aim was 24 November; you rem
 
 **Version 1.** On your Mac, Phew explains and guides in the apps you use, remembers your projects so you never re-explain, learns what your other AI tools already know about you, follows a guide without lag, takes speech, and researches a task by himself.
 
-Not in the MVP: notch and character, backend, dashboard, connections to other tools, editing existing files, lecture listening, wake word, anything for publishing.
+Not in the MVP: the notch home and the character (only the listening shape at the notch, while you hold the key to talk, is in), backend, dashboard, connections to other tools, editing existing files, lecture listening, wake word, anything for publishing.
 
 ## 6.2 Phases
 
@@ -23,7 +23,7 @@ Rewritten on 15 November for the direction of that day (PD.5), and made lean: th
 | | PV Your review | You read everything on one page, understand it, and answer the open decisions. No code | lead, checker | Answered and approved 14 Nov |
 | 1 | P5 Map | Memory of your projects, recall at any time, follow-up questions. Starts with research on encrypting the Map. Recently deleted | map, brain, senses, shell | Built 14 Nov; your hand tests passed |
 | 1b | PD Direction and revision | Folder tidied, one specific job chosen after research and validation, the phases after P5 rewritten. No product code | lead, research workflow, checker | |
-| 2 | PH Hand and look | One phase since 15 November (the old PH and PX). Phew acts on the Mac by himself when asked, in your apps and across apps: the things he never touches, Stop, the consent screen, your seven apps, the trick test. And every surface gets its finished look: a short study, a design written as tokens and drawn in Figma, then the build of panel, card, conversation, pointer, action list, menu, first run. No review asked of you | senses, brain, shell, lead | |
+| 2 | PH Hand and look | One phase since 15 November (the old PH and PX). Phew acts on the Mac by himself when asked, in your apps and across apps: the things he never touches, Stop, the "Let Phew act" switch (no consent screen), your seven apps, the trick test. And every surface gets its finished look: a short study, a design written as tokens and drawn in Figma, then the build of panel, card, conversation, pointer, action list, menu, first run. No review asked of you | senses, brain, shell, lead | |
 | 3 | PA Agents | He researches a task alone, several at once, reports as PDF, and acts in the background without taking your screen | brain, shell | |
 | 4 | PB Second brain | Memory imported from your other AI tools, by paste and from Claude Code files | map, shell, brain | |
 | 5 | P6 Voice | Hold key and speak, in Italian and English | senses | |
@@ -78,3 +78,5 @@ Order to confirm at the retro. Unscheduled.
 | L17 Venture readiness | Everything an investor reviews, written and tested, with the pitch deck and the data room. Plan in `14-company.md` |
 | L18 Acting and agents, second pass | What is weak after the MVP build: apps that draw their own interface (Dia, Figma, Fusion), two displays, changing and sending and deleting, the exact window on return, reading menus, research limits, a wider trick test |
 | L16 Cost research and reduction | Large analysis and research to cut cost per question and per task without losing capabilities: remove calls that are not needed, cheaper models where they do as well, caching, shorter inputs, fewer rounds |
+
+**After the MVP.** Version 0.1.0 was finished on 16 November 2026. The phases that follow are in `../roadmap-next.html` (N1 real use, N2 acting and agents second pass, N3 voice that hears names, N4 cost down, N5 ten people, N6 first money, N7 character and home, N8 connections, N9 venture readiness). The cost plan for N4 is in `costs.html`.

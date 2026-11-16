@@ -62,6 +62,8 @@ struct SkillStore: Sendable {
     /// Keeps a skill only if its own test passes in the box: `run(testInput)` must give exactly `expected`.
     func write(name: String, about: String, code: String, testInput: String, expected: String) async throws {
         guard Self.valid(name) else { throw SkillProblem.name }
+        // A test that expects nothing proves nothing: `run` returning "" would pass it.
+        guard !expected.isEmpty else { throw SkillProblem.testFailed("the test must expect some text") }
         guard code.count <= Self.codeLimit else { throw SkillProblem.tooLong }
         guard find(name) != nil || all().count < Self.limit else { throw SkillProblem.full }
         switch await box.run(code: code, input: testInput) {
@@ -179,7 +181,7 @@ struct SkillTools: ToolRunner {
     /// The kept skills for the request, as data: one line each, name and what it does. Nil when there are none.
     func block() -> String? {
         let skills = store.all()
-        return skills.isEmpty ? nil : Guide.block("skills", skills.map { "\($0.name): \($0.about)" }.joined(separator: "\n"))
+        return skills.isEmpty ? nil : Guide.block("skills", SecretsFilter.clean(skills.map { "\($0.name): \($0.about)" }.joined(separator: "\n")))
     }
 }
 

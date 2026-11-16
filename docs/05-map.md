@@ -205,7 +205,7 @@ How each rule reaches the Guide: the first three are computed by code and arrive
 | Episodic | Past questions: what you asked, what he answered in one or two lines, when, in which app, on which project | Events table |
 | Semantic | The Map: things and links | Nodes and edges tables |
 
-3 turns, 5 minutes and 200 lines were kept on 14 November; they are tuned after the MVP test.
+3 turns, 5 minutes and 200 lines were kept on 14 November. Since the conversation card (15 November, `03-experience.md` 3.10) the numbers are 8 turns and 10 minutes; past 8 the last 4 are kept (16 November).
 
 ## 5.9 How it is filled
 

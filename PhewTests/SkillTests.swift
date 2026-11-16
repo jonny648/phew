@@ -216,6 +216,17 @@ final class SkillTests: XCTestCase {
         XCTAssertEqual(none, [])
     }
 
+    /// A test that expects nothing would keep a skill that does nothing.
+    func testATestThatExpectsNothingKeepsNothing() async {
+        do {
+            try await store.write(name: "does-nothing", about: "", code: "function run(i) { return ''; }", testInput: "", expected: "")
+            XCTFail("kept")
+        } catch {
+            XCTAssertEqual(error as? SkillProblem, .testFailed("the test must expect some text"))
+        }
+        XCTAssertEqual(store.all(), [])
+    }
+
     func testCodeOverTheLimitIsRefused() async {
         do {
             try await store.write(name: "too-long", about: "", code: sum + String(repeating: " ", count: SkillStore.codeLimit), testInput: "1", expected: "1")

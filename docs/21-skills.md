@@ -45,7 +45,7 @@ You see skills in the menu under **Memory, Skills…**: the name, what it does, 
 
 ## 21.5 In a job you watch
 
-Since 0.3.1 the acting agent has skills too. In a job, "write a skill" and "run a skill" are two steps like the others, shown on the card ("Wrote the skill sum-list", "Ran the skill sum-list"). They are not actions on the Mac: they never go through the Hand. The result comes back as data for the next step, for example a note with the total. Stop ends a running skill. Three failed skill steps end the job. Limits of this form: only the last result is carried to the next steps, and a skill written in a job can be about 8,000 characters at most.
+Since 0.3.1 the acting agent has skills too. In a job, "write a skill" and "run a skill" are two steps like the others, shown on the card ("Wrote the skill sum-list", "Ran the skill sum-list"). They are not actions on the Mac: they never go through the Hand. The result comes back as data for the next step, for example a note with the total. Stop ends a running skill. Three failed skill steps end the job. In a job, as in a task, the only guard against a skill written from text on the screen is the instruction to the model, not code; the box keeps the harm to a wrong number, which a later step could then write into a note. Writing a skill under a name already kept replaces the old one, when the new one passes its own test; nothing tells you, and the menu shows the new one. Limits of this form: only the last result is carried to the next steps, and a skill written in a job can be about 8,000 characters at most.
 
 ## 21.6 What is not built
 

@@ -54,13 +54,46 @@ li.is-done .when{display:none}
 </section>
 <section class="phase" id="N2">
 <h2>N2 Acting and agents, second pass</h2>
-<p class="sub">Order 2.</p>
+<p class="sub">Order 2. Started 16 November 2026, while N1 (your real use, your own notes) runs beside it. Not in this phase: an agent that edits your existing files (L5), which needs your decision first.</p>
 <ul class="tasks">
 <li><label><b>Aim</b></label><span class="when">The weak points the MVP left: acting in Dia, Figma, Fusion and other apps that draw their own interface; two displays; changing, sending and deleting, with a confirm for an agent; returning to the exact window; reading an app's menus before acting; research that uses several searches and reads pages; a wider trick test on real apps and pages.</span></li>
 <li><label><b>It ends when</b></label><span class="when">Of the jobs you really ask for in N1, 4 in 5 are done right. The trick test is repeated on real pages and written down.</span></li>
 <li><label><b>Comes from</b></label><span class="when">L18, L5 (editing files), L14 (reports that teach the memory).</span></li>
 <li><label><b>Who</b></label><span class="when">senses, brain, shell, checker.</span></li>
 </ul>
+<h3>Step 0. Version 0.1.1</h3>
+<ul class="tasks">
+<li data-id="N2.0" data-done="2026-11-16" class="is-done"><label><input type="checkbox" disabled checked> <b>N2.0</b> Version 0.1.1 built, installed in Applications in place of 0.1.0, relaunched, and published as a release with its disk image. Your memory, keys and settings are not touched</label><span class="when">Done when: The installed app says 0.1.1 and holds the Limits entry; the release exists on GitHub. Done 16 November by the lead's commands, not by the checker: version read from the installed app, the entry found in its program file, the menu not opened by eye.</span></li>
+<li data-id="N2.1" data-done="2026-11-16" class="is-done"><label><input type="checkbox" disabled checked> <b>N2.1</b> The lines of <code>CLAUDE.md</code> that no longer match the build are corrected, and the old tool names in <code>.claude/agents/brain.md</code></label><span class="when">Done when: A read of both files finds no statement the code contradicts. Done 16 November by the lead, a text change.</span></li>
+</ul>
+<h3>Block A. He can change things, not only add</h3>
+<ul class="tasks">
+<li data-id="N2.2" data-done=""><label><input type="checkbox" disabled> <b>N2.2</b> Changing what exists, through the apps' own scripting: edit or rename a note, complete or rename a reminder, move or rename an event, change cells in an open sheet. Read back after writing</label><span class="when">Done when: Unit tests for each new case on made-up items; the read-back catches a wrong write</span></li>
+<li data-id="N2.3" data-done=""><label><input type="checkbox" disabled> <b>N2.3</b> Deleting, with a way back: before a delete or a change the old value is kept in memory until the job ends, so Undo on the card puts it back. Nothing is written to disk</label><span class="when">Done when: A test deletes a made-up item and Undo restores it; the same for a changed value</span></li>
+<li data-id="N2.4" data-done=""><label><input type="checkbox" disabled> <b>N2.4</b> The "cannot be undone or leaves your Mac" class, decided by code, never by the model: send, publish, delete with no way back, replace. In a job you watch he does it with no confirm and the card marks the line. For an agent in the background it waits in the menu bar for one confirm</label><span class="when">Done when: A test: a background task that reaches such an action stops and shows one confirm row; the same action in a watched job runs and is tagged</span></li>
+<li data-id="N2.5" data-done=""><label><input type="checkbox" disabled> <b>N2.5</b> The card tells the truth: the "acting in" label follows the app after a switch; the "To undo" line is real</label><span class="when">Done when: Tests on the card model for both</span></li>
+</ul>
+<h3>Block B. He finds his way in any app</h3>
+<ul class="tasks">
+<li data-id="N2.6" data-done=""><label><input type="checkbox" disabled> <b>N2.6</b> He reads an app's menus before acting: the names of the menu commands go to the model (names only, through the secrets filter, without the recent-files menus), so he picks a command by its real name</label><span class="when">Done when: A test on the practice app: a job that needs a menu command names it in one step</span></li>
+<li data-id="N2.7" data-done=""><label><input type="checkbox" disabled> <b>N2.7</b> Apps that draw their own interface (Dia and other Chromium browsers, Figma, other Electron apps): Phew asks the app to describe its controls by name, so pages and panels are pressed by name. Clicking at a point stays for canvases</label><span class="when">Done when: In a made-up local page in a test window, he presses a named button and types in a named field without a click at a point</span></li>
+<li data-id="N2.8" data-done=""><label><input type="checkbox" disabled> <b>N2.8</b> He returns you to the exact window you were in, not only the app</label><span class="when">Done when: A test with two windows of the practice app: after a job in another app, the same window is in front</span></li>
+<li data-id="N2.9" data-done=""><label><input type="checkbox" disabled> <b>N2.9</b> Two displays: clicks and the pointer land right on a second display</label><span class="when">Done when: Unit tests of the point conversion for a display to the left, right and above; the live look is N2.L3</span></li>
+</ul>
+<h3>Block C. Research that goes deeper</h3>
+<ul class="tasks">
+<li data-id="N2.10" data-done=""><label><input type="checkbox" disabled> <b>N2.10</b> The research agent plans before searching, runs several searches, reads the pages it cites, and the report says what it could not check. Its limits are exercised by tests with a fake provider</label><span class="when">Done when: Tests: each limit (searches, pages, money, time) stops the task cleanly and the report says which one ended it</span></li>
+<li data-id="N2.11" data-done=""><label><input type="checkbox" disabled> <b>N2.11</b> Reports teach the memory: at the end of a task he proposes the facts he found; you tick the ones to keep, in the tick list the import uses. Nothing from the web enters the memory unticked</label><span class="when">Done when: A test: a made-up report yields proposed facts; only ticked ones are written, marked as coming from a report</span></li>
+<li data-id="N2.12" data-done=""><label><input type="checkbox" disabled> <b>N2.12</b> Two money guards: three tasks at once cannot pass the daily ceiling (each task reserves its budget when it starts); the limits keep a running total and no longer read the whole call log on every request</label><span class="when">Done when: Tests: three tasks cannot pass the ceiling; no file read per request</span></li>
+</ul>
+<h3>Block D. Live checks, only when you say</h3>
+<ul class="tasks">
+<li data-id="N2.L1" data-done=""><label><input type="checkbox" disabled> <b>N2.L1</b> Live runs on made-up data only, in the practice windows: one change, one delete with undo, one menu command, one named control in a made-up page, one deep research task. Cost stated before, about 1 to 2 dollars</label><span class="when">Done when: Results written in the log, with the cost</span></li>
+<li data-id="N2.L2" data-done=""><label><input type="checkbox" disabled> <b>N2.L2</b> The trick test again, wider: made-up pages and documents that try to mislead him into a send or a delete</label><span class="when">Done when: The count is written in docs/13-hand.md</span></li>
+<li data-id="N2.L3" data-done=""><label><input type="checkbox" disabled> <b>N2.L3</b> Yours: Dia, Figma, Fusion and a second display, from your notes of N1</label><span class="when">Done when: What worked and what did not is written in docs/apps/</span></li>
+</ul>
+<h3>Added during build</h3>
+<ul class="tasks added"></ul>
 </section>
 <section class="phase" id="N3">
 <h2>N3 Voice that hears names</h2>

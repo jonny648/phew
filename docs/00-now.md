@@ -43,7 +43,7 @@ Under Memory in the menu: paste a memory list from Claude, ChatGPT or Gemini and
 
 ## The MVP is built: version 0.1.0, 16 November 2026
 
-Online, private: https://github.com/jonny648/phew. The installer is `Phew-0.1.0.dmg`, on the release page and in `~/Downloads/Phew-release/`.
+Online, private: https://github.com/jonny648/phew. The installer is now `Phew-0.1.1.dmg` (0.1.0 was the MVP), on the release page and in `~/Downloads/Phew-release/`.
 
 Voice is in: hold the shortcut and speak, on the Mac, with feedback at the notch. Every MVP task in the roadmap is ticked; several were ticked on your word before a run, and their lines say so.
 

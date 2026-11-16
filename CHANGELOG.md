@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1, 16 November 2026
+
+- Limits: a "Limits…" entry in the menu with requests per minute, requests per day and dollars per day. He stops and says so when one is reached.
+- Lower cost: the text about himself is sent only when you ask about him; fixed instructions are cached for one hour when you use him often; a ceiling on the size of the whole-screen picture.
+
+Not checked live: the one-hour cache, the routing of questions about himself, the scaled picture and the Limits panel were tested by the automatic tests only.
+
 ## 0.1.0, 16 November 2026
 
 The MVP.

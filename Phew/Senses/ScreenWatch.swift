@@ -68,7 +68,12 @@ final class ScreenWatch: NSObject, SCStreamOutput, SCStreamDelegate {
             guard let content, !content.displays.isEmpty else { return blind("no display to watch") }
             // Phew's windows, and every never-read app's: the watch does not see them even when they come in front.
             // shortcut: an app on the list launched after the watch started is seen until the next start; update the filter if that matters.
-            let hidden = content.applications.filter { $0.processID == getpid() || self.list.contains($0.bundleIdentifier) }
+            // The same apps the whole-display picture leaves out (R1): the password managers and terminals too.
+            // The app the guide is in stays seen, as in the picture.
+            let frontPid = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
+            let hidden = content.applications.filter {
+                ScreenCapture.hides(pid: $0.processID, bundleID: $0.bundleIdentifier, front: frontPid, list: self.list)
+            }
             for display in content.displays {
                 let config = SCStreamConfiguration()
                 config.width = max(display.width / Self.scale, 1)

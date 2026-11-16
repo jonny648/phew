@@ -1,12 +1,24 @@
 #!/bin/zsh
 # Builds Phew in Release and packs it into a disk image with a background and an Applications shortcut.
 # Usage: Tools/make-dmg.sh <version> <output folder>. Needs Finder to lay out the window (macOS asks once).
+# Refuses uncommitted changes, a version other than the app's own, a debuggable app (get-task-allow) or one without
+# the hardened runtime, and another disk named Phew already mounted (Finder would dress that one).
 set -euo pipefail
+(( $# == 2 )) || { echo "Usage: Tools/make-dmg.sh <version> <output folder>" >&2; exit 2; }
 version=$1; out=$2
-root=${0:A:h:h}; work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
+root=${0:A:h:h}; work=$(mktemp -d); mount=""
+trap 'if [[ -n $mount ]]; then hdiutil detach -quiet -force "$mount" || true; fi; rm -rf "$work"' EXIT
+fail() { echo "make-dmg: $1" >&2; exit 1; }
+[[ -z $(git -C "$root" status --porcelain) ]] || fail "uncommitted changes: the image must be the committed code"
+[[ ! -e /Volumes/Phew ]] || fail "a disk named Phew is mounted: eject it first"
 xcodebuild -project "$root/Phew.xcodeproj" -scheme Phew -configuration Release -derivedDataPath "$work/dd" build -quiet
 app="$work/dd/Build/Products/Release/Phew.app"
 codesign --verify --deep --strict "$app"
+built=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")
+[[ $built == "$version" ]] || fail "the app is version $built, not $version"
+# The debugger door must be shut: get-task-allow lets any program of the user read Phew's memory (R14).
+if codesign -d --entitlements - "$app" 2>/dev/null | grep -q get-task-allow; then fail "the app carries get-task-allow"; fi
+codesign -d --verbose "$app" 2>&1 | grep -q 'flags=.*runtime' || fail "the hardened runtime is off"
 stage="$work/stage"; mkdir -p "$stage/.background"
 cp -R "$app" "$stage/"; ln -s /Applications "$stage/Applications"
 swift "$root/Tools/make-dmg-background.swift" "$stage/.background"
@@ -14,6 +26,8 @@ tiffutil -cathidpicheck "$stage/.background/background.png" "$stage/.background/
 rm "$stage/.background/background.png" "$stage/.background/background@2x.png"
 hdiutil create -quiet -volname "Phew" -srcfolder "$stage" -fs HFS+ -format UDRW "$work/rw.dmg"
 mount=$(hdiutil attach -readwrite -noverify -noautoopen "$work/rw.dmg" | awk -F'\t' '/\/Volumes\//{print $3}')
+# Finder finds the disk by name, so it must be this one.
+[[ $mount == /Volumes/Phew ]] || fail "the new image mounted at $mount, not /Volumes/Phew"
 osascript <<APPLESCRIPT
 tell application "Finder"
   tell disk "Phew"
@@ -35,7 +49,8 @@ tell application "Finder"
   end tell
 end tell
 APPLESCRIPT
-sync; hdiutil detach -quiet "$mount"
-mkdir -p "$out"; rm -f "$out/Phew-$version.dmg"
-hdiutil convert -quiet "$work/rw.dmg" -format UDZO -imagekey zlib-level=9 -o "$out/Phew-$version.dmg"
+sync; hdiutil detach -quiet "$mount"; mount=""
+# Made beside, then moved into place: the earlier image goes only once the new one exists.
+hdiutil convert -quiet "$work/rw.dmg" -format UDZO -imagekey zlib-level=9 -o "$work/Phew.dmg"
+mkdir -p "$out"; mv -f "$work/Phew.dmg" "$out/Phew-$version.dmg"
 echo "$out/Phew-$version.dmg"

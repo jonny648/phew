@@ -27,6 +27,23 @@ final class NeverReadTests: XCTestCase {
         XCTAssertEqual(list.defaults.dictionaryRepresentation().keys.filter { $0 == NeverReadList.key }.count, 1)
     }
 
+    /// R1: a whole-display picture leaves out Phew, every app on the Never read list, and the password managers and
+    /// terminals of the Never list, wherever their windows lie; the app Phew was called on stays, as in a window picture.
+    func testTheWholeDisplayPictureLeavesOutListedAppsPasswordManagersAndTerminals() {
+        list.add(name: madeUp.name, bundleID: madeUp.bundleID)
+        let front: pid_t = 501
+        func hides(_ pid: pid_t, _ bundleID: String?) -> Bool { ScreenCapture.hides(pid: pid, bundleID: bundleID, front: front, list: list) }
+        XCTAssertTrue(hides(getpid(), "com.example.anything"), "Phew's own windows")
+        XCTAssertTrue(hides(600, madeUp.bundleID), "on the Never read list")
+        for bundleID in NeverList.passwordApps.union(NeverList.terminals) { XCTAssertTrue(hides(601, bundleID), bundleID) }
+        XCTAssertTrue(NeverList.passwordApps.isSubset(of: NeverList.apps) && NeverList.terminals.isSubset(of: NeverList.apps),
+                      "one list, never two")
+        XCTAssertTrue(NeverList.passwordApps.contains("com.1password.1password") && NeverList.terminals.contains("com.apple.Terminal"))
+        XCTAssertFalse(hides(602, "com.apple.Safari"))
+        XCTAssertFalse(hides(603, nil))
+        XCTAssertFalse(hides(front, "com.apple.Terminal"), "the app Phew was called on")
+    }
+
     /// The real gate: Senses.capture on a listed app reads nothing and gives back only its name and bundle id.
     func testCaptureOfAListedAppReadsNothing() async throws {
         let app = NSRunningApplication.current  // the test host stands in for the made-up app

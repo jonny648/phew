@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// What a task sends while it works, then its report (PA.1). Fixed words and counts only: never a search word,
 /// an address or a page's text.
@@ -24,6 +25,8 @@ struct TaskReport: Sendable, Equatable {
 
 enum TaskLimit: String, Sendable, CaseIterable {
     case searches, pages, rounds, cost, time
+    /// The report reached the output cap of one answer and was cut there (R32).
+    case length
 }
 
 /// Each task's limits, kept by Phew's code (docs/03-experience.md 3.6: 5 searches, 8 pages, 50 cents, approved 14 Nov).
@@ -96,20 +99,57 @@ enum Runner {
     /// `allowed_callers: direct` turns dynamic filtering off: no code runs at Anthropic, no container to carry
     /// between rounds, and every search and read shows in `usage.server_tool_use`, which the limits count.
     /// `max_uses` holds for the whole turn, and a task is one turn (every later request ends in tool results or
-    /// resumes a pause), so the full limit goes in every request: the tools never change between rounds.
-    static func webSearch(_ limits: TaskLimits) -> String {
-        #"{"type":"web_search_20260209","name":"web_search","max_uses":\#(limits.searches),"allowed_callers":["direct"]}"#
+    /// resumes a pause; docs: "A turn can span several requests"), so the same count goes in every request: the
+    /// tools never change between rounds. Changing one would rewrite the cache and break the thinking blocks sent back.
+    static func webSearch(_ uses: Int) -> String {
+        #"{"type":"web_search_20260209","name":"web_search","max_uses":\#(uses),"allowed_callers":["direct"]}"#
     }
 
     /// `client_tool_results: none`: never an address that came back from Phew's own tools (the Map). An address in
     /// the user's message may be opened: the task's words are kept as typed, and Phew's code removed every address
     /// from the screen text before (`withoutAddresses`).
-    static func webFetch(_ limits: TaskLimits) -> String {
-        #"{"type":"web_fetch_20260209","name":"web_fetch","max_uses":\#(limits.pages),"allowed_callers":["direct"],"max_content_tokens":\#(pageTokens),"url_sources":{"client_tool_results":{"type":"none"}}}"#
+    static func webFetch(_ uses: Int) -> String {
+        #"{"type":"web_fetch_20260209","name":"web_fetch","max_uses":\#(uses),"allowed_callers":["direct"],"max_content_tokens":\#(pageTokens),"url_sources":{"client_tool_results":{"type":"none"}}}"#
     }
 
     /// One page at most this long in the model's context, about 6,000 words.
     static let pageTokens = 8000
+    /// What one search's results may add to the context, in tokens.
+    // shortcut: a guess on the high side, not measured; read `cache_creation_input_tokens` of a searching round in
+    // calls.log and set it from there.
+    static let searchTokens = 4000
+    /// The output cap of one request (thinking included).
+    static let maxTokens = 8192
+
+    /// R9: the most one request can cost when it asks for `searches` and `pages` in the dearest order (every page
+    /// first, each read again by every later step) and writes `maxTokens`. Server tools write the cache after their
+    /// results when the request uses caching (docs: prompt caching), so each piece of context is written once and
+    /// read by every later sampling step. `prompt`: the request's own tokens.
+    static func worstUSD(prompt: Int, searches: Int, pages: Int) -> Double {
+        let model = Tier.main.model
+        let results = Array(repeating: pageTokens, count: pages) + Array(repeating: searchTokens, count: searches)
+        let n = Double(results.count)
+        var tokens = Double(prompt) * (model.cacheWrite + model.cacheRead * n)
+        for (i, size) in results.enumerated() { tokens += Double(size) * (model.cacheWrite + model.cacheRead * (n - Double(i) - 1)) }
+        return (tokens + Double(maxTokens) * model.output) / 1_000_000 + Double(searches) * Model.perSearch
+    }
+
+    /// R9: the searches and pages a task may ask for, at most its limits, fewer when even one request using them all
+    /// could pass its cost cap. Set once, when the task starts, since `max_uses` holds for the whole task.
+    static func uses(_ limits: TaskLimits, prompt: Int) -> (searches: Int, pages: Int) {
+        var (searches, pages) = (limits.searches, limits.pages)
+        while searches + pages > 0, worstUSD(prompt: prompt, searches: searches, pages: pages) > limits.capUSD {
+            if pages > searches { pages -= 1 } else { searches -= 1 }
+        }
+        return (searches, pages)
+    }
+
+    /// How far past its cap the worst case of the uses still left may reach before the report is forced: a round
+    /// on the Map tool first must not end the research. So a task can pass its cap by at most a fifth.
+    static let overCap = 1.2
+
+    /// R31: a task does not start with less than one search, one page and a report would cost.
+    static let minimumUSD = worstUSD(prompt: 4000, searches: 1, pages: 1)
 
     /// The fixed line at the end of a report that a limit ended.
     static func line(_ limit: TaskLimit, _ limits: TaskLimits) -> String {
@@ -121,6 +161,7 @@ enum Runner {
             "Phew stopped here: today's limit of \(String(format: "$%.2f", limits.dayCeiling)) was reached."
         case .cost: "Phew stopped here: the limit of \(Int((limits.usd * 100).rounded())) cents for a task was reached."
         case .time: "Phew stopped here: the limit of \(Int(limits.seconds / 60)) minutes for a task was reached."
+        case .length: "The report was cut here: it reached the length limit of one answer."
         }
     }
 
@@ -176,11 +217,11 @@ enum Runner {
             rounds += 1
             if last { request.toolChoice = .none }
             let left = limits.seconds - Date().timeIntervalSince(start)
-            guard left > 0, let round = try await round(request, within: left, provider: provider, emit: emit) else {
-                limit = .time
-                break
-            }
+            guard left > 0 else { limit = .time; break }
+            let round = try await round(request, within: left, provider: provider, emit: emit)
             try Task.checkCancellation()
+            // R25: cut by the time limit: the text it had written so far is kept (the call itself is logged as cut).
+            if round.cut { report += round.text; limit = .time; break }
             spent += request.tier.model.cost(round.usage)
             if round.usage.searches > 0 { searches += round.usage.searches; emit(.searching(searches)) }
             if round.usage.fetches > 0 { pages += round.usage.fetches; emit(.reading(pages)) }
@@ -188,6 +229,7 @@ enum Runner {
             report = round.stop == "tool_use" ? "" : report + round.text
             shellLog("runner: task \(number), round \(rounds), \(searches) searches, \(pages) pages, $\(String(format: "%.4f", spent))")
             if spent >= limits.capUSD { limit = .cost; break }
+            if round.stop == "max_tokens" { limit = .length; break }  // R32: never saved as if complete
             if limit == nil, searches >= limits.searches { limit = .searches }
             if limit == nil, pages >= limits.pages { limit = .pages }
             if last { break }
@@ -204,11 +246,16 @@ enum Runner {
                 request.after += [ModelMessage(role: "assistant", content: round.content),
                                   ModelMessage(role: "user", content: try JSONSerialization.data(withJSONObject: results))]
             default:
-                break rounds  // end_turn, max_tokens: the report is written
+                break rounds  // end_turn: the report is written
             }
             // The next round writes the report, with no more tool calls.
             if rounds + 1 >= limits.rounds { last = true; limit = limit ?? .rounds }
             if spent >= limits.writeAtUSD { last = true; limit = limit ?? .cost }
+            // R9: the counts were sized for one request from a full cap. With money already spent, the uses still
+            // left must fit what is left, within `overCap`; else the next round writes the report.
+            // shortcut: the request's own size is taken as 4,000 tokens, as `minimumUSD` does.
+            let leftWorst = worstUSD(prompt: 4000, searches: max(0, limits.searches - searches), pages: max(0, limits.pages - pages))
+            if spent + leftWorst > limits.capUSD * overCap { last = true; limit = limit ?? .cost }
             if Date().timeIntervalSince(start) >= limits.writeAtSeconds { last = true; limit = limit ?? .time }
             // Only if Anthropic did not hold `max_uses` across the task: Phew's own count stops the research.
             if searches > limits.searches || pages > limits.pages { last = true }
@@ -236,25 +283,30 @@ enum Runner {
 
     struct Round: Sendable {
         var text = "", content = Data("[]".utf8), usage = Usage(), stop = ""
+        /// `seconds` ran out first: the request was cancelled, and this is what had arrived.
+        var cut = false
     }
 
-    /// One request, or nil when `seconds` run out first; then the request is cancelled.
+    /// One request, or what had arrived of it when `seconds` run out first; then the request is cancelled.
     static func round(_ request: ModelRequest, within seconds: TimeInterval, provider: any ModelProvider,
-                      emit: @escaping @Sendable (TaskEvent) -> Void) async throws -> Round? {
-        try await withThrowingTaskGroup(of: Round?.self) { group in
+                      emit: @escaping @Sendable (TaskEvent) -> Void) async throws -> Round {
+        let sofar = OSAllocatedUnfairLock(initialState: Round())
+        return try await withThrowingTaskGroup(of: Round?.self) { group in
             group.addTask {
-                var round = Round()
                 for try await event in provider.stream(request) {
-                    switch event {
-                    case .text(let piece):
-                        if round.text.isEmpty { emit(.writing) }
-                        round.text += piece
-                    case .content(let blocks): round.content = blocks
-                    case .usage(let usage): round.usage = usage
-                    case .stop(let reason): round.stop = reason
+                    let wasEmpty = sofar.withLock { round in
+                        let empty = round.text.isEmpty
+                        switch event {
+                        case .text(let piece): round.text += piece
+                        case .content(let blocks): round.content = blocks
+                        case .usage(let usage): round.usage = usage
+                        case .stop(let reason): round.stop = reason
+                        }
+                        return empty
                     }
+                    if wasEmpty, case .text = event { emit(.writing) }
                 }
-                return round
+                return sofar.withLock { $0 }
             }
             group.addTask {
                 try await Task.sleep(for: .seconds(seconds))
@@ -262,7 +314,10 @@ enum Runner {
             }
             let first = try await group.next() ?? nil
             group.cancelAll()
-            return first
+            if let first { return first }
+            var cut = sofar.withLock { $0 }
+            cut.cut = true
+            return cut
         }
     }
 
@@ -278,9 +333,11 @@ enum Runner {
         let text = [Spoken.after("Task: \(SecretsFilter.clean(words))", spoken), read.map(screenBlock) ?? "No screen was read."]
             + (projectMemory.map { [SecretsFilter.clean($0)] } ?? []) + ["Today is \(day)."]
         var request = ModelRequest(agent: "runner", tier: .main, system: system, text: text.joined(separator: "\n\n"),
-                                   image: read?.screenshot, effort: "medium", maxTokens: 8192)
+                                   image: read?.screenshot, effort: "medium", maxTokens: maxTokens)
         request.tools = tools?.tools ?? []
-        request.serverTools = [webSearch(limits), webFetch(limits)]
+        // R9: sized once, by the task's cost cap; a tool with no use left is not sent (`max_uses` 0 is not documented).
+        let uses = uses(limits, prompt: ClaudeProvider.promptTokens(request))
+        request.serverTools = (uses.searches > 0 ? [webSearch(uses.searches)] : []) + (uses.pages > 0 ? [webFetch(uses.pages)] : [])
         request.cacheRounds = true
         request.task = number
         return request
@@ -291,9 +348,7 @@ enum Runner {
     static func screenBlock(_ packet: ContextPacket) -> String {
         let lines = ["App: \(packet.appName)", "Window: \(packet.windowTitle)", "Visible text:",
                      packet.visibleText.isEmpty ? "(none)" : packet.visibleText].joined(separator: "\n")
-        let clean = withoutAddresses(SecretsFilter.clean(lines))
-            .replacingOccurrences(of: "</screen>", with: "</ screen>", options: .caseInsensitive)
-        return "<screen>\n\(clean)\n</screen>"
+        return Guide.block("screen", withoutAddresses(SecretsFilter.clean(lines)))
     }
 
     static let addressMarker = "[address removed]"

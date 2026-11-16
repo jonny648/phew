@@ -122,16 +122,19 @@ final class Talk {
 
     /// The release: names matched by sound (N3.1), then the words go at once, always (N3.7). An unsure hearing is held
     /// only after routing, on the card (`SendOrShow.held`).
-    func holdEnd() {
+    /// `atLimit`: the hold reached `HotKey.longestHold` with no release seen (R35). Listening stops the same way, and
+    /// words heard still go; silence sends nothing, since nobody asked for the screen to be explained.
+    func holdEnd(atLimit: Bool = false) {
         guard let hold, let started = hold.started else { return }
         self.hold = nil
         let capture = hold.capture
         hold.capture = nil
         Task {
             guard await started.value, let listener else { return closeLine() }
-            show(.sending)  // the notch closes now; the words follow when the recognisers finish
+            show(atLimit ? .closed : .sending)  // the notch closes now; the words follow when the recognisers finish
             let hearings = NameMatch.apply(await listener.stop(), names: hold.words, heardAs: hold.heardAs).hearings
             if hearings.isEmpty {
+                if atLimit { return shellLog("talk: hold reached its limit, nothing heard, nothing sent, capture dropped") }
                 shellLog("talk: nothing heard, explaining what is under the cursor")
             } else {
                 shellLog("talk: heard \(hearings.count) hearings, languages \(hearings.map { Spoken.code($0.language) }), confidences \(hearings.map { ($0.confidence * 100).rounded() / 100 }), best \(hearings[0].text.count) characters")

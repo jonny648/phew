@@ -51,6 +51,7 @@ final class VoiceTests: XCTestCase {
         key.holdStart = { events("start") }
         key.holdEnd = { events("end") }
         key.holdCancel = { events("cancel") }
+        key.holdLimit = { events("limit") }
         return key
     }
 
@@ -78,10 +79,143 @@ final class VoiceTests: XCTestCase {
         key.flags(0x50)
         clock.fire?()
         XCTAssertTrue(key.holding)
-        key.flags(0x50 | 0x02)  // another modifier joins: still the same hold
         key.flags(0)
         XCTAssertEqual(events, ["start", "end"])
         XCTAssertFalse(key.holding)
+    }
+
+    // MARK: Exactly the two keys (R11)
+
+    /// What a real flagsChanged event carries with the chord: the device-independent Option and Command bits, and
+    /// 0x100. Caps Lock is a lock, not a key held.
+    @MainActor
+    func testTheRealEventBitsAndCapsLockStillMakeTheChord() {
+        let option = NSEvent.ModifierFlags.option.rawValue, command = NSEvent.ModifierFlags.command.rawValue
+        for chord in [0x50 | 0x100 | option | command, 0x50 | option | command | NSEvent.ModifierFlags.capsLock.rawValue] {
+            let clock = Clock()
+            var events: [String] = []
+            let key = hotKey(clock) { events.append($0) }
+            key.flags(chord)
+            key.flags(0x100)
+            XCTAssertEqual(events, ["press"])
+        }
+    }
+
+    @MainActor
+    func testAnotherModifierHeldFirstStartsNothing() {
+        let shift = NSEvent.ModifierFlags.shift.rawValue, control = NSEvent.ModifierFlags.control.rawValue
+        for other: UInt in [0x02 | shift, 0x04 | shift, 0x01 | control, 0x2000 | control, 0x08, 0x20,
+                            NSEvent.ModifierFlags.function.rawValue] {
+            let clock = Clock()
+            var events: [String] = []
+            let key = hotKey(clock) { events.append($0) }
+            key.flags(0x50 | other)
+            clock.fire?()
+            key.flags(0)
+            XCTAssertEqual(events, [], "right Option + right Command + \(String(other, radix: 16)) is another app's shortcut")
+            XCTAssertTrue(clock.delays.isEmpty)
+        }
+    }
+
+    @MainActor
+    func testAModifierJoiningCancelsWithoutSending() {
+        let shift = 0x02 | NSEvent.ModifierFlags.shift.rawValue
+        // Before the hold: no press, and letting go of Shift does not start again while the two are still down.
+        let clock = Clock()
+        var events: [String] = []
+        let key = hotKey(clock) { events.append($0) }
+        key.flags(0x50)
+        key.flags(0x50 | shift)
+        clock.fire?()
+        key.flags(0x50)
+        clock.fire?()
+        key.flags(0)
+        XCTAssertEqual(events, [])
+        XCTAssertEqual(clock.delays, [Design.Motion.hold], "never armed a second time")
+        // During the hold: cancelled, nothing sent, the release does nothing.
+        key.flags(0x50)
+        clock.fire?()
+        key.flags(0x50 | shift)
+        key.flags(0x50)
+        key.flags(0)
+        XCTAssertEqual(events, ["start", "cancel"])
+        XCTAssertFalse(key.holding)
+    }
+
+    @MainActor
+    func testAThirdKeyCancelsWithoutSending() {
+        let clock = Clock()
+        var events: [String] = []
+        let key = hotKey(clock) { events.append($0) }
+        // Before the hold: right ⌥⌘ + a letter is another app's shortcut, never the press.
+        key.flags(0x50)
+        key.keyDown(8)  // C
+        clock.fire?()
+        key.flags(0)
+        XCTAssertEqual(events, [])
+        // During the hold: the same as Escape.
+        key.flags(0x50)
+        clock.fire?()
+        key.keyDown(8)
+        key.keyDown(49)  // Space
+        key.flags(0)
+        XCTAssertEqual(events, ["start", "cancel"])
+        // Then the shortcut works again.
+        key.flags(0x50)
+        key.flags(0)
+        XCTAssertEqual(events, ["start", "cancel", "press"])
+    }
+
+    // MARK: The hold's ceiling (R35)
+
+    @MainActor
+    func testAHoldEndsByItselfAtTheCeiling() {
+        let clock = Clock()
+        var events: [String] = []
+        let key = hotKey(clock) { events.append($0) }
+        key.flags(0x50)
+        clock.fire?()
+        XCTAssertEqual(clock.delays, [Design.Motion.hold, HotKey.longestHold])
+        XCTAssertEqual(HotKey.longestHold, 60)
+        clock.fire?()  // the release was never seen
+        XCTAssertEqual(events, ["start", "limit"])
+        XCTAssertFalse(key.holding)
+        key.flags(0x50)  // still down: nothing starts again
+        key.flags(0)
+        XCTAssertEqual(events, ["start", "limit"])
+        key.flags(0x50)
+        key.flags(0)
+        XCTAssertEqual(events, ["start", "limit", "press"])
+        // A release before the ceiling cancels its timer.
+        let before = clock.cancelled
+        key.flags(0x50)
+        clock.fire?()
+        key.flags(0)
+        XCTAssertEqual(clock.cancelled, before + 1)
+        XCTAssertNil(clock.fire)
+    }
+
+    @MainActor
+    func testAtTheCeilingSilenceSendsNothingAndWordsGo() async {
+        let silent = FakeListener()
+        let (talk, screen) = makeTalk(silent)
+        talk.holdStart()
+        await until { silent.starts == 1 }
+        talk.holdEnd(atLimit: true)
+        await until { silent.stops == 1 }
+        await until { screen.looks.last == .closed }
+        await settle()
+        XCTAssertTrue(screen.sent.isEmpty, "a hold nobody ended never explains the screen")
+        XCTAssertFalse(talk.holdsCapture)
+
+        let sent = expectation(description: "sent")
+        let speaking = FakeListener(heard: Heard(hearings: hearings))
+        let (spoken, spokenScreen) = makeTalk(speaking, sent: sent)
+        spoken.holdStart()
+        await until { speaking.starts == 1 }
+        spoken.holdEnd(atLimit: true)
+        await fulfillment(of: [sent], timeout: 2)
+        XCTAssertEqual(spokenScreen.sent.first?.question, Self.italian, "words heard go, as on a release")
     }
 
     @MainActor
@@ -106,18 +240,18 @@ final class VoiceTests: XCTestCase {
         let key = hotKey(clock) { events.append($0) }
         key.flags(0x50)
         clock.fire?()
-        key.escape()
+        key.keyDown(53)  // Escape
         key.flags(0)
         XCTAssertEqual(events, ["start", "cancel"])
         // Escape before the hold: neither a press nor a hold.
         events = []
         key.flags(0x50)
-        key.escape()
+        key.keyDown(53)  // Escape
         clock.fire?()
         key.flags(0)
         XCTAssertEqual(events, [])
         // Escape with no chord down does nothing.
-        key.escape()
+        key.keyDown(53)  // Escape
         XCTAssertEqual(events, [])
     }
 
@@ -258,6 +392,14 @@ final class VoiceTests: XCTestCase {
         await settle()
         XCTAssertTrue(screen.sent.isEmpty)
         XCTAssertEqual(listener.stops, 0)
+    }
+
+    /// R36: before macOS 26 there is nothing to listen with, so there is no listener: a hold is the short press and
+    /// the Microphone is never asked for.
+    @MainActor
+    func testNoListenerWhereTheSystemCannotHear() {
+        XCTAssertNil(AppDelegate.listener(canHear: false))
+        if #available(macOS 26, *) { XCTAssertNotNil(AppDelegate.listener(canHear: true)) }
     }
 
     @MainActor

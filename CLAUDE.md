@@ -31,13 +31,13 @@ These rules are direction, not strict rules (your choice of 14 November). Follow
 - He never activates the app or takes focus from the front app. Panels are non-activating. Two exceptions: the system folder window, while you pick a folder; and a job you asked for that needs another app, where he brings that app to the front and returns you to where you were.
 - No per-answer display of captured context.
 - What Phew captures (screen text and screenshots) lives in memory only. It is dropped when the answer is done or stopped: for a guide, when the guide ends; for a task, when the task ends or is stopped. It is also dropped when the panel closes without a question. It is never kept for a follow-up question. It is never written to disk or to a log, in any build. The app name, the window title and a file's path or page address are labels, not the capture: the Map may keep them. The one exception is the debug dump, which is off unless Phew is launched with its test flag, and whose files are deleted after the test.
-- Never read secure text fields, and never write to them. Run the secrets filter before any network call.
+- Never read secure text fields, and never write to them. Run the secrets filter before any network call. The filter works on text; a picture is not filtered, so what is visible on screen is in it (decision 49). The whole-display picture and the screen watch leave out the apps on the "Never read this app" list, the password managers and the terminals.
 - Speech to text runs on the device.
 - The API key lives only in the Keychain. Never in a file, a log or the repository.
 - The Map lives only on the Mac. The whole Map is encrypted, and sensitive facts get a second lock with their own key (design in `docs/05-map-storage.md` 5.12, approved 14 November).
 - Shell and Senses reach the Brain only through the `Brain` interface, so it can move to a backend later.
 - All model calls go through one provider interface. Read current model names from the Claude API documentation. Do not guess them.
-- Small model for Conductor, Observer, Librarian. Main model for Guide, Follower and Runner.
+- Small model for Conductor and Librarian. Main model for Guide, Follower, Doer and Runner. The Observer no longer runs (17 November).
 - Map writes use only the classes and links in `docs/05-map.md`.
 - Log cost and latency of every model call locally. A line in `calls.log` holds only the time, the agent, the model, token counts, cost, timings, how the call ended and a task number. A line in `actions.log` holds only the time, the job and step numbers, the kind of action, the control's role, how it ended, a duration and a count of characters. The system log may also name an event with no words from you in it, such as the screen watch starting or stopping, or the one screen read of a task. No log, in any build, holds a question, a task's words, search words, web addresses, Map facts or an answer.
 - Nothing in `roadmap-next.html` is built before its phase starts, and nothing from its "Later" section without your say.

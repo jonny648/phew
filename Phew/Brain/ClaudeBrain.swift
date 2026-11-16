@@ -1,6 +1,6 @@
 import Foundation
 
-/// The Brain the Shell constructs: Conductor and Observer side by side on the small model, the Map read by code,
+/// The Brain the Shell constructs: the Conductor on the small model beside the Map read by code,
 /// then the Guide, then the Librarian in the background.
 struct ClaudeBrain: Brain {
     var provider: any ModelProvider = ClaudeProvider()
@@ -103,12 +103,13 @@ struct ClaudeBrain: Brain {
 
     private func run(_ question: String, packet: ContextPacket?, state: ShellState, spoken: [Hearing], emit: (BrainEvent) -> Void) async throws {
         let start = Date()
-        // Side by side, so together they cost one small-model round trip. The Map is read by code, no model call.
+        // The Conductor and the Map side by side. The Map is read by code, no model call.
         // P6.3: for a spoken question, the words the recogniser had (screen and memory), so a misheard name can be put right.
         let mapNames = spoken.isEmpty ? [] : await map.spokenNames()
         let names = spoken.isEmpty ? [] : packet?.spokenContext(extra: mapNames) ?? mapNames
         async let routing = Conductor.understand(question, packet: packet, spoken: spoken, names: names, provider: provider)
-        async let cleaned = Observer.clean(packet?.visibleText ?? "", question: question, provider: provider)
+        // R47: no Observer call. It was meant to be off (PS.12), yet the secrets filter can make a packet longer than
+        // its cap and wake it, costing 1 to 3 s before the Guide.
         async let recalled = recall(question, packet: packet)
         var route: Route
         var aboutPhew = true  // A1: unsure, the text about himself goes along
@@ -129,11 +130,9 @@ struct ClaudeBrain: Brain {
         // PH.4: the Shell runs an act job through `nextAction`. With acting off it is shown as a guide.
         if route == .act && state.acting { return }
         if route == .act { route = .guide }
-        var packet = packet
-        packet?.visibleText = await cleaned
         let earlier = memory.turns
         let (store, lines) = await recalled
-        shellLog("brain: route \(route), text \(packet?.visibleText.count ?? 0) chars after the observer, \(earlier.count) earlier turns, map \(store == nil ? "off" : "on") with \(lines.isEmpty ? 0 : lines.split(separator: "\n").count) lines, ready in \(Int(Date().timeIntervalSince(start) * 1000)) ms")
+        shellLog("brain: route \(route), text \(packet?.visibleText.count ?? 0) chars,\(earlier.count) earlier turns, map \(store == nil ? "off" : "on") with \(lines.isEmpty ? 0 : lines.split(separator: "\n").count) lines, ready in \(Int(Date().timeIntervalSince(start) * 1000)) ms")
         let held = await store?.counts()
         let about = SelfKnowledge.live(state, turn: earlier.count + 1, projects: held?.projects, facts: held?.facts)
         let project = route == .explain ? await projectMemoryBlock(question, packet: packet, store: store) : nil
@@ -206,7 +205,9 @@ extension ClaudeBrain {
         if let limits {
             taskLimits.dayLeft = limits.reserve(task: number, usd: taskLimits.usd)
             taskLimits.dayCeiling = limits.usdPerDay
-            guard taskLimits.dayLeft > 0 else {
+            // R31: too little left for one search, one page and a report: the money would go for no report.
+            guard taskLimits.dayLeft >= Runner.minimumUSD else {
+                limits.release(task: number)
                 return AsyncThrowingStream { $0.finish(throwing: BrainError.limited(.dayUSD(limits.usdPerDay))) }
             }
         }

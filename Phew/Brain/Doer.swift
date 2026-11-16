@@ -244,9 +244,7 @@ enum Doer {
     static func request(_ request: String, packet: ContextPacket, shot: ScreenshotSize?, done: [String], spoken: [Hearing] = [],
                         now: Date = Date()) -> ModelRequest {
         // The screen and the done lines are data, in their delimiters; a line cannot close a block early.
-        func block(_ name: String, _ text: String) -> String {
-            "<\(name)>\n\(text.replacingOccurrences(of: "</\(name)>", with: "</ \(name)>", options: .caseInsensitive))\n</\(name)>"
-        }
+        let block = Guide.block
         let actions = done.isEmpty ? "None yet." : done.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
         // The app's menu commands, when read (N2.6): labels, still data in their own block.
         let menus = packet.menus.isEmpty ? [] : [block("menus", packet.menus)]

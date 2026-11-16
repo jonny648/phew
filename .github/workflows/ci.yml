@@ -3,11 +3,14 @@ on:
   push:
     branches: [main]
   pull_request:
+# The token can only read the code: nothing here writes to the repository or its releases.
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0, the commit the v4 tag points to
       - name: Use the newest Xcode on the runner
         run: |
           newest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)

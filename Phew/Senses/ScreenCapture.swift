@@ -16,7 +16,8 @@ enum ScreenCapture {
     /// Phew's own windows are left out. Nil without Screen Recording permission or on failure.
     /// `windowOnly` (live acting tests, PH.10): the front window wherever the mouse is, and never the whole display.
     /// `display`: the picture is the whole display, which the Brain sends smaller (A3); captured at full size here.
-    static func picture(pid: pid_t, windowFrame: CGRect?, mouse: CGPoint, windowOnly: Bool = false) async -> (png: Data, frame: CGRect, display: Bool)? {
+    static func picture(pid: pid_t, windowFrame: CGRect?, mouse: CGPoint, windowOnly: Bool = false,
+                        list: NeverReadList = .shared) async -> (png: Data, frame: CGRect, display: Bool)? {
         guard CGPreflightScreenCaptureAccess() else { return nil }
         do {
             // Off-screen windows too: Phew's panel or card, still being ordered in, must be listed to be left out.
@@ -38,8 +39,8 @@ enum ScreenCapture {
                 guard let display = content.displays.first(where: { $0.displayID == id }) ?? content.displays.first
                 else { return nil }
                 // Wallpaper, menu bar and Dock included; every window of Phew left out.
-                let phew = content.applications.filter { $0.processID == getpid() }
-                filter = SCContentFilter(display: display, excludingApplications: phew, exceptingWindows: [])
+                let hidden = content.applications.filter { hides(pid: $0.processID, bundleID: $0.bundleIdentifier, front: pid, list: list) }
+                filter = SCContentFilter(display: display, excludingApplications: hidden, exceptingWindows: [])
                 origin = CGDisplayBounds(display.displayID).origin
                 whole = true
             }
@@ -55,6 +56,15 @@ enum ScreenCapture {
             shellLog("screenshot failed: \(error.localizedDescription)")
             return nil
         }
+    }
+
+    /// Whether a whole-display picture leaves out the app `pid` (`bundleID`), when Phew was called on `front` (R1):
+    /// Phew, every app on the Never read list, and the Never list's password managers and terminals, wherever their
+    /// windows lie. Not the app Phew was called on: its window picture shows it too.
+    static func hides(pid: pid_t, bundleID: String?, front: pid_t, list: NeverReadList) -> Bool {
+        if pid == getpid() || list.contains(bundleID) { return true }
+        guard pid != front, let bundleID else { return false }
+        return NeverList.passwordApps.contains(bundleID) || NeverList.terminals.contains(bundleID)
     }
 
     private static func gap(_ a: CGRect, _ b: CGRect) -> CGFloat {

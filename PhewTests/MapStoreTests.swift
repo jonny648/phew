@@ -155,6 +155,52 @@ final class MapStoreTests: XCTestCase {
         XCTAssertEqual(back.map(\.id), [person], "one index entry, not two")
     }
 
+    /// R10: a past question filed under a sensitive Project, mentioning nothing, goes under the second lock and out of
+    /// an export that leaves sensitive facts out; marking the Project later moves its earlier questions too.
+    func testPastQuestionsOfASensitiveProjectAreSensitive() async throws {
+        let store = try MapStore()
+        let loan = try await store.add(MapNode(mapClass: .project, name: "Made-up loan", origin: .told, sensitive: true))
+        let asked = try await store.add(MapEvent(kind: .ask, summary: "Asked which papers the bank wants", project: loan))
+        try await assertIn(store, "events", asked, sensitive: true)
+        let left = await store.export(includeSensitive: false)
+        XCTAssertFalse(left.contains("papers the bank wants"))
+        let ticked = await store.export(includeSensitive: true)
+        XCTAssertTrue(ticked.contains("papers the bank wants"))
+
+        let garden = try await store.add(MapNode(mapClass: .project, name: "Garden plan", origin: .told))
+        let earlier = try await store.add(MapEvent(kind: .ask, summary: "Asked about tulip bulbs", project: garden))
+        try await assertIn(store, "events", earlier, sensitive: false)
+        try await store.setSensitive(garden, true)
+        try await assertIn(store, "events", earlier, sensitive: true)
+        try await store.setSensitive(garden, false)
+        try await assertIn(store, "events", earlier, sensitive: false)
+    }
+
+    /// R10: what is already stored moves when the Map opens, on a temporary Map; a second open moves nothing more.
+    func testStoredQuestionsOfASensitiveProjectMoveWhenTheMapOpens() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "phew-r10-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (key1, key2) = (String(repeating: "a1b2", count: 16), String(repeating: "c3d4", count: 16))
+        var store = try MapStore(folder: folder, key: key1, sensitiveKey: key2)
+        let loan = try await store.add(MapNode(mapClass: .project, name: "Made-up loan", origin: .told, sensitive: true))
+        // As an older build wrote it: in the normal file, not marked.
+        let id: Int64 = 9_000
+        try await store.db.query("INSERT INTO main.events (id, time, app, kind, summary, project, mentions, sensitive) VALUES (?, '2026-11-01T10:00:00Z', 'Mail', 'ask', 'Asked which papers the bank wants', ?, '[]', 0)",
+                                 [.int(id), .int(loan)])
+        try await assertIn(store, "events", id, sensitive: false)
+        await store.close()
+        for _ in 1...2 {
+            store = try MapStore(folder: folder, key: key1, sensitiveKey: key2)
+            try await assertIn(store, "events", id, sensitive: true)
+            let left = await store.export(includeSensitive: false)
+            XCTAssertFalse(left.contains("papers the bank wants"))
+            let found = await store.searchEvents(["bank papers"])
+            XCTAssertEqual(found.map(\.id), [id], "one index entry, in the sensitive file")
+            await store.close()
+        }
+    }
+
     func testProvisionKeyNeverReplacesAKeyForAnExistingFile() throws {
         var keychain: String?
         let key = try MapStore.provisionKey(fileExists: false, read: { keychain }, save: { keychain = $0 })

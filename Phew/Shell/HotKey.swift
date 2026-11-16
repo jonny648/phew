@@ -1,25 +1,37 @@
 import AppKit
 
-/// Global shortcut: Right Option + Right Command pressed together.
+/// Global shortcut: Right Option + Right Command pressed together, and nothing else (R11).
 /// Modifier keys only, so it is watched through flagsChanged events.
 /// A press (released before `Design.Motion.hold`) opens the ask panel; a hold talks (P6.1): `holdStart` once it has
-/// been held that long, `holdEnd` when either key is released, `holdCancel` on Escape. A hold never also fires the press.
+/// been held that long, `holdEnd` when either key is released, `holdCancel` on any other key or modifier, `holdLimit`
+/// at `longestHold`. A hold never also fires the press. Another key or modifier with the two is another app's
+/// shortcut: nothing starts, nothing is sent, and nothing starts again until both keys are up.
 @MainActor
 final class HotKey {
     /// Starts a one-shot timer and returns its cancel. Injected so tests do not sleep.
     typealias Schedule = (TimeInterval, @escaping @MainActor () -> Void) -> () -> Void
 
+    /// A hold longer than this ends by itself (R35): the release may never be seen (sleep, lock).
+    static let longestHold: TimeInterval = 60
+
     private let press: () -> Void
     var holdStart: () -> Void = {}
     var holdEnd: () -> Void = {}
     var holdCancel: () -> Void = {}
+    /// The hold reached `longestHold`.
+    var holdLimit: () -> Void = {}
     private let schedule: Schedule
     private var monitors: [Any] = []
-    /// Key presses are watched only while the chord is down, to catch Escape. Never otherwise.
-    private var escapeMonitors: [Any] = []
+    /// Key presses are watched only while the chord is down, to cancel on any of them. Never otherwise; the key
+    /// itself is never kept.
+    private var keyMonitors: [Any] = []
     private var isDown = false
+    /// Another key or modifier came with the two: nothing until both are up again.
+    private var spoiled = false
     /// Cancels the hold timer while the chord is down and not yet a hold.
     private var pending: (() -> Void)?
+    /// Cancels the ceiling timer during a hold.
+    private var ceiling: (() -> Void)?
     private(set) var holding = false
 
     init(schedule: @escaping Schedule = HotKey.timer, action: @escaping () -> Void) {
@@ -27,6 +39,7 @@ final class HotKey {
         self.schedule = schedule
         assert(Self.bothRightKeys(0x50) && !Self.bothRightKeys(0x40) && !Self.bothRightKeys(0x10))
         assert(!Self.bothRightKeys(0x28), "left Option + left Command must not trigger")
+        assert(!Self.bothRightKeys(0x52) && !Self.bothRightKeys(0x58), "a third modifier must not trigger")
     }
 
     /// Safe to call again: the global monitor only delivers once Accessibility is granted.
@@ -43,8 +56,15 @@ final class HotKey {
     }
 
     /// Device-dependent bits: 0x40 right Option (NX_DEVICERALTKEYMASK), 0x10 right Command (NX_DEVICERCMDKEYMASK).
+    private static let rightKeys: UInt = 0x50
+    /// Every other key held as a modifier: left Control, left and right Shift, left Command, left Option, right
+    /// Control (0x01, 0x02, 0x04, 0x08, 0x20, 0x2000), and Shift, Control and fn. Caps Lock is a lock, not a key held.
+    private static let otherKeys: UInt = 0x01 | 0x02 | 0x04 | 0x08 | 0x20 | 0x2000
+        | NSEvent.ModifierFlags.shift.rawValue | NSEvent.ModifierFlags.control.rawValue | NSEvent.ModifierFlags.function.rawValue
+
+    /// Right Option and right Command down, and no other modifier.
     static func bothRightKeys(_ rawFlags: UInt) -> Bool {
-        rawFlags & 0x50 == 0x50
+        rawFlags & rightKeys == rightKeys && rawFlags & otherKeys == 0
     }
 
     nonisolated static func timer(_ delay: TimeInterval, _ fire: @escaping @MainActor () -> Void) -> () -> Void {
@@ -54,49 +74,82 @@ final class HotKey {
         return timer.invalidate
     }
 
-    private func watchEscape(_ on: Bool) {
-        escapeMonitors.forEach(NSEvent.removeMonitor)
-        escapeMonitors = []
+    private func watchKeys(_ on: Bool) {
+        keyMonitors.forEach(NSEvent.removeMonitor)
+        keyMonitors = []
         guard on else { return }
-        let isEscape: (NSEvent) -> Void = { [weak self] event in if event.keyCode == 53 { self?.escape() } }
-        if let global = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: isEscape) { escapeMonitors.append(global) }
-        if let local = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { isEscape($0); return $0 }) { escapeMonitors.append(local) }
+        let key: (NSEvent) -> Void = { [weak self] event in self?.keyDown(event.keyCode) }
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: key) { keyMonitors.append(global) }
+        if let local = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { key($0); return $0 }) { keyMonitors.append(local) }
     }
 
     /// A flagsChanged event's raw flags.
     func flags(_ raw: UInt) {
-        let both = Self.bothRightKeys(raw)
-        defer { isDown = both }
-        if both != isDown { watchEscape(both) }
-        if both && !isDown {
+        if raw & Self.rightKeys != Self.rightKeys { spoiled = false }
+        if isDown {
+            guard !Self.bothRightKeys(raw) else { return }
+            // Both still down: a modifier joined, so it is another app's shortcut. Otherwise one was released.
+            if raw & Self.rightKeys == Self.rightKeys { spoil() } else { release() }
+        } else if Self.bothRightKeys(raw), !spoiled {
+            isDown = true
+            watchKeys(true)
             // Fire once, not again until one key is released.
             pending = schedule(Design.Motion.hold) { [weak self] in
                 guard let self, isDown, pending != nil else { return }
                 pending = nil
                 holding = true
+                ceiling = schedule(Self.longestHold) { [weak self] in self?.limit() }
                 holdStart()
             }
-        } else if !both && isDown {
-            if let cancel = pending {
-                cancel()
-                pending = nil
-                press()
-            } else if holding {
-                holding = false
-                holdEnd()
-            }
-            // Neither: Escape already ended the hold; the release does nothing.
         }
     }
 
-    /// Escape: ends a hold without sending. Not a press either, while the chord is still down before the hold.
-    func escape() {
+    /// Any key pressed while the chord is down, Escape among them: ends a hold without sending, and is not a press
+    /// either before the hold. The key code is not kept.
+    func keyDown(_ code: UInt16) {
+        guard isDown else { return }
+        spoil()
+    }
+
+    private func release() {
+        isDown = false
+        watchKeys(false)
+        if let cancel = pending {
+            cancel()
+            pending = nil
+            press()
+        } else if holding {
+            endHold()
+            holdEnd()
+        }
+    }
+
+    /// Not Phew's shortcut after all: nothing is sent, and nothing starts until both keys are up.
+    private func spoil() {
+        isDown = false
+        spoiled = true
+        watchKeys(false)
         if holding {
-            holding = false
+            endHold()
             holdCancel()
         } else if let cancel = pending {
             cancel()
             pending = nil
         }
+    }
+
+    /// The ceiling: the hold ends as `holdLimit` says, and the keys, maybe still down, start nothing new.
+    private func limit() {
+        guard holding else { return }
+        ceiling = nil
+        holding = false
+        spoil()
+        holdLimit()
+    }
+
+    private func endHold() {
+        holding = false
+        ceiling?()
+        ceiling = nil
     }
 }

@@ -3,6 +3,27 @@ import XCTest
 
 /// Where the pointer goes. Made-up packets and displays only.
 final class PointerTests: XCTestCase {
+    /// R43: `NSScreen.screens` is empty for a moment while displays change; indexing it then quits Phew.
+    func testNoShellCodeTakesTheFirstDisplayBlindly() throws {
+        let shell = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().appending(path: "Phew/Shell")
+        let files = try FileManager.default.contentsOfDirectory(at: shell, includingPropertiesForKeys: nil).filter { $0.pathExtension == "swift" }
+        XCTAssertFalse(files.isEmpty)
+        for file in files {
+            XCTAssertFalse(try String(contentsOf: file, encoding: .utf8).contains("screens[0]"), "\(file.lastPathComponent) indexes NSScreen.screens")
+        }
+    }
+
+    /// R52: a trackpad's tens of scroll events a second make one frame read at a time, and the last scroll is read.
+    func testScrollsMakeOneReadAtATimeAndTheLastIsRead() {
+        var reads = ScrollReads()
+        XCTAssertTrue(reads.scrolled(), "the first scroll reads at once")
+        for _ in 0..<30 { XCTAssertFalse(reads.scrolled(), "no second read while one runs") }
+        XCTAssertTrue(reads.ended(), "one more read for the scrolls that came meanwhile")
+        XCTAssertFalse(reads.ended(), "then the reads stop")
+        XCTAssertTrue(reads.scrolled(), "and the next scroll reads at once again")
+        XCTAssertEqual(ScrollReads.gap, .milliseconds(66), "about 15 reads a second at most")
+    }
+
     func testStepTargetsBecomeScreenRects() {
         var packet = ContextPacket(appName: "Notes", bundleID: "com.example.notes", windowTitle: "Draft",
                                    visibleText: "", cursor: nil)

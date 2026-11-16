@@ -65,6 +65,11 @@ struct ContextPacket: Codable {
         p.menus = SecretsFilter.clean(menus)
         p.cursor?.label = SecretsFilter.clean(cursor?.label ?? "")
         p.cursor?.value = SecretsFilter.clean(cursor?.value ?? "")
+        // The field's name and value together, as the model reads them (R2): "Password" and "hunter2" apart pass.
+        if let raw = cursor, let clean = p.cursor, !raw.value.isEmpty,
+           SecretsFilter.clean("\(raw.label): \(raw.value)") != "\(clean.label): \(clean.value)" {
+            p.cursor?.value = SecretsFilter.secretMarker
+        }
         for i in p.pointables.indices { p.pointables[i].label = SecretsFilter.clean(p.pointables[i].label) }
         return p
     }

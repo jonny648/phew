@@ -41,12 +41,8 @@ enum WindowReader {
         guard readsCursor(owner: owner, of: pid) else { return (nil, point) }
 
         let a = attributes(element)
-        // Password field: its frame lets Phew point at it; nothing else is read.
-        if a.isSecure { return (CursorElement(role: "AXSecureTextField", label: "", value: "", frame: a.frame), point) }
-        // Whole documents and pages: their value can be a whole file; the look-inside below reads the visible part.
-        let value = ["AXTextArea", "AXWebArea"].contains(a.role) ? nil : valueString(element).map(removeJunk)
-        var cursor = CursorElement(role: a.role, label: a.title ?? a.description ?? "",
-                                   value: String((value ?? "").prefix(cursorCap)), frame: a.frame)
+        var cursor = Self.cursor(role: a.role, subrole: a.subrole, label: a.title ?? a.description ?? "", frame: a.frame) { valueString(element) }
+        if a.isSecure { return (cursor, point) }
         if cursor.label.isEmpty && cursor.value.isEmpty {
             // No text of its own (a list cell, a block): the text inside it, nearest the mouse first.
             #if DEBUG
@@ -60,13 +56,26 @@ enum WindowReader {
         return (cursor, point)
     }
 
+    /// The element under the mouse as kept. A password field: its frame lets Phew point at it; nothing else is read,
+    /// `value` is never called (R19).
+    static func cursor(role: String, subrole: String, label: String, frame: CGRect?, value: () -> String?) -> CursorElement {
+        if SecretsFilter.isSecure(role: role, subrole: subrole) {
+            return CursorElement(role: "AXSecureTextField", label: "", value: "", frame: frame)
+        }
+        // Whole documents and pages: their value can be a whole file; the look-inside reads the visible part.
+        let value = ["AXTextArea", "AXWebArea"].contains(role) ? nil : value().map(removeJunk)
+        return CursorElement(role: role, label: label, value: String((value ?? "").prefix(cursorCap)), frame: frame)
+    }
+
     /// The hit test is system-wide: the element under the mouse is read only when its owner is the app being read,
     /// and never Phew. Another app's text (a terminal, an app on the Never read list) must not ride in on it.
     static func readsCursor(owner: pid_t, of pid: pid_t) -> Bool { owner == pid && owner != getpid() }
 
     /// Focused window of the app (else main, else frontmost): title, frame, the open document's path or address,
     /// its visible text and the elements Phew can point at, both in reading order.
-    static func readWindow(pid: pid_t) -> (title: String, frame: CGRect?, documentPath: String?, texts: [Text], pointables: [Pointable]) {
+    typealias Window = (title: String, frame: CGRect?, documentPath: String?, texts: [Text], pointables: [Pointable])
+
+    static func readWindow(pid: pid_t) -> Window {
         guard let window = window(pid) else { return ("", nil, nil, [], []) }
         let root = attributes(window)
         let found = walk(window, root, clip: root.frame, maxElements: maxElements, maxDepth: maxDepth, budget: timeBudget)
@@ -167,7 +176,8 @@ enum WindowReader {
                 if let frame { pointables.append(Pointable(role: "AXSecureTextField", label: "", frame: frame)) }
                 return
             }
-            let t = text(el, a).map(removeJunk)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let t = SecretsFilter.unlessSecure(role: a.role, subrole: a.subrole) { text(el, a) }.map(removeJunk)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             if !t.isEmpty {
                 if seen.insert(t).inserted { texts.append(Text(string: t, frame: a.frame)) }
                 for i in unnamed { pointables[i].label = t }  // the first text inside a row or button names it

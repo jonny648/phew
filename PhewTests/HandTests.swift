@@ -204,6 +204,22 @@ final class HandTests: XCTestCase {
         }
     }
 
+    /// R7: order and money buttons in English and Italian are paying, by code; sorting and ordinary words are not.
+    func testOrderAndMoneyButtonsArePaying() {
+        func refusal(_ texts: [String]) -> HandEnd? { NeverList.refusal(role: "AXButton", subrole: "", focusedSecure: false, texts: texts) }
+        for name in ["Confirm order", "Confirm your order", "Order now", "Complete order", "Complete your order", "Place your order",
+                     "Submit order", "Order", "Donate", "Donate now", "Send money", "Transfer money", "Transfer",
+                     "Conferma ordine", "Conferma l’ordine", "Completa l'ordine", "Invia ordine", "Ordina ora", "Ordina adesso",
+                     "Ordina", "Dona", "Dona ora", "Fai una donazione", "Bonifico", "Esegui bonifico", "Invia denaro", "Invia soldi"] {
+            XCTAssertEqual(refusal([name]), .paying, name)
+        }
+        XCTAssertEqual(refusal(["Continue", "Order now – Made-up Shop"]), .paying, "in the window title too")
+        for name in ["Order by date", "Sort order", "Reorder", "Recent orders", "Ordina per nome", "Ordine alfabetico", "Ordinary",
+                     "Transfer files", "Donald", "Riordina", "In ordine", "Ordinal"] {
+            XCTAssertNil(refusal([name, "Made-up list"]), name)
+        }
+    }
+
     func testNeverApps() {
         let apps: [(String, HandEnd)] = [
             ("com.apple.systempreferences", .neverActApp), ("com.apple.settings.PrivacySecurity.extension", .neverActApp),
@@ -537,6 +553,50 @@ final class HandTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(start), 1)
     }
 
+    /// R4: a word that looks like one of osascript's own options ("-e…", "--") stays a word: every script line has
+    /// its own "-e", then "--" ends the options, then the words, untouched. Built here, never run.
+    func testWordsThatLookLikeOptionsStayData() {
+        let words = ["-e", #"-e do shell script "x""#, "--", #"-eproperty x : (do shell script "exit 3")"#, "-l", "-s",
+                     #"A "quoted" made-up title \ with \\ backslashes"#, "Made-up line one\nline two", ""]
+        for source in [HandChanges.findNotes, HandChanges.changeNote, HandChanges.restoreNote, AXSurface.makeNote, AXSurface.fillCells] {
+            let lines = source.split(separator: "\n").map(String.init)
+            for word in words {
+                let args = AXSurface.arguments(source, [word, "second"])
+                XCTAssertEqual(Array(args.prefix(lines.count * 2)), lines.flatMap { ["-e", $0] }, word)
+                XCTAssertEqual(Array(args.dropFirst(lines.count * 2)), ["--", word, "second"], word)
+            }
+        }
+        // The script runner gets each title as the find script's first word, as given.
+        let changes = HandChanges(script: fake.apps.run, items: fake.items)
+        for word in words { _ = changes.run(.delete(.note, title: word)) }
+        XCTAssertEqual(fake.apps.found, words)
+    }
+
+    /// R5: a tool's long answer is read while it runs, so a big note body never fills the pipe and hangs osascript
+    /// until the time limit. A shell writes 200,000 made-up letters; no app, no osascript.
+    func testALongAnswerIsReadWhileTheToolRuns() {
+        let started = Date()
+        let (end, out) = AXSurface.run("/bin/sh", ["-c", "head -c 200000 /dev/zero | tr '\\0' a"], timeout: 5, stop: { false })
+        XCTAssertEqual(end, .done)
+        XCTAssertEqual(out.count, 200_000)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 4)
+    }
+
+    /// R22 (a, b): the user's own clicks and keys are watched from the job's start to its close, and his own click is
+    /// marked, so the watch never ends a job on it. No event is posted.
+    func testTheWatchRunsForTheJobAndHisClickIsMarked() throws {
+        let hand = hand()
+        let watched = hand.begin(watchUser: true)
+        XCTAssertTrue(watched.watching)
+        hand.close(watched)
+        XCTAssertFalse(watched.watching)
+        XCTAssertFalse(hand.begin(watchUser: false).watching)
+        XCTAssertEqual(Hand.userEvents, [.leftMouseDown, .rightMouseDown, .keyDown])
+        let click = try XCTUnwrap(AXSurface.clickEvents(NSPoint(x: 10, y: 10), window: 1))
+        XCTAssertEqual(click.map(\.type), [.leftMouseDown, .leftMouseUp])
+        XCTAssertTrue(click.allSatisfy(Hand.isOwn))
+    }
+
     // MARK: - PH.7: several apps in one job
 
     private static let sheets: pid_t = 7
@@ -767,27 +827,51 @@ final class HandTests: XCTestCase {
 
     // MARK: - Only Hand.swift acts
 
+    /// What can send an action, or start a program or another app: only Senses/Hand.swift may hold these words.
+    static let acting = ["AXUIElementPerformAction", "AXUIElementSetAttributeValue", "AXUIElementPostKeyboardEvent",
+                         "CGEventPost", "CGEventTapPostEvent", ".post(tap:", "postToPid", "mouseEventSource:",
+                         "keyboardEventSource:", "mouseEvent(with:", "NSAppleScript", "NSUserAppleScriptTask", "osascript", "SBApplication",
+                         "NSAppleEventDescriptor", "AESend", "kAXFrontmostAttribute",
+                         // R21: the calendar and reminders store, other script runners, opening and bringing apps forward, programs.
+                         "EKEventStore", "OSAScript", "NSUserScriptTask", "NSUserUnixTask", "NSUserAutomatorTask",
+                         "NSWorkspace.shared.open", ".activate(", "Process()"]
+    /// R21: the Hand's own surfaces, which act with no gate when called directly: only `Hand.act` may call them.
+    static let surfaces = ["AXSurface", "EventKitItems", "HandChanges", "removeTestItems", "showTestNote"]
+    /// Named exceptions, line by line.
+    static let exceptions: [String: (String) -> Bool] = [
+        // WindowReader asks Chromium, Electron and Keynote to build their full Accessibility tree, for reading only
+        // (AXManualAccessibility, AXEnhancedUserInterface, N2.7). It sets those two flags and nothing else.
+        "Senses/WindowReader.swift": { $0.contains("[manual, enhanced].contains(name) && AXUIElementSetAttributeValue(app, name as CFString") },
+        // The folder window, the one focus exception for Phew itself (CLAUDE.md), and back to the app the user was in.
+        "Shell/MenuPanels.swift": { $0.contains("NSApp.activate()") || $0.contains("$0 != .current && $0.activate(from: .current, options: [])") },
+        "Shell/PhewApp.swift": { $0.contains("NSApp.activate()") || $0.contains("$0 != .current && $0.activate(from: .current, options: [])") },
+        // Setup opens System Settings at the privacy pane, and relaunches Phew itself, on the user's press.
+        "Shell/SetupPanel.swift": { $0.contains("NSWorkspace.shared.open($0)") || $0.contains("NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL") },
+        // zipinfo and ditto on a chosen ZIP; ditto on a made-up export; say on made-up samples: programs with no window.
+        "Map/ClaudeExport.swift": { $0.contains("let process = Process()") },
+        "Map/ImportSelfCheck.swift": { $0.contains("let process = Process()") },
+        "Senses/HearCheck.swift": { $0.contains("let say = Process()") },
+        // The live checks remove, by id, what their own scripts made, and show one made-up note (DEBUG only).
+        "Shell/DebugChecks.swift": { $0.contains("Hand.shared.removeTestItems()") || $0.contains("Hand.shared.showTestNote(")
+            || $0.contains("(`Hand.removeTestItems`)") },
+    ]
+
+    /// Whether `line` of `relative` (a path under Phew/) could act outside the Hand.
+    static func acts(_ relative: String, _ line: String) -> Bool {
+        guard relative != "Senses/Hand.swift" else { return false }
+        return (acting + surfaces).contains(where: line.contains) && exceptions[relative]?(line) != true
+    }
+
     /// Fails the build if any file under Phew/ other than Senses/Hand.swift can send an action.
     func testOnlyHandActs() throws {
         let root = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent().appending(path: "Phew")
-        let acting = ["AXUIElementPerformAction", "AXUIElementSetAttributeValue", "AXUIElementPostKeyboardEvent",
-                      "CGEventPost", "CGEventTapPostEvent", ".post(tap:", "postToPid", "mouseEventSource:",
-                      "keyboardEventSource:", "mouseEvent(with:", "NSAppleScript", "NSUserAppleScriptTask", "osascript", "SBApplication",
-                      "NSAppleEventDescriptor", "AESend", "kAXFrontmostAttribute"]
-        // Named exceptions, line by line:
-        // WindowReader asks Chromium, Electron and Keynote to build their full Accessibility tree, for reading only
-        // (AXManualAccessibility, AXEnhancedUserInterface, N2.7). It sets those two flags and nothing else.
-        let exceptions: [String: (String) -> Bool] = [
-            "Senses/WindowReader.swift": { $0.contains("[manual, enhanced].contains(name) && AXUIElementSetAttributeValue(app, name as CFString") },
-        ]
         var files = 0, offenders: [String] = []
         let all = try XCTUnwrap(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil))
         for case let url as URL in all where url.pathExtension == "swift" {
             files += 1
             let relative = String(url.path.dropFirst(root.path.count + 1))
-            guard relative != "Senses/Hand.swift" else { continue }
             for (n, line) in try String(contentsOf: url, encoding: .utf8).split(separator: "\n", omittingEmptySubsequences: false).enumerated()
-            where acting.contains(where: line.contains) && exceptions[relative]?(String(line)) != true {
+            where Self.acts(relative, String(line)) {
                 offenders.append("\(relative):\(n + 1)")
             }
         }
@@ -795,6 +879,29 @@ final class HandTests: XCTestCase {
         XCTAssertEqual(offenders, [], "only Senses/Hand.swift may act")
         let hand = try String(contentsOf: root.appending(path: "Senses/Hand.swift"), encoding: .utf8)
         XCTAssertTrue(hand.contains("AXUIElementPerformAction") && hand.contains("postToPid"), "the scan looks for the right words")
+        // R21: the live tests' clean-up acts with no gate: it must stay out of the shipped app.
+        for name in ["func removeTestItems", "func showTestNote"] {
+            let before = hand[..<(try XCTUnwrap(hand.range(of: name), name)).lowerBound]
+            let opened = before.range(of: "#if DEBUG", options: .backwards)?.lowerBound
+            let closed = before.range(of: "#endif", options: .backwards)?.lowerBound
+            XCTAssertTrue(opened != nil && (closed == nil || closed! < opened!), "\(name) is inside #if DEBUG")
+        }
+    }
+
+    /// R21: the scan's own check: made-up lines in made-up files that would act are caught, a named exception is not.
+    func testTheScanCatchesEveryWayToAct() {
+        for line in ["EKEventStore().save(event, span: .thisEvent, commit: true)", "let task = try NSUserUnixTask(url: tool)",
+                     "OSAScript(source: made)", "NSUserScriptTask(url: u)", "NSUserAutomatorTask(url: u)",
+                     "NSWorkspace.shared.open(url)", "app.activate(options: [])", "let p = Process()",
+                     "AXSurface().send(step, to: el)", "AXSurface().run(script, made: [], stop: { false })",
+                     "EventKitItems(stop: { false }).remove(id, .event)", "HandChanges(script: run, items: items).run(.delete(.note, title: t))",
+                     "Hand.shared.removeTestItems()"] {
+            XCTAssertTrue(Self.acts("Brain/MadeUpTool.swift", line), line)
+        }
+        XCTAssertTrue(Self.acts("Shell/MenuPanels.swift", "NSWorkspace.shared.open(url)"), "an exception names its line, not its file")
+        XCTAssertFalse(Self.acts("Shell/DebugChecks.swift", "        let (removed, failed) = Hand.shared.removeTestItems()"))
+        XCTAssertFalse(Self.acts("Senses/Hand.swift", "EKEventStore()"))
+        XCTAssertFalse(Self.acts("Brain/MadeUpTool.swift", "let reader = WindowReader.readWindow(pid: pid)"))
     }
 
     // MARK: - The practice window, through the real Accessibility API

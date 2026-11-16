@@ -34,20 +34,10 @@ enum Senses {
             // shortcut: the 1 s wait is only the first time per process; with the flag set back, a canvas tree
             // (Keynote) may need it each time; wait each time if a live run shows a thin tree.
             if tree.restore { WindowReader.setBack(pid: pid) }
-            // Filter before trimming, so a cut cannot leave half a key behind.
-            let texts = window.texts.map { WindowReader.Text(string: SecretsFilter.clean($0.string), frame: $0.frame) }
-            var packet = ContextPacket(appName: name, bundleID: bundleID, windowTitle: window.title,
-                                       visibleText: ContextPacket.trim(texts, near: point), cursor: cursor,
-                                       windowFrame: window.frame, pointables: ContextPacket.select(window.pointables, near: point),
-                                       mouse: point, documentPath: window.documentPath)
-            // The cursor element's id when it is listed: the same frame, clipped and rounded the same way.
-            // shortcut: no id when the walk's limits stopped before reaching it; walk the cursor's branch first if seen.
-            let cursorFrame = WindowReader.pointableFrame(cursor?.frame, clip: window.frame)
-            packet.cursor?.id = packet.pointables.first { $0.frame == cursorFrame }?.id
-            packet = packet.filtered()
+            var packet = Senses.packet(appName: name, bundleID: bundleID, window: window, cursor: cursor, mouse: point)
             // Text and picture together, every time.
             // shortcut: screenshot pixels are not filtered (a key on screen stays visible); OCR redaction if that matters.
-            if let shot = await ScreenCapture.picture(pid: pid, windowFrame: window.frame, mouse: point, windowOnly: windowOnly) {
+            if let shot = await ScreenCapture.picture(pid: pid, windowFrame: window.frame, mouse: point, windowOnly: windowOnly, list: list) {
                 packet.screenshot = shot.png
                 packet.screenshotFrame = shot.frame
                 packet.wholeDisplay = shot.display
@@ -59,6 +49,22 @@ enum Senses {
             #endif
             return packet
         }
+    }
+
+    /// The packet from what was read, through the secrets filter: no screen read here, so it is unit-tested (R20).
+    static func packet(appName: String, bundleID: String, window: WindowReader.Window, cursor: CursorElement?,
+                       mouse point: CGPoint) -> ContextPacket {
+        // Filter before trimming, so a cut cannot leave half a key behind.
+        let texts = window.texts.map { WindowReader.Text(string: SecretsFilter.clean($0.string), frame: $0.frame) }
+        var packet = ContextPacket(appName: appName, bundleID: bundleID, windowTitle: window.title,
+                                   visibleText: ContextPacket.trim(texts, near: point), cursor: cursor,
+                                   windowFrame: window.frame, pointables: ContextPacket.select(window.pointables, near: point),
+                                   mouse: point, documentPath: window.documentPath)
+        // The cursor element's id when it is listed: the same frame, clipped and rounded the same way.
+        // shortcut: no id when the walk's limits stopped before reaching it; walk the cursor's branch first if seen.
+        let cursorFrame = WindowReader.pointableFrame(cursor?.frame, clip: window.frame)
+        packet.cursor?.id = packet.pointables.first { $0.frame == cursorFrame }?.id
+        return packet.filtered()
     }
 
     private static func ms(since start: Date) -> Int { Int(Date().timeIntervalSince(start) * 1000) }

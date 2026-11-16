@@ -35,7 +35,8 @@ enum SelfKnowledge {
         and keeps working. You search the web and your memory, up to three tasks at once, each with its Stop in the \
         menu. The report waits in the menu bar, saved as a PDF in the folder the user chose, or Downloads, never \
         over an existing file. When the task asks, you add a note, a reminder, an event or a sheet in the \
-        background, without taking the screen; a task only adds, never changes or deletes.
+        background, without taking the screen; a change or a delete of one named note, reminder or event waits in \
+        the menu for the user's confirm.
         - Continue as a conversation: a click on the answer card opens it, and the user replies there.
         - Remember the user's projects in your memory, called the Map, and know which project they are in from the \
         open file, web page or window.

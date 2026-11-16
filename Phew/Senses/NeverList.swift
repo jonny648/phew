@@ -6,15 +6,22 @@ import NaturalLanguage
 enum NeverList {
     /// Apps he never acts in, by bundle id: System Settings, Keychain Access and password managers, terminals,
     /// code editors and script runners (a click there can run commands).
-    static let apps: Set<String> = [
-        "com.apple.systempreferences", "com.apple.keychainaccess", "com.apple.Passwords",
-        "com.1password.1password", "com.agilebits.onepassword7", "com.bitwarden.desktop", "com.lastpass.LastPass",
-        "com.dashlane.dashlanephonefinal", "in.sinew.Enpass-Desktop", "com.nordpass.macos.NordPass",
-        "com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "com.mitchellh.ghostty",
-        "net.kovidgoyal.kitty", "io.alacritty", "com.github.wez.wezterm",
+    static let apps: Set<String> = passwordApps.union(terminals).union([
+        "com.apple.systempreferences",
         "com.apple.dt.Xcode", "com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.todesktop.230313mzl4w4u92",
         "com.exafunction.windsurf", "dev.zed.Zed", "com.sublimetext.4", "com.panic.Nova", "com.barebones.bbedit",
         "com.apple.ScriptEditor2", "com.apple.Automator",
+    ])
+    /// Keychain Access and the password managers: also left out of a whole-display picture (`ScreenCapture.hides`).
+    static let passwordApps: Set<String> = [
+        "com.apple.keychainaccess", "com.apple.Passwords",
+        "com.1password.1password", "com.agilebits.onepassword7", "com.bitwarden.desktop", "com.lastpass.LastPass",
+        "com.dashlane.dashlanephonefinal", "in.sinew.Enpass-Desktop", "com.nordpass.macos.NordPass",
+    ]
+    /// Terminals: also left out of a whole-display picture.
+    static let terminals: Set<String> = [
+        "com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "com.mitchellh.ghostty",
+        "net.kovidgoyal.kitty", "io.alacritty", "com.github.wez.wezterm",
     ]
     /// Whole families: System Settings' panes, JetBrains editors.
     static let appPrefixes = ["com.apple.preference.", "com.apple.settings.", "com.jetbrains."]
@@ -28,7 +35,13 @@ enum NeverList {
                    "subscribe", "card number", "credit card", "billing",
                    "paga", "pagare", "pagamento", "acquista", "acquisto", "compra", "abbonati",
                    "abbonamento", "numero della carta", "numero carta", "carta di credito", "fatturazione",
-                   "effettua l'ordine", "procedi all'ordine"]),
+                   "effettua l'ordine", "procedi all'ordine",
+                   // Order and money buttons (R7). Never bare "order" or "ordina": "Order by date", "Ordina per nome".
+                   "place your order", "confirm order", "confirm your order", "complete order", "complete your order",
+                   "submit order", "order now", "donate", "donation", "send money", "transfer money",
+                   "conferma ordine", "conferma l'ordine", "completa ordine", "completa l'ordine", "invia ordine",
+                   "invia l'ordine", "ordina ora", "ordina adesso", "ordina subito", "dona ora", "donazione",
+                   "fai una donazione", "bonifico", "invia denaro", "invia soldi", "trasferisci denaro"]),
         (.signIn, ["sign in", "signin", "log in", "login", "sign up", "create account", "account settings",
                    "accedi", "effettua l'accesso", "registrati", "iscriviti", "crea account",
                    "impostazioni account", "impostazioni dell'account"]),
@@ -48,10 +61,15 @@ enum NeverList {
     /// The target itself: a secure field (target or focus) or a never word in any of `texts`. Nil when allowed.
     static func refusal(role: String, subrole: String, focusedSecure: Bool, texts: [String]) -> HandEnd? {
         if focusedSecure || SecretsFilter.isSecure(role: role, subrole: subrole) { return .secureField }
-        let text = " " + texts.map(fold).joined(separator: " ") + " "
+        let folded = texts.map(fold)
+        let text = " " + folded.joined(separator: " ") + " "
         for (reason, list) in words where list.contains(where: { text.contains(" \($0) ") }) { return reason }
+        if folded.contains(where: payingNames.contains) { return .paying }
         return nil
     }
+
+    /// Paying as a control's whole name only (R7): a button named "Order" orders, "Order by date" sorts.
+    static let payingNames: Set<String> = ["order", "ordina", "dona", "transfer", "trasferisci"]
 
     /// Where the code cannot judge by words: a control with no name, or names in a language with no word list.
     /// Such a step still runs, with a mark (13.5).

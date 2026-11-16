@@ -109,6 +109,9 @@ enum HandScript: Sendable, Equatable {
         }
     }
 
+    /// Undo's put-back.
+    var restores: Bool { if case .restore = self { true } else { false } }
+
     /// A change, delete or restore of what exists: run by `HandSurface.change`, not `run`.
     var changes: Bool {
         switch self {
@@ -156,21 +159,57 @@ struct HandEntry: Sendable, Equatable {
     /// What the "cannot be undone" class needs: invitations go out, a repeat cannot be put back whole.
     var guests = false
     var repeats = false
+    /// What a deleted one gets back on Undo too (R17): its alerts by time, its priority (reminders) and its web link.
+    var alarms: [HandAlarm] = []
+    var priority = 0
+    var url: URL?
+}
+
+/// An alert of a reminder or event: at a date, or an offset in seconds from its due time or start. Location alerts
+/// are not kept (`HandUndo.lost`).
+struct HandAlarm: Sendable, Equatable {
+    var date: Date?
+    var offset: TimeInterval = 0
+}
+
+/// What Undo did, for the card: how it ended, the items it left because they changed since the job (R16), and what
+/// an item deleted and made again cannot bring back (R17), in fixed words.
+struct HandUndo: Sendable, Equatable {
+    var end: HandEnd
+    var changedSince = 0
+    var lost: [String] = []
+
+    static let changedSinceLine = "Something I changed was changed again since, so I left it as it is now."
+
+    /// What EventKit and Notes' scripting cannot set on an item made again.
+    static func lost(_ item: HandItem) -> String {
+        switch item {
+        case .note: "A deleted note comes back without its pictures and attachments."
+        case .reminder: "A deleted reminder comes back without its flag, tags, subtasks, pictures and location alerts."
+        case .event: "A deleted event comes back without its attachments, travel time and location alerts."
+        }
+    }
+
+    /// The card's lines beside "Put back as it was." or the reason it stopped.
+    var lines: [String] { (changedSince > 0 ? [Self.changedSinceLine] : []) + lost }
 }
 
 /// What a change or delete replaced, kept in its job so Undo puts it back (N2.3). Memory only: never written to disk
 /// or a log, dropped with the job.
+/// Each also holds what the job left (`after`), so Undo puts nothing back over a later edit of the user's (R16); nil
+/// when the change was cut before its read-back.
 enum HandKept: Sendable, Equatable {
-    /// A note's body as Notes' HTML, and its title for the read-back. `deleted`: Undo makes it again.
-    case note(id: String, title: String, body: String, deleted: Bool = false)
-    case entry(HandItem, HandEntry, deleted: Bool = false)
-    /// What the cells held, row by row, as typed.
-    case cells(book: String, range: String, width: Int, values: [String])
+    /// A note's body as Notes' HTML, and its title for the read-back. `deleted`: Undo makes it again, in `folder`.
+    /// `after`: its name and plain text as the job left them.
+    case note(id: String, title: String, body: String, deleted: Bool = false, folder: String = "", after: String? = nil)
+    case entry(HandItem, HandEntry, deleted: Bool = false, after: HandEntry? = nil)
+    /// What the cells held, row by row, as typed; `after`, what the job wrote there.
+    case cells(book: String, range: String, width: Int, values: [String], after: [String]? = nil)
 
     var app: String {
         switch self {
         case .note: HandItem.note.app
-        case let .entry(item, _, _): item.app
+        case let .entry(item, _, _, _): item.app
         case .cells: "com.microsoft.Excel"
         }
     }
@@ -178,20 +217,36 @@ enum HandKept: Sendable, Equatable {
     /// The item's id in its app; nil for cells.
     var id: String? {
         switch self {
-        case let .note(id, _, _, _): id
-        case let .entry(_, entry, _): entry.id
+        case let .note(id, _, _, _, _, _): id
+        case let .entry(_, entry, _, _): entry.id
         case .cells: nil
         }
     }
 
-    /// The same, for the item now under `id`: one deleted and made again by Undo has a new id.
+    /// What a deleted item made again cannot bring back, in fixed words (R17); nil for a change.
+    var lost: String? {
+        switch self {
+        case let .note(_, _, _, deleted, _, _): deleted ? HandUndo.lost(.note) : nil
+        case let .entry(item, _, deleted, _): deleted ? HandUndo.lost(item) : nil
+        case .cells: nil
+        }
+    }
+
+    /// A note's, with what the job left: its name and plain text read back.
+    func after(_ seen: String) -> HandKept {
+        guard case let .note(id, title, body, deleted, folder, _) = self else { return self }
+        return .note(id: id, title: title, body: body, deleted: deleted, folder: folder, after: seen)
+    }
+
+    /// The same, for the item now under `id`: one deleted and made again by Undo has a new id, and holds what it held.
     func with(id: String) -> HandKept {
         switch self {
-        case let .note(_, title, body, deleted): return .note(id: id, title: title, body: body, deleted: deleted)
-        case let .entry(item, entry, deleted):
+        case let .note(_, title, body, deleted, folder, after):
+            return .note(id: id, title: title, body: body, deleted: deleted, folder: folder, after: after)
+        case let .entry(item, entry, deleted, after):
             var entry = entry
             entry.id = id
-            return .entry(item, entry, deleted: deleted)
+            return .entry(item, entry, deleted: deleted, after: after.map { var a = $0; a.id = id; return a })
         case .cells: return self
         }
     }
@@ -201,6 +256,9 @@ enum HandKept: Sendable, Equatable {
 struct HandFacts: Sendable, Equatable {
     var guests = false
     var repeats = false
+    /// Before a put-back (R16): the item no longer holds what the job left, or it already holds what it held again.
+    var changedSince = false
+    var unchanged = false
 }
 
 /// How an action ended: `done`, or why not, in one fixed word (written to actions.log as is).
@@ -233,6 +291,8 @@ struct HandResult: Equatable, Sendable {
     var marked = false
     /// In the "cannot be undone or leaves your Mac" class (`NeverList.final`): tagged on the card.
     var final = false
+    /// A put-back of Undo left the item as it is: it was changed again since the job (R16).
+    var left = false
 }
 
 /// One job: the steps of one request. Ends once, for good: on Stop, on the user's own input, or on the first step
@@ -246,6 +306,8 @@ final class HandJob: @unchecked Sendable {  // state under `lock`
     fileprivate var dialogs: [pid_t: Int] = [:]
     fileprivate var windowExpected = false
     fileprivate var monitors: [Any] = []
+    /// The user's own mouse and keys are watched (`Hand.begin(watchUser:)`), until `Hand.close`.
+    var watching: Bool { !monitors.isEmpty }
     /// What this job's scripts made, oldest first: `append` and `cells` act only on these.
     fileprivate(set) var made: [HandMade] = []
     /// The app the job began in: where the user was, and where `Hand.back` returns at the end.
@@ -403,13 +465,15 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         let job = lock.withLock { jobs += 1; return HandJob(number: jobs, app: app, agent: agent) }
         if app != 0 { job.window = surface.focusedWindow(app) }
         if watchUser {
-            let events: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .keyDown]
-            if let global = NSEvent.addGlobalMonitorForEvents(matching: events, handler: { [weak self, weak job] in
+            if let global = NSEvent.addGlobalMonitorForEvents(matching: Self.userEvents, handler: { [weak self, weak job] in
                 if let e = $0.cgEvent, let job { self?.seen(e, by: job) }
             }) { job.monitors.append(global) }
         }
         return job
     }
+
+    /// What of the user's ends a job: a click, either button, or a key.
+    static let userEvents: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .keyDown]
 
     /// The user's own event, with the app it lands in: a key in the front app, a click in the app under it.
     func seen(_ event: CGEvent, by job: HandJob) {
@@ -440,10 +504,10 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         if let end = job.end { return HandResult(end: end) }  // the job is over: no step, no retry
         let start = Date()
         var role = step.role
-        var marked = false, final = false
+        var marked = false, final = false, left = false
         let end = lock.withLock { () -> HandEnd in
             job.steps += 1
-            let end = check(step, job: job, role: &role, marked: &marked, final: &final)
+            let end = check(step, job: job, role: &role, marked: &marked, final: &final, left: &left)
             if end != .done { job.finish(end) }
             return end
         }
@@ -451,13 +515,14 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         ActionLog.record(ActionLog.line(job: job.number, step: job.steps, kind: step.kind, role: role, ended: end,
                                         marked: marked || final, ms: Int(Date().timeIntervalSince(start) * 1000),
                                         chars: end != .done ? 0 : step.kind == .set ? step.text.count : step.script?.chars ?? 0))
-        return HandResult(end: end, marked: marked, final: final)
+        return HandResult(end: end, marked: marked, final: final, left: left)
     }
 
     /// Under `lock`. Every guard, then the action.
-    private func check(_ step: HandStep, job: HandJob, role: inout String, marked: inout Bool, final: inout Bool) -> HandEnd {
+    private func check(_ step: HandStep, job: HandJob, role: inout String, marked: inout Bool, final: inout Bool,
+                       left: inout Bool) -> HandEnd {
         guard allowed else { return .off }
-        if step.kind == .script { return script(step, job: job, final: &final) }
+        if step.kind == .script { return script(step, job: job, final: &final, left: &left) }
         if step.kind == .front { return front(step.app, job: job) }
         // The Never list, first the app, before anything of it is read.
         if let end = NeverList.refusal(bundleID: surface.bundleID(step.pid), pid: step.pid, ownPID: ownPID,
@@ -507,15 +572,23 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     /// Under `lock`. A script: the Never list for the app it acts in (it is not the front app, and no control is
     /// involved), the ceilings, the "cannot be undone" class (an agent's waits for a confirm), then the script, read
     /// back by the surface. Nothing on screen is compared.
-    private func script(_ step: HandStep, job: HandJob, final: inout Bool) -> HandEnd {
+    /// A put-back of Undo: no ceiling holds it, as none holds `back`, since it only undoes what Phew did (R6); an item
+    /// changed again since the job is left as it is (`left`, R16), and one that already holds what it held is not
+    /// written.
+    private func script(_ step: HandStep, job: HandJob, final: inout Bool, left: inout Bool) -> HandEnd {
         guard let script = step.script else { return .failed }
         if let end = NeverList.refusal(bundleID: script.app, pid: 0, ownPID: ownPID, secureInput: surface.secureInput(),
                                        list: list) { return end }
         let time = now()
-        if let end = brake(job, time) { return end }
+        if !script.restores, let end = brake(job, time) { return end }
         if let end = job.end { return end }
-        final = NeverList.final(step, facts: script.target == nil ? HandFacts() : surface.facts(script), agent: job.agent)
+        let facts = script.target == nil && !script.restores ? HandFacts() : surface.facts(script)
+        final = NeverList.final(step, facts: facts, agent: job.agent)
         if final, job.agent { return .needsConfirm }
+        if facts.changedSince || facts.unchanged {
+            left = facts.changedSince
+            return .done
+        }
         job.acted += 1
         recent.append(time)
         job.script(true)
@@ -537,21 +610,32 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     }
 
     /// Undo on the card (N2.3): puts back what the job's changes and deletes replaced, newest first, each a `restore`
-    /// script through `act` in a job of its own, so every gate holds. Once: the kept values go with it. Blocks: off
-    /// the main thread.
-    func undo(_ job: HandJob) -> HandEnd {
+    /// script through `act` in a job of its own, so every gate holds. What is put back goes; what is not (it stopped)
+    /// stays with the job for another Undo (R6). Blocks: off the main thread.
+    func undo(_ job: HandJob) -> HandEnd { restore(job).end }
+
+    /// `undo`, with what the card says beside it (`HandUndo`): items left because they changed since (R16), and what
+    /// a deleted item made again lacks (R17).
+    func restore(_ job: HandJob) -> HandUndo {
         var kept = Array(job.takeKept().reversed())
         let undo = lock.withLock { jobs += 1; return HandJob(number: jobs, app: 0) }
-        var end = HandEnd.done
-        for i in kept.indices where end == .done {
-            end = act(HandStep(kind: .script, pid: 0, script: .restore(kept[i])), in: undo).end
-            // A deleted item made again has a new id: its older changes are put back on that one, never a copy.
-            if let made = undo.takeKept().first?.id, let old = kept[i].id {
-                for j in kept.indices.dropFirst(i + 1) where kept[j].id == old { kept[j] = kept[j].with(id: made) }
+        var result = HandUndo(end: .done), i = 0
+        while i < kept.count {
+            let put = act(HandStep(kind: .script, pid: 0, script: .restore(kept[i])), in: undo)
+            guard put.end == .done else { result.end = put.end; break }
+            if put.left { result.changedSince += 1 }
+            if let again = undo.takeKept().first {
+                if let line = again.lost, !result.lost.contains(line) { result.lost.append(line) }
+                // A deleted item made again has a new id: its older changes are put back on that one, never a copy.
+                if let made = again.id, let old = kept[i].id {
+                    for j in kept.indices.dropFirst(i + 1) where kept[j].id == old { kept[j] = kept[j].with(id: made) }
+                }
             }
+            i += 1
         }
+        kept[i...].reversed().forEach(job.keep)
         undo.finish(.stopped)
-        return end
+        return result
     }
 
     /// Under `lock`. Another app to the front, the one focus exception (CLAUDE.md): the Never list for that app before
@@ -658,9 +742,7 @@ struct AXSurface: HandSurface {
         var seen = HandSeen(role: role, subrole: v[1] as? String ?? "", name: name(of: el))
         var origin = CGPoint.zero, size = CGSize.zero
         if axValue(v[2], .cgPoint, &origin), axValue(v[3], .cgSize, &size) { seen.frame = CGRect(origin: origin, size: size) }
-        if !SecretsFilter.isSecure(role: seen.role, subrole: seen.subrole) {
-            seen.value = attribute(el, kAXValueAttribute) as? String
-        }
+        seen.value = SecretsFilter.unlessSecure(role: seen.role, subrole: seen.subrole) { attribute(el, kAXValueAttribute) as? String }
         return seen
     }
 
@@ -695,15 +777,10 @@ struct AXSurface: HandSurface {
             // point inside that window. A bare CGEvent arrives with no window, or at the window's corner, and is dropped
             // (measured in PL.1). Phew's AppKit cannot see the other app's window, so it takes the point as if the
             // window sat at the main screen's top-left corner; it is given in those terms.
-            guard let (window, bounds) = Self.window(of: step.pid, at: point) else { return .failed }
-            let location = Self.clickLocation(point, in: bounds, mainHeight: NSScreen.screens.first?.frame.height ?? 0)
-            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-                guard let event = NSEvent.mouseEvent(with: type, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                                                     windowNumber: window, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)?.cgEvent
-                else { return .failed }
-                event.setIntegerValueField(.eventSourceUserData, value: Hand.mark)
-                event.postToPid(step.pid)
-            }
+            guard let (window, bounds) = Self.window(of: step.pid, at: point),
+                  let events = Self.clickEvents(Self.clickLocation(point, in: bounds, mainHeight: NSScreen.screens.first?.frame.height ?? 0),
+                                                window: window) else { return .failed }
+            events.forEach { $0.postToPid(step.pid) }
             return .done
         case .script, .front:
             return .failed  // scripts go through `run`, fronts through `activate`
@@ -713,6 +790,18 @@ struct AXSurface: HandSurface {
         case .cannotComplete: return .timeout
         default: return .failed
         }
+    }
+
+    /// One click, down then up, at `location` in window `window`, each event marked as Phew's own (`Hand.mark`), so
+    /// the watch never takes his click for the user's. Nil when macOS makes no event.
+    static func clickEvents(_ location: NSPoint, window: Int) -> [CGEvent]? {
+        let events = [NSEvent.EventType.leftMouseDown, .leftMouseUp].compactMap {
+            NSEvent.mouseEvent(with: $0, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                               windowNumber: window, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)?.cgEvent
+        }
+        guard events.count == 2 else { return nil }
+        events.forEach { $0.setIntegerValueField(.eventSourceUserData, value: Hand.mark) }
+        return events
     }
 
     /// The point inside `bounds` (both top-left origin) as `NSEvent.mouseEvent` must be given it for another app's
@@ -915,21 +1004,41 @@ extension AXSurface {
     /// Runs one of the fixed scripts below with `args` as its run handler's list, so no word ever becomes script code.
     /// Returns its output, trimmed. The error text is dropped unread, but for macOS's "not allowed" number.
     static func osascript(_ source: String, _ args: [String], stop: () -> Bool) -> (HandEnd, String) {
+        run("/usr/bin/osascript", arguments(source, args), stop: stop)
+    }
+
+    /// osascript's arguments: each script line after its own `-e`, then "--", then the words. Without "--" a first
+    /// word starting with a dash ("-e…") is read as one of osascript's options and becomes script code (R4).
+    static func arguments(_ source: String, _ args: [String]) -> [String] {
+        source.split(separator: "\n").flatMap { ["-e", String($0)] } + ["--"] + args
+    }
+
+    /// Runs a system tool with no window, at most `timeout`, cut by `stop`. Returns its output, trimmed.
+    /// Both outputs are read while it runs: a long answer (a note's whole body) would otherwise fill the pipe, and the
+    /// tool would wait on it until the time limit (R5).
+    static func run(_ tool: String, _ arguments: [String], timeout: TimeInterval = Hand.scriptTimeout, stop: () -> Bool) -> (HandEnd, String) {
         let process = Process()
-        process.executableURL = URL(filePath: "/usr/bin/osascript")
-        process.arguments = source.split(separator: "\n").flatMap { ["-e", String($0)] } + args
+        process.executableURL = URL(filePath: tool)
+        process.arguments = arguments
         let out = Pipe(), err = Pipe()
         process.standardOutput = out
         process.standardError = err
         do { try process.run() } catch { return (.failed, "") }
-        let deadline = Date() + Hand.scriptTimeout
+        final class Read: @unchecked Sendable { var data = Data() }  // written once, before the group leaves
+        let outRead = Read(), errRead = Read(), reading = DispatchGroup()
+        for (pipe, read) in [(out, outRead), (err, errRead)] {
+            DispatchQueue.global(qos: .userInitiated).async(group: reading) { read.data = pipe.fileHandleForReading.readDataToEndOfFile() }
+        }
+        let deadline = Date() + timeout
         while process.isRunning {
             if stop() { process.terminate(); return (.stopped, "") }
             if Date() > deadline { process.terminate(); return (.timeout, "") }
             Thread.sleep(forTimeInterval: 0.05)
         }
+        // Ended: its pipes close, unless something it started still holds them.
+        guard reading.wait(timeout: .now() + 2) == .success else { return (.failed, "") }
         guard process.terminationStatus == 0 else {
-            let error = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            let error = String(decoding: errRead.data, as: UTF8.self)
             #if DEBUG
             // Only the error's number and the script line it hit, never its words (they can quote a value).
             let number = error.firstMatch(of: /\((-?[0-9]+)\)\s*$/).map { String($0.1) } ?? "none"
@@ -938,8 +1047,7 @@ extension AXSurface {
             #endif
             return (error.contains("-1743") ? .noAccess : .failed, "")
         }
-        return (.done, String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-            .trimmingCharacters(in: .whitespacesAndNewlines))
+        return (.done, String(decoding: outRead.data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     static let makeNote = """
@@ -1029,6 +1137,7 @@ struct HandChanges {
     var items: HandItems
 
     func facts(_ script: HandScript) -> HandFacts {
+        if case let .restore(kept) = script { return now(kept) }
         guard let (kind, title) = script.target, kind != .note, let all = items.all(kind),
               let item = Hand.one(all, titled: title, \.title).0 else { return HandFacts() }
         return HandFacts(guests: item.guests, repeats: item.repeats)
@@ -1078,14 +1187,51 @@ struct HandChanges {
         }
         let (hit, match) = Hand.one(notes, titled: title) { $0.name }
         guard let id = hit?.id else { return (match, nil) }
+        // What it holds, kept first, by a script of its own: what Undo needs never rides on the change's output (R5).
+        let (read, held) = script(Self.readNote, [id])
+        guard read == .done else { return (read, nil) }
+        let was = Self.noteParts(held)
+        guard was.count == 4 else { return (.failed, nil) }
+        let kept = HandKept.note(id: id, title: was[1], body: was[0], deleted: mode == "delete", folder: was[2])
         let (end, out) = script(Self.changeNote, [id, mode, value])
-        guard end == .done else { return (end, nil) }
-        // The old body, the old name, then the read-back.
-        let parts = out.split(separator: "\u{1F}", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
-        guard parts.count == 3 else { return (.checkFailed, nil) }
-        let kept = HandKept.note(id: id, title: parts[1], body: parts[0], deleted: mode == "delete")
-        let back = parts[2].split(separator: "\u{1E}", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
-        return (check(back[0], back.count == 2 ? back[1] : back[0]) ? .done : .checkFailed, kept)
+        // Cut by Stop or the time limit: the app may have taken the change, so what it held stays kept.
+        guard end == .done else { return (end, [.stopped, .timeout].contains(end) ? kept : nil) }
+        let back = out.split(separator: "\u{1E}", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+        let ok = check(back[0], back.count == 2 ? back[1] : back[0])
+        return (ok ? .done : .checkFailed, mode == "delete" ? kept : kept.after(out))
+    }
+
+    /// `readNote`'s answer: body, name, folder id, plain text; empty when no note has the id.
+    private static func noteParts(_ out: String) -> [String] {
+        out.isEmpty ? [] : out.split(separator: "\u{1F}", maxSplits: 3, omittingEmptySubsequences: false).map(String.init)
+    }
+
+    /// Before a put-back (R16): whether the item still holds what the job left, or already holds what it held. A
+    /// change cut before its read-back has nothing to compare with, and is put back.
+    private func now(_ kept: HandKept) -> HandFacts {
+        switch kept {
+        case let .note(id, _, body, deleted, folder, after):
+            let (end, out) = script(Self.readNote, [id])
+            guard end == .done else { return HandFacts() }  // the put-back then says why
+            let now = Self.noteParts(out)
+            // Still in its folder: the delete never landed.
+            if deleted { return HandFacts(unchanged: now.count == 4 && now[2] == folder) }
+            guard now.count == 4 else { return HandFacts(changedSince: true) }  // deleted since
+            if now[0] == body { return HandFacts(unchanged: true) }
+            return HandFacts(changedSince: after.map { $0 != now[1] + "\u{1E}" + now[3] } ?? false)
+        case let .entry(kind, old, deleted, after):
+            let now = items.one(old.id, kind)
+            if deleted { return HandFacts(unchanged: now != nil) }
+            guard let now else { return HandFacts(changedSince: true) }
+            if now == old { return HandFacts(unchanged: true) }
+            return HandFacts(changedSince: after.map { $0 != now } ?? false)
+        case let .cells(book, range, _, values, after):
+            let (end, held) = script(Self.readCells, [book, range])
+            guard end == .done else { return HandFacts() }
+            let now = held.components(separatedBy: "\u{1F}")
+            if Hand.sameCells(now, values) { return HandFacts(unchanged: true) }
+            return HandFacts(changedSince: after.map { !Hand.sameCells(now, $0) } ?? false)
+        }
     }
 
     /// Reminders and events. `change` edits the found item; a delete keeps it whole, so Undo makes it again.
@@ -1100,7 +1246,8 @@ struct HandChanges {
         }
         change(&item)
         guard items.save(item, kind) != nil else { return (.failed, nil) }
-        return (Self.same(items.one(item.id, kind), item) ? .done : .checkFailed, .entry(kind, old))
+        let back = items.one(item.id, kind)
+        return (Self.same(back, item) ? .done : .checkFailed, .entry(kind, old, after: back))
     }
 
     /// Excel: the open workbook picked by its exact name, what the cells hold read first, then written over.
@@ -1117,7 +1264,7 @@ struct HandChanges {
         let old = held.components(separatedBy: "\u{1F}")
         guard old.count == rows.count * width else { return (.failed, nil) }
         let values = rows.flatMap { $0 + Array(repeating: "", count: width - $0.count) }
-        return (write(name, range, width, values), .cells(book: name, range: range, width: width, values: old))
+        return (write(name, range, width, values), .cells(book: name, range: range, width: width, values: old, after: values))
     }
 
     private func write(_ book: String, _ range: String, _ width: Int, _ values: [String]) -> HandEnd {
@@ -1130,20 +1277,21 @@ struct HandChanges {
     /// go to that one (`Hand.undo`).
     private func restore(_ kept: HandKept) -> (HandEnd, HandKept?) {
         switch kept {
-        case let .note(id, title, body, deleted):
-            let (end, out) = script(Self.restoreNote, [deleted ? "" : id, body])
+        case let .note(id, title, body, deleted, folder, _):
+            let (end, out) = script(Self.restoreNote, [id, body, folder, deleted ? "again" : "body"])
             guard end == .done else { return (end, nil) }
-            let back = out.split(separator: "\u{1E}", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
-            guard back.count == 2, back[1] == title else { return (.checkFailed, nil) }
-            return (.done, deleted ? .note(id: back[0], title: title, body: body) : nil)
-        case let .entry(kind, old, deleted):
+            let back = out.split(separator: "\u{1E}", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
+            guard back.count == 3, back[1] == title else { return (.checkFailed, nil) }
+            // Moved back from Recently Deleted it is whole; made again it lacks what `HandUndo.lost` says.
+            return (.done, deleted ? .note(id: back[0], title: title, body: body, deleted: back[2] == "made", folder: folder) : nil)
+        case let .entry(kind, old, deleted, _):
             var want = old
             if deleted { want.id = "" }
             guard let id = items.save(want, kind) else { return (.failed, nil) }
             want.id = id
             guard Self.same(items.one(id, kind), want) else { return (.checkFailed, nil) }
-            return (.done, deleted ? .entry(kind, want) : nil)
-        case let .cells(book, range, width, values):
+            return (.done, deleted ? .entry(kind, want, deleted: true) : nil)
+        case let .cells(book, range, width, values, _):
             return (write(book, range, width, values), nil)
         }
     }
@@ -1168,14 +1316,25 @@ struct HandChanges {
         return out as text
         end run
         """
-    /// argv: the id, the change (name, body, delete), the new value. Returns the old body, the old name, then the
-    /// name and plain text read back, or for a delete "gone" unless the note is still in its folder.
+    /// argv: the id. Its body, name, folder id and plain text; empty when no note has that id.
+    static let readNote = """
+        on run argv
+        tell application id "com.apple.Notes"
+        try
+        set n to note id (item 1 of argv)
+        on error
+        return ""
+        end try
+        return (body of n) & (ASCII character 31) & (name of n) & (ASCII character 31) & (id of container of n) & (ASCII character 31) & (plaintext of n)
+        end tell
+        end run
+        """
+    /// argv: the id, the change (name, body, delete), the new value. Returns the name and plain text read back, or
+    /// for a delete "gone" unless the note is still in its folder. What it held is read before, by `readNote`.
     static let changeNote = """
         on run argv
         tell application id "com.apple.Notes"
         set n to note id (item 1 of argv)
-        set heldBody to body of n
-        set heldName to name of n
         set folderID to id of container of n
         if (item 2 of argv) is "delete" then
         delete n
@@ -1192,20 +1351,39 @@ struct HandChanges {
         set seen to (name of n) & (ASCII character 30) & (plaintext of n)
         end if
         end tell
-        return heldBody & (ASCII character 31) & heldName & (ASCII character 31) & seen
+        return seen
         end run
         """
-    /// argv: the id (empty: the note was deleted, made again) and the old body. Returns its id and the name read back.
+    /// argv: the id, the old body, its folder's id, and "body" (the body put back) or "again" (it was deleted: moved
+    /// back to its folder from Recently Deleted, whole, or else made again there, or in the default folder when that
+    /// folder is gone). Returns its id, the name read back, and how: body, moved or made.
     static let restoreNote = """
         on run argv
         tell application id "com.apple.Notes"
-        if (item 1 of argv) is "" then
+        set how to "body"
+        if (item 4 of argv) is "again" then
+        set n to missing value
+        try
+        move note id (item 1 of argv) to folder id (item 3 of argv)
+        set n to note id (item 1 of argv)
+        if id of container of n is not (item 3 of argv) then set n to missing value
+        on error
+        set n to missing value
+        end try
+        set how to "moved"
+        if n is missing value then
+        set how to "made"
+        try
+        set n to make new note at folder id (item 3 of argv) with properties {body:item 2 of argv}
+        on error
         set n to make new note with properties {body:item 2 of argv}
+        end try
+        end if
         else
         set n to note id (item 1 of argv)
         set body of n to item 2 of argv
         end if
-        return (id of n) & (ASCII character 30) & (name of n)
+        return (id of n) & (ASCII character 30) & (name of n) & (ASCII character 30) & how
         end tell
         end run
         """
@@ -1269,7 +1447,9 @@ struct EventKitItems: HandItems {
         case .note:
             return nil
         case .reminder:
-            let item = (entry.id.isEmpty ? nil : store.calendarItem(withIdentifier: entry.id) as? EKReminder) ?? EKReminder(eventStore: store)
+            let found = entry.id.isEmpty ? nil : store.calendarItem(withIdentifier: entry.id) as? EKReminder
+            let item = found ?? EKReminder(eventStore: store)
+            if found == nil { Self.setWhole(item, entry) }
             item.title = entry.title
             item.isCompleted = entry.done
             item.dueDateComponents = entry.due
@@ -1279,7 +1459,9 @@ struct EventKitItems: HandItems {
             return item.calendarItemIdentifier
         case .event:
             guard let start = entry.start, let end = entry.end else { return nil }
-            let item = (entry.id.isEmpty ? nil : store.event(withIdentifier: entry.id)) ?? EKEvent(eventStore: store)
+            let found = entry.id.isEmpty ? nil : store.event(withIdentifier: entry.id)
+            let item = found ?? EKEvent(eventStore: store)
+            if found == nil { Self.setWhole(item, entry) }
             item.title = entry.title
             item.startDate = start
             item.endDate = end
@@ -1306,13 +1488,27 @@ struct EventKitItems: HandItems {
 
     private static func entry(_ item: EKReminder) -> HandEntry {
         HandEntry(id: item.calendarItemIdentifier, title: item.title ?? "", done: item.isCompleted, due: item.dueDateComponents,
-                  notes: item.notes, calendar: item.calendar?.calendarIdentifier ?? "", repeats: item.hasRecurrenceRules)
+                  notes: item.notes, calendar: item.calendar?.calendarIdentifier ?? "", repeats: item.hasRecurrenceRules,
+                  alarms: alarms(item), priority: item.priority, url: item.url)
     }
 
     private static func entry(_ item: EKEvent) -> HandEntry {
         HandEntry(id: item.eventIdentifier ?? "", title: item.title ?? "", start: item.startDate, end: item.endDate, allDay: item.isAllDay,
                   location: item.location, notes: item.notes, calendar: item.calendar?.calendarIdentifier ?? "",
-                  guests: item.hasAttendees, repeats: item.hasRecurrenceRules)
+                  guests: item.hasAttendees, repeats: item.hasRecurrenceRules, alarms: alarms(item), url: item.url)
+    }
+
+    /// Alerts by time; location alerts cannot be carried, and `HandUndo.lost` says so.
+    private static func alarms(_ item: EKCalendarItem) -> [HandAlarm] {
+        (item.alarms ?? []).filter { $0.structuredLocation == nil }.map { HandAlarm(date: $0.absoluteDate, offset: $0.relativeOffset) }
+    }
+
+    /// An item made again (a delete undone) gets what EventKit lets be set (R17). Never on an item that exists: its
+    /// location alerts would go.
+    private static func setWhole(_ item: EKCalendarItem, _ entry: HandEntry) {
+        item.alarms = entry.alarms.map { $0.date.map(EKAlarm.init(absoluteDate:)) ?? EKAlarm(relativeOffset: $0.offset) }
+        item.url = entry.url
+        (item as? EKReminder)?.priority = entry.priority
     }
 }
 

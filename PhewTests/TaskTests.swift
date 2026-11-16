@@ -299,6 +299,24 @@ final class TaskTests: XCTestCase {
         XCTAssertEqual(again, .stopped, "once")
     }
 
+    /// R29: the confirm row says what the change writes, not only which item it touches.
+    func testTheConfirmRowShowsWhatTheChangeWrites() {
+        XCTAssertEqual(TaskList.asks(.noteBody(title: "Made-up ideas", body: "\n  Made-up first line  \nA second line")),
+                       "Waiting for you: Rewrite the note “Made-up ideas” with “Made-up first line …”?")
+        XCTAssertEqual(TaskList.asks(.noteBody(title: "Made-up ideas", body: "Made-up only line")),
+                       "Waiting for you: Rewrite the note “Made-up ideas” with “Made-up only line”?")
+        let long = String(repeating: "made-up ", count: 20)
+        XCTAssertEqual(TaskList.asks(.noteBody(title: "Made-up ideas", body: long)),
+                       "Waiting for you: Rewrite the note “Made-up ideas” with “\(long.prefix(60))…”?")
+        XCTAssertEqual(TaskList.asks(.noteBody(title: "Made-up ideas", body: " \n ")), "Waiting for you: Empty the note “Made-up ideas”?")
+        let start = Date(timeIntervalSince1970: 1_800_000_000), end = start + 3600
+        let when = start.formatted(date: .abbreviated, time: .shortened)
+        XCTAssertEqual(TaskList.asks(.move(title: "Made-up call", start: start, end: nil)),
+                       "Waiting for you: Move the event “Made-up call” to \(when)?")
+        XCTAssertEqual(TaskList.asks(.move(title: "Made-up call", start: start, end: end)),
+                       "Waiting for you: Move the event “Made-up call” to \(when) until \(end.formatted(date: .abbreviated, time: .shortened))?")
+    }
+
     func testDismissDropsTheWaitingAction() async throws {
         fake.apps.add("Made-up plan")
         let script = Script([call(#"{"kind":"note","title":"Made-up plan","action":"delete"}"#), .init(text: report)])

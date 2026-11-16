@@ -137,6 +137,83 @@ final class SecretsFilterTests: XCTestCase {
         XCTAssertFalse(kept[0].label.contains("aB3x"))
     }
 
+    /// R2: the field under the mouse is filtered as its name and value together, as the model reads them.
+    func testAFieldNameAndItsValueAreFilteredTogether() {
+        for (label, value) in [("Password", "hunter2"), ("PIN", "4421"), ("Token", "madeuptoken"), ("API key", "9f8e7d6c5b4a"),
+                               ("Wi-Fi password", "Tangerine"), ("DB_PASSWORD", "correcthorse")] {
+            let packet = ContextPacket(appName: "App", bundleID: "id", windowTitle: "", visibleText: "",
+                                       cursor: CursorElement(role: "AXTextField", label: label, value: value, frame: nil)).filtered()
+            XCTAssertEqual(packet.cursor?.value, SecretsFilter.secretMarker, label)
+            XCTAssertEqual(packet.cursor?.label, label)
+        }
+        for (label, value) in [("Search", "Made-up recipe"), ("Name", "Made Up"), ("Password manager", ""), ("Pin this tab", "")] {
+            let packet = ContextPacket(appName: "App", bundleID: "id", windowTitle: "", visibleText: "",
+                                       cursor: CursorElement(role: "AXTextField", label: label, value: value, frame: nil)).filtered()
+            XCTAssertEqual([packet.cursor?.label, packet.cursor?.value], [label, value])
+        }
+    }
+
+    /// R24: settings files and JSON write their secret names with underscores or dashes.
+    func testSecretsNamedWithUnderscoresAreRemoved() {
+        let cases = [
+            ("DB_PASSWORD=correcthorse1", "correcthorse1"),
+            ("AWS_SECRET_ACCESS_KEY=" + "wJalrXUtnFEMI" + "K7MDENGbPxRfiCYEXAMPLE", "wJalrXUtnFEMI"),
+            ("API_KEY=9f8e7d6c5b4a", "9f8e7d6c5b4a"),
+            (#""access_token": "ya29.madeupvalue""#, "ya29"),
+            ("client_secret=abc123", "abc123"),
+            ("apikey: madeup42", "madeup42"),
+            ("AUTH-TOKEN=madeuptoken", "madeuptoken"),
+            ("private_key = madeupvalue", "madeupvalue"),
+            ("DJANGO_SECRET: madeupvalue", "madeupvalue"),
+            ("export STRIPE_API_SECRET=madeupvalue", "madeupvalue"),
+        ]
+        for (text, value) in cases {
+            let out = SecretsFilter.clean(text)
+            XCTAssertFalse(out.contains(value), text)
+            XCTAssertTrue(out.contains(SecretsFilter.secretMarker), text)
+        }
+        for text in ["input_tokens: 25", "max_tokens = 1024", "token_count: 3", "The secret garden is open", "Keep it secret, keep it safe",
+                     "PASSWORD_HASH_ROUNDS: 12", "Spin 4421 times"] {
+            XCTAssertEqual(SecretsFilter.clean(text), text)
+        }
+    }
+
+    /// R19: a password field's value is never read: the reader is not even asked, in the window walk, under the mouse
+    /// or by the Hand. Made-up values.
+    func testSecureFieldsAreNeverRead() {
+        let marker = "Made-up-secret-4242"
+        var asked = 0
+        XCTAssertNil(SecretsFilter.unlessSecure(role: "AXSecureTextField", subrole: "") { asked += 1; return marker })
+        XCTAssertNil(SecretsFilter.unlessSecure(role: "AXTextField", subrole: "AXSecureTextField") { asked += 1; return marker })
+        let frame = CGRect(x: 10, y: 20, width: 200, height: 24)
+        let cursor = WindowReader.cursor(role: "AXTextField", subrole: "AXSecureTextField", label: "Made-up label", frame: frame) {
+            asked += 1
+            return marker
+        }
+        XCTAssertEqual(asked, 0, "the value was never asked for")
+        XCTAssertEqual([cursor.role, cursor.label, cursor.value], ["AXSecureTextField", "", ""])
+        XCTAssertEqual(cursor.frame, frame, "only its frame, so Phew can point at it")
+        XCTAssertEqual(SecretsFilter.unlessSecure(role: "AXTextField", subrole: "") { marker }, marker)
+        let plain = WindowReader.cursor(role: "AXTextField", subrole: "", label: "Made-up label", frame: frame) { marker }
+        XCTAssertEqual([plain.label, plain.value], ["Made-up label", marker])
+    }
+
+    /// R20: what a capture read is filtered before the packet leaves Senses: every string, as assembled for the model.
+    func testACaptureFiltersEveryStringItRead() throws {
+        let key = "sk-" + filler
+        let frame = CGRect(x: 0, y: 0, width: 800, height: 600)
+        let window: WindowReader.Window = (title: "t \(key)", frame: frame, documentPath: "/Users/someone/\(key).txt",
+                                           texts: [WindowReader.Text(string: "v \(key)", frame: frame)],
+                                           pointables: [Pointable(role: "AXLink", label: "p \(key)", frame: CGRect(x: 10, y: 10, width: 20, height: 20))])
+        let cursor = CursorElement(role: "AXStaticText", label: "l \(key)", value: "4111 1111 1111 1111", frame: nil)
+        let packet = Senses.packet(appName: "App \(key)", bundleID: "id", window: window, cursor: cursor, mouse: .zero)
+        let json = try XCTUnwrap(String(data: JSONEncoder().encode(packet), encoding: .utf8))
+        XCTAssertFalse(json.contains("aB3x"), json)
+        XCTAssertFalse(json.contains("4111"), json)
+        XCTAssertEqual(packet.appName, "App [key removed]")
+        XCTAssertEqual(packet.visibleText, "v [key removed]")
+    }
+
     func testTrimKeepsNearestTextInReadingOrder() {
         let texts = [
             WindowReader.Text(string: "far text", frame: CGRect(x: 1000, y: 1000, width: 10, height: 10)),

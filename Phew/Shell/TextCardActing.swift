@@ -46,14 +46,14 @@ extension TextCard {
         var count = 0
         shellLog("act: job \(job.number) started")
         let mainHeight = NSScreen.screens.first?.frame.height ?? 0
-        let screen = NSScreen.screens.first { $0.frame.contains(frame.origin) } ?? NSScreen.screens[0]
-        let pointer = PointerOverlay(on: screen)
+        // No display for a moment while displays change (R43): the job runs on without the pointer.
+        let pointer = (NSScreen.screens.first { $0.frame.contains(frame.origin) } ?? NSScreen.screens.first).map(PointerOverlay.init(on:))
         overlay = pointer
         var run = ActJob(brain: brain, hand: .shared, capture: capture,
                          aside: { [weak self] rect in
                              let spot = rect.flipped(mainHeight: mainHeight)
                              self?.moveAside(from: spot)
-                             pointer.act(on: spot)
+                             pointer?.act(on: spot)
                          })
         run.spoken = spoken
         run.menus = { pid in await Task.detached { MenuReader.names(pid: pid) }.value }
@@ -63,7 +63,7 @@ extension TextCard {
         Hand.shared.close(job)
         handJob = nil
         undoJob = job.kept.isEmpty ? nil : job
-        if overlay === pointer {
+        if let pointer, overlay === pointer {
             pointer.goHome()
             overlay = nil
         }
@@ -90,9 +90,12 @@ extension TextCard {
         undoJob = nil
         model.canUndo = false
         Task { [weak self] in
-            let end = await Task.detached { Hand.shared.undo(job) }.value
-            shellLog("act: undo of job \(job.number) ended \(end.rawValue)")
-            self?.model.undone(end)
+            let undo = await Task.detached { Hand.shared.restore(job) }.value
+            shellLog("act: undo of job \(job.number) ended \(undo.end.rawValue)")
+            // What was not put back is still kept in the job (R6): Undo can be pressed again.
+            let again = !job.kept.isEmpty
+            if again { self?.undoJob = job }
+            self?.model.undone(undo.end, lines: undo.lines, again: again)
         }
     }
 }

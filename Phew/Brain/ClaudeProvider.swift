@@ -14,18 +14,45 @@ struct ClaudeProvider: ModelProvider {
     /// Haiku 5.5 has no server-side fallback: there a list is a 400 and "default" does nothing.
     static let fallbackBeta = "server-side-fallback-2026-07-01"
 
+    /// Waits before each retry of a request the API turned away with 429 or 5xx before any of the answer came. A
+    /// `retry-after` header wins, up to `maxWait`. A var only so unit tests can wait less.
+    var retryDelays: [TimeInterval] = [1, 3]
+    /// Longer than this, the API's own wait is not worth it: the error goes to the card.
+    static let maxWait: TimeInterval = 10
+
     func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
         AsyncThrowingStream { continuation in
             guard let key = key(), !key.isEmpty else { return continuation.finish(throwing: BrainError.noKey) }
             let capped = OSAllocatedUnfairLock(initialState: false)
+            let delays = retryDelays
             let task = Task {
                 let start = Date()
                 var parser = SSEParser()
                 var first: Int?
+                // The API took the request (200), or it is on its way: from then on a cut may still be billed.
+                var accepted = false, sending = false
                 do {
-                    let (bytes, response) = try await URLSession.shared.bytes(for: Self.urlRequest(request, key: key, hour: CallLog.hourCache))
-                    let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-                    guard status == 200 else { throw await Self.failure(status: status, body: bytes) }
+                    var retries = delays[...]
+                    var bytes: URLSession.AsyncBytes
+                    while true {
+                        sending = true
+                        let (body, response) = try await URLSession.shared.bytes(for: Self.urlRequest(request, key: key, hour: CallLog.hourCache))
+                        let http = response as? HTTPURLResponse
+                        let status = http?.statusCode ?? 0
+                        if status == 200 { bytes = body; break }
+                        sending = false  // turned away: not billed
+                        // Busy or rate limited before any output: a few bounded tries, never once the answer started.
+                        // Stop or the time cap ends the wait like the request.
+                        if status == 429 || status >= 500, let delay = retries.popFirst(),
+                           let wait = Self.wait(delay, retryAfter: http?.value(forHTTPHeaderField: "retry-after")) {
+                            body.task.cancel()
+                            shellLog("api error \(status), try again in \(wait) s")
+                            try await Task.sleep(for: .seconds(wait))
+                            continue
+                        }
+                        throw await Self.failure(status: status, body: body)
+                    }
+                    accepted = true
                     for try await line in bytes.lines {
                         guard let text = try parser.consume(line) else { continue }
                         if first == nil { first = Self.ms(since: start) }
@@ -41,9 +68,12 @@ struct ClaudeProvider: ModelProvider {
                     continuation.finish()
                 } catch {
                     // Over the time cap: "runaway" in calls.log's ending, and the error the caller may retry on.
-                    let failure = capped.withLock { $0 } ? BrainError.runaway : BrainError(error)
-                    CallLog.record(request, usage: parser.usage, msFirst: first, msTotal: Self.ms(since: start), stop: parser.stopReason,
-                                   error: failure != .runaway && Task.isCancelled ? "cancelled" : "\(failure)")
+                    let runaway = capped.withLock { $0 }
+                    let failure = runaway ? BrainError.runaway : BrainError(error)
+                    // R8: a stream cut once the API took it is billed for what it did: its own numbers, or an estimate.
+                    let cut = accepted || sending && (runaway || Task.isCancelled) ? parser.cut(prompt: Self.promptTokens(request)) : nil
+                    CallLog.record(request, usage: cut ?? parser.usage, msFirst: first, msTotal: Self.ms(since: start), stop: parser.stopReason,
+                                   error: failure != .runaway && Task.isCancelled ? "cancelled" : "\(failure)", estimated: cut != nil)
                     continuation.finish(throwing: failure)
                 }
             }
@@ -60,6 +90,24 @@ struct ClaudeProvider: ModelProvider {
                 cap?.cancel()
             }
         }
+    }
+
+    /// The wait before a retry: the API's `retry-after` in seconds when it sends one, else `delay`. Nil when the API
+    /// asks for longer than `maxWait`.
+    static func wait(_ delay: TimeInterval, retryAfter: String?) -> TimeInterval? {
+        let wait = retryAfter.flatMap { TimeInterval($0.trimmingCharacters(in: .whitespaces)) } ?? delay
+        return wait <= maxWait ? max(wait, 0) : nil
+    }
+
+    /// R8: the request's input tokens, from its size, for a cut that came before the API's first numbers. On the safe
+    /// side: one token per 3 characters, and a picture's 28-by-28-pixel blocks.
+    static func promptTokens(_ request: ModelRequest) -> Int {
+        let characters = request.system.count + request.text.count
+            + request.earlier.reduce(0) { $0 + $1.question.count + $1.answer.count }
+            + request.after.reduce(0) { $0 + $1.content.count }
+            + request.tools.reduce(0) { $0 + $1.description.count + $1.schema.count }
+        let picture = request.image.flatMap { ScreenshotSize(png: $0) }.map { ($0.seenWidth * $0.seenHeight + 783) / 784 } ?? 0
+        return SSEParser.tokens(characters) + picture
     }
 
     /// The 5-minute cache: a conversation's replies come minutes apart at most.

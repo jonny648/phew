@@ -33,6 +33,7 @@ final class RunnerTests: XCTestCase {
             }
             return AsyncThrowingStream { continuation in
                 if reply.hang {
+                    if !reply.text.isEmpty { continuation.yield(.text(reply.text)) }  // then nothing more
                     continuation.onTermination = { _ in self.lock.withLock { self.ended = true } }
                     self.lock.withLock { self.open.append(continuation) }
                     return
@@ -245,6 +246,52 @@ final class RunnerTests: XCTestCase {
         XCTAssertTrue(report.markdown.contains(Runner.noReport))
         try await Task.sleep(for: .milliseconds(100))
         XCTAssertTrue(script.cancelled)
+    }
+
+    /// R25: the time limit cuts a request that was writing the report: what it had written is kept, with the line.
+    func testATimeCutKeepsTheReportTextAlreadyWritten() async throws {
+        var limits = TaskLimits()
+        limits.seconds = 0.3
+        let (report, _) = try await assertLimit(.time, [.init(text: "<plan>\n- One part\n</plan>\n# Kerning\n\nTwo guides so far.", hang: true)],
+                                                limits: limits)
+        XCTAssertTrue(report.markdown.hasPrefix("# Kerning\n\nTwo guides so far."))
+        XCTAssertFalse(report.markdown.contains(Runner.noReport))
+    }
+
+    /// R32: a report cut at the output cap says so, and is not saved as if it were complete.
+    func testAReportCutAtTheTokenCapSaysSo() async throws {
+        let (report, _) = try await assertLimit(.length, [.init(text: "# Kerning\n\nThe short answer, then a long find", stop: "max_tokens")])
+        XCTAssertTrue(report.markdown.hasPrefix("# Kerning\n\nThe short answer, then a long find"))
+        XCTAssertTrue(report.markdown.hasSuffix(Runner.line(.length, TaskLimits())))
+    }
+
+    /// R9: one request may run every search and page read it asks for in one go, so the counts sent are sized once,
+    /// at the start, so that even the dearest use of them all fits the task's cost cap. They never change between
+    /// rounds (the cache and the thinking blocks depend on the tools staying the same).
+    func testOneRequestCannotPassTheTaskCostCap() async throws {
+        func maxUses(_ request: ModelRequest) throws -> [Int] {
+            try request.serverTools.map { try XCTUnwrap((JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any])?["max_uses"] as? Int) }
+        }
+        // The full 50 cents: a task keeps its 5 searches and 8 pages.
+        let full = Runner.request("Compare kerning tools", packet: nil, number: 3)
+        XCTAssertEqual(try maxUses(full), [5, 8])
+        XCTAssertLessThanOrEqual(Runner.worstUSD(prompt: ClaudeProvider.promptTokens(full), searches: 5, pages: 8), TaskLimits().capUSD)
+        // 20 cents left today: fewer, and the worst request still fits.
+        var limits = TaskLimits()
+        limits.dayLeft = 0.20
+        let small = Runner.request("Compare kerning tools", packet: nil, number: 3, limits: limits)
+        let uses = try maxUses(small)
+        XCTAssertLessThan(uses.reduce(0, +), 13)
+        XCTAssertLessThanOrEqual(Runner.worstUSD(prompt: ClaudeProvider.promptTokens(small), searches: uses[0], pages: uses[1]), 0.20)
+        // The same counts on every round of the task.
+        let script = Script([.init(blocks: mapCall, usage: Usage(input: 20_000), stop: "tool_use"), .init(text: report)])
+        _ = try await run(script, map: "A line", limits: limits)
+        XCTAssertEqual(script.requests.count, 2)
+        XCTAssertEqual(script.requests[0].serverTools, script.requests[1].serverTools)
+        XCTAssertEqual(try maxUses(script.requests[0]), uses)
+        // Nothing to search with when even a report alone would pass the cap: no web tool is sent.
+        limits.dayLeft = 0.05
+        XCTAssertEqual(Runner.request("Compare kerning tools", packet: nil, number: 3, limits: limits).serverTools, [])
     }
 
     // MARK: Stop

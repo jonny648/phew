@@ -511,7 +511,7 @@ extension AppDelegate {
         NSApp.deactivate()
         let realBrain = brain
         let watch = ScreenWatch.shared
-        let main = NSScreen.screens[0].frame
+        guard let main = NSScreen.screens.first?.frame else { return }
         let display = CGDisplayBounds(CGMainDisplayID())  // top-left origin, as Senses measures
         var packet = ContextPacket(appName: "Made Up", bundleID: "com.example.madeup", windowTitle: "Made up",
                                    visibleText: "", cursor: nil)

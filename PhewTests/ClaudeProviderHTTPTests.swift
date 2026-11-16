@@ -9,12 +9,25 @@ final class ClaudeProviderHTTPTests: XCTestCase {
         nonisolated(unsafe) static var body = ""
         nonisolated(unsafe) static var hang = false
         nonisolated(unsafe) static var stopped: XCTestExpectation?
+        /// Statuses for the first requests, one each, before `status`; and the `retry-after` header they carry.
+        nonisolated(unsafe) static var statuses: [Int] = []
+        nonisolated(unsafe) static var retryAfter: String?
+        nonisolated(unsafe) static var count = 0
 
         override class func canInit(with request: URLRequest) -> Bool { request.url?.host == "api.anthropic.com" }
         override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
         override func startLoading() {
-            let response = HTTPURLResponse(url: request.url!, statusCode: Self.status, httpVersion: "HTTP/1.1",
-                                           headerFields: ["content-type": "text/event-stream"])!
+            Self.count += 1
+            let status = Self.statuses.isEmpty ? Self.status : Self.statuses.removeFirst()
+            var headers = ["content-type": "text/event-stream"]
+            if status != 200, let wait = Self.retryAfter { headers["retry-after"] = wait }
+            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1",
+                                           headerFields: headers)!
+            if status != 200 {
+                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                client?.urlProtocol(self, didLoad: Data(#"{"type":"error","error":{"type":"made_up","message":"made up"}}"#.utf8))
+                return client?.urlProtocolDidFinishLoading(self) ?? ()
+            }
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: Data(Self.body.utf8))
             if !Self.hang { client?.urlProtocolDidFinishLoading(self) }
@@ -30,6 +43,7 @@ final class ClaudeProviderHTTPTests: XCTestCase {
     override func setUp() {
         URLProtocol.registerClass(Stub.self)
         (Stub.status, Stub.hang, Stub.stopped) = (200, false, nil)
+        (Stub.statuses, Stub.retryAfter, Stub.count) = ([], nil, 0)
         savedLog = CallLog.url
         CallLog.url = log
     }
@@ -285,5 +299,111 @@ final class ClaudeProviderHTTPTests: XCTestCase {
         // The cancelled call is still logged, once.
         for _ in 0..<50 where (try? logLines().count) != 1 { try await Task.sleep(for: .milliseconds(100)) }
         XCTAssertEqual(try logLines().map(\.error), ["cancelled"])
+    }
+
+    // MARK: R8 What a cut call really used
+
+    /// Stop during a long answer: the API's last numbers never come, so the line holds an estimate of what was
+    /// generated and asked for, marked as one, and the day's total and the task cost read the same dollars.
+    func testACancelledCallIsLoggedWithWhatItUsedNotItsFirstNumbers() async throws {
+        Stub.hang = true
+        let words = String(repeating: "made up words ", count: 30)  // 420 characters
+        Stub.body = [#"data: {"type":"message_start","message":{"usage":{"input_tokens":7,"output_tokens":1}}}"#,
+                     #"data: {"type":"content_block_start","index":0,"content_block":{"type":"server_tool_use","id":"srvtoolu_1","name":"web_search","input":{}}}"#,
+                     #"data: {"type":"content_block_start","index":1,"content_block":{"type":"web_search_tool_result","tool_use_id":"srvtoolu_1","content":[]}}"#,
+                     #"data: {"type":"content_block_start","index":2,"content_block":{"type":"text","text":""}}"#,
+                     #"data: {"type":"content_block_delta","index":2,"delta":{"type":"text_delta","text":"\#(words)"}}"#].joined(separator: "\n") + "\n"
+        let stopped = expectation(description: "request stopped")
+        Stub.stopped = stopped
+        let gotText = expectation(description: "text")
+        var task = request
+        task.task = 41
+        let consumer = Task {
+            for try await event in provider.stream(task) { if case .text = event { gotText.fulfill() } }
+        }
+        await fulfillment(of: [gotText], timeout: 5)
+        consumer.cancel()
+        await fulfillment(of: [stopped], timeout: 5)
+        for _ in 0..<50 where (try? logLines().count) != 1 { try await Task.sleep(for: .milliseconds(100)) }
+        let line = try XCTUnwrap(try logLines().first)
+        XCTAssertEqual(line.error, "cancelled")
+        XCTAssertEqual(line.estimated, true)
+        XCTAssertGreaterThanOrEqual(line.outputTokens, 140, "every generated character counts, at 3 a token")
+        XCTAssertGreaterThan(line.inputTokens, 7, "the step after the search result reads the context again")
+        // One search asked for: its cent is in the line, so in the day's total and the task's cost.
+        XCTAssertGreaterThan(line.usd, Model.perSearch)
+        XCTAssertEqual(CallLog.cost(ofTask: 41), line.usd, accuracy: 1e-9)
+        XCTAssertFalse(String(decoding: CallLog.encode(line), as: UTF8.self).contains("made up"), "numbers only")
+    }
+
+    /// No numbers at all before the cut: the request's own size stands in for its input.
+    func testACutBeforeTheFirstNumbersCountsTheRequestItself() {
+        var parser = SSEParser()
+        XCTAssertEqual(parser.cut(prompt: 1234)?.input, 1234)
+        _ = try? parser.consume(#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}"#)
+        XCTAssertNil(parser.cut(prompt: 1234), "the API's last numbers arrived: nothing to estimate")
+        let picture = ModelRequest(agent: "unit-test", tier: .main, system: String(repeating: "s", count: 300), text: "t", maxTokens: 1)
+        XCTAssertEqual(ClaudeProvider.promptTokens(picture), 101)
+    }
+
+    // MARK: Retries before any output
+
+    private var quick: ClaudeProvider {
+        var provider = provider
+        provider.retryDelays = [0.01, 0.01]
+        return provider
+    }
+
+    private let answer = """
+        data: {"type":"message_start","message":{"usage":{"input_tokens":3,"output_tokens":1}}}
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}
+        data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}
+        data: {"type":"message_stop"}
+
+        """
+
+    func testABusyOrRateLimitedRequestIsTriedAgainBeforeAnyOutput() async throws {
+        (Stub.statuses, Stub.body) = ([529, 429], answer)
+        var events: [ModelEvent] = []
+        for try await event in quick.stream(request) { events.append(event) }
+        XCTAssertEqual(events.first, .text("Hi"))
+        XCTAssertEqual(Stub.count, 3)
+        XCTAssertEqual(try logLines().map(\.stop), ["end_turn"], "one line for the call")
+    }
+
+    func testRetriesAreBoundedAndNeverPastTheAPIsOwnWait() async throws {
+        (Stub.statuses, Stub.body) = ([529, 529, 529, 529], answer)
+        await XCTAssertThrowsBrainError(.overloaded) { for try await _ in self.quick.stream(self.request) {} }
+        XCTAssertEqual(Stub.count, 3, "two retries, then the error")
+        (Stub.statuses, Stub.retryAfter, Stub.count) = ([429], "30", 0)
+        await XCTAssertThrowsBrainError(.rateLimited) { for try await _ in self.quick.stream(self.request) {} }
+        XCTAssertEqual(Stub.count, 1, "the API asks for longer than Phew waits")
+        XCTAssertEqual(ClaudeProvider.wait(1, retryAfter: "2"), 2)
+        XCTAssertNil(ClaudeProvider.wait(1, retryAfter: "11"))
+        // Other errors are not tried again.
+        (Stub.statuses, Stub.retryAfter, Stub.count) = ([400], nil, 0)
+        await XCTAssertThrowsBrainError(.failed(status: 400)) { for try await _ in self.quick.stream(self.request) {} }
+        XCTAssertEqual(Stub.count, 1)
+    }
+
+    /// An error after the answer started is never sent again: the words already shown would come twice.
+    func testAnErrorAfterTheAnswerStartedIsNotRetried() async throws {
+        Stub.body = """
+            data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hel"}}
+            data: {"type":"error","error":{"type":"overloaded_error","message":"made up"}}
+
+            """
+        await XCTAssertThrowsBrainError(.overloaded) { for try await _ in self.quick.stream(self.request) {} }
+        XCTAssertEqual(Stub.count, 1)
+    }
+
+    private func XCTAssertThrowsBrainError(_ expected: BrainError, _ body: () async throws -> Void,
+                                           file: StaticString = #filePath, line: UInt = #line) async {
+        do {
+            try await body()
+            XCTFail("expected \(expected)", file: file, line: line)
+        } catch {
+            XCTAssertEqual(error as? BrainError, expected, file: file, line: line)
+        }
     }
 }

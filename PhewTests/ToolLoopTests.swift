@@ -185,7 +185,8 @@ final class ToolLoopTests: XCTestCase {
     func testAtMostEightTurnsAreKept() {
         let memory = WorkingMemory()
         for n in 1...9 { memory.add(Turn(question: "q\(n)", answer: "a\(n)")) }
-        XCTAssertEqual(memory.turns.map(\.question), (2...9).map { "q\($0)" })  // the oldest dropped, not summarised
+        // The oldest dropped, not summarised; in one block, so the cache of earlier turns holds (R48).
+        XCTAssertEqual(memory.turns.map(\.question), (6...9).map { "q\($0)" })
     }
 
     func testTurnsAreDroppedTenMinutesAfterTheLastAnswer() {
@@ -228,7 +229,7 @@ final class ToolLoopTests: XCTestCase {
         let request = Guide.request("When is my exam?", packet: packet("Week 47"), route: .explain, shot: nil, recall: recall)
         XCTAssertEqual(request.system, Guide.system)  // the prefix stays the same, ready for caching
         XCTAssertFalse(request.system.contains("3 December"))
-        XCTAssertTrue(request.text.hasPrefix("<map>\n\(recall)\n</map>\n\nApp: Calendar"))
+        XCTAssertTrue(request.text.hasPrefix("<map>\n\(recall)\n</map>\n\n<screen>\nApp: Calendar"))
         XCTAssertTrue(request.text.hasSuffix("Question: When is my exam?"))
     }
 
@@ -236,7 +237,7 @@ final class ToolLoopTests: XCTestCase {
         for none in [nil, "", " \n"] {
             let request = Guide.request("When?", packet: packet("Week 47"), route: .explain, shot: nil, recall: none)
             XCTAssertFalse(request.text.contains("<map>"))
-            XCTAssertTrue(request.text.hasPrefix("App: Calendar"))
+            XCTAssertTrue(request.text.hasPrefix("<screen>\nApp: Calendar"))
         }
     }
 

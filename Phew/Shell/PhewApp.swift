@@ -181,7 +181,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The ask panel's top-left corner: the card opens there, in its place.
     var anchor = NSPoint.zero
     /// The recogniser (P6.1): the microphone, Italian and English on this Mac. Nil: a hold behaves like a short press.
-    var listener: (any Listening)? = AppleListener()
+    var listener = AppDelegate.listener(canHear: { if #available(macOS 26, *) { true } else { false } }())
+    /// None before macOS 26, which has no on-device analyzer: a hold is then the press, and the Microphone is never
+    /// asked for a voice that cannot work (R36).
+    static func listener(canHear: Bool) -> (any Listening)? { canHear ? AppleListener() : nil }
     /// Hold the shortcut to talk (P6).
     lazy var talk = makeTalk()
     /// What a hold shows, at the notch.
@@ -224,9 +227,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// A waiting result, opened from the menu: on the card near the menu bar, as a finished answer.
     func openTask(_ number: Int) {
-        guard let item = tasks.open(number) else { return }
         let mouse = NSEvent.mouseLocation
-        let visible = (NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.screens[0]).visibleFrame
+        // No display for a moment while displays change (R43): the result stays waiting in the menu.
+        guard let visible = (NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.screens.first)?.visibleFrame,
+              let item = tasks.open(number) else { return }
         let failure: BrainError? = if case .failed(let error) = item.state { error } else { nil }
         // A report whose files could not be written still shows, with one line saying so.
         let unsaved = item.report != nil && item.report?.saved == nil ? "\n\nThis report could not be saved as a file." : ""
@@ -375,6 +379,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         key.holdStart = { [unowned self] in holdStart() }
         key.holdEnd = { [unowned self] in talk.holdEnd() }
         key.holdCancel = { [unowned self] in talk.holdCancel() }
+        key.holdLimit = { [unowned self] in talk.holdEnd(atLimit: true) }
         return key
     }
 

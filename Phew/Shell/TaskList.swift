@@ -174,17 +174,29 @@ final class TaskList: ObservableObject {
         return end
     }
 
-    /// The confirm row: what happens once confirmed. Memory only, never logged.
+    /// The confirm row: what happens once confirmed, with what a change writes (R29): the new text's first line, the
+    /// new time. Memory only, never logged.
     static func asks(_ script: HandScript) -> String {
         let what: String = switch script {
         case let .delete(item, title): "Delete the \(item.rawValue) “\(title)”"
         case let .rename(item, title, to): "Rename the \(item.rawValue) “\(title)” to “\(to)”"
-        case let .noteBody(title, _): "Rewrite the note “\(title)”"
+        case let .noteBody(title, body):
+            firstLine(body).map { "Rewrite the note “\(title)” with “\($0)”" } ?? "Empty the note “\(title)”"
         case let .complete(title): "Tick the reminder “\(title)” done"
-        case let .move(title, _, _): "Move the event “\(title)”"
+        case let .move(title, start, end):
+            "Move the event “\(title)” to \(start.formatted(date: .abbreviated, time: .shortened))"
+                + (end.map { " until \($0.formatted(date: .abbreviated, time: .shortened))" } ?? "")
         default: ActJob.line(HandStep(kind: .script, pid: 0, script: script))
         }
         return "Waiting for you: \(what)?"
+    }
+
+    /// A new text's first line with words, at most 60 characters; "…" when more follows. Nil when it has none.
+    private static func firstLine(_ text: String) -> String? {
+        let lines = text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        guard let first = lines.first else { return nil }
+        if first.count > 60 { return first.prefix(60) + "…" }
+        return lines.count > 1 ? first + " …" : first
     }
 
     /// The menu's Dismiss: the stored action is dropped, nothing runs.

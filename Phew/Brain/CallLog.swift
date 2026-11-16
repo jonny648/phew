@@ -30,19 +30,21 @@ enum CallLog {
         var task: Int? = nil
         /// The part of `cacheWriteTokens` written for one hour (D1); absent when none.
         var cacheWriteHourTokens: Int? = nil
+        /// R8: true when the stream was cut before the API's last usage numbers, so the tokens are Phew's estimate.
+        var estimated: Bool? = nil
 
         /// `ts` as a date; nil when unreadable.
         var date: Date? { try? Date(ts, strategy: .iso8601) }
     }
 
     static func line(_ request: ModelRequest, usage: Usage, msFirst: Int?, msTotal: Int, stop: String?, error: String?,
-                     at date: Date = Date()) -> Line {
+                     estimated: Bool = false, at date: Date = Date()) -> Line {
         let model = request.tier.model
         return Line(ts: date.ISO8601Format(), agent: request.agent, tier: request.tier.rawValue, model: model.id,
                     inputTokens: usage.input, outputTokens: usage.output, cacheWriteTokens: usage.cacheWrite,
                     cacheReadTokens: usage.cacheRead, usd: (model.cost(usage) * 1_000_000).rounded() / 1_000_000,
                     msFirstToken: msFirst, msTotal: msTotal, stop: stop, error: error, task: request.task,
-                    cacheWriteHourTokens: usage.cacheWriteHour > 0 ? usage.cacheWriteHour : nil)
+                    cacheWriteHourTokens: usage.cacheWriteHour > 0 ? usage.cacheWriteHour : nil, estimated: estimated ? true : nil)
     }
 
     static func encode(_ line: Line) -> Data {
@@ -53,8 +55,8 @@ enum CallLog {
     }
 
     static func record(_ request: ModelRequest, usage: Usage, msFirst: Int?, msTotal: Int, stop: String?, error: String?,
-                       at date: Date = Date()) {
-        let line = line(request, usage: usage, msFirst: msFirst, msTotal: msTotal, stop: stop, error: error, at: date)
+                       estimated: Bool = false, at date: Date = Date()) {
+        let line = line(request, usage: usage, msFirst: msFirst, msTotal: msTotal, stop: stop, error: error, estimated: estimated, at: date)
         shellLog("call \(line.agent) \(line.model): in \(line.inputTokens) out \(line.outputTokens) tokens, $\(line.usd), first token \(line.msFirstToken.map { "\($0) ms" } ?? "none"), total \(line.msTotal) ms, \(line.stop ?? line.error ?? "")")
         // Before the write is queued: a read of the file that `spend` makes meanwhile either finds the line or comes first.
         spend.add(line)

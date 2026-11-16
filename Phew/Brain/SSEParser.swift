@@ -9,6 +9,11 @@ struct SSEParser {
     /// The reply's content blocks by index, built from the stream so they can be sent back unchanged.
     private var blocks: [Int: [String: Any]] = [:]
     private var toolInput: [Int: String] = [:]
+    /// R8, for a stream cut before its last usage: whether `message_start` and `message_delta` were read, the
+    /// characters the model generated (text, thinking, tool input), the size of each server tool result, in
+    /// characters, and the searches and page reads it asked for. Numbers only.
+    private var started = false, final = false
+    private var generated = 0, results: [Int] = [], asked = (searches: 0, fetches: 0)
 
     /// One line of the stream. Returns the text it adds, if any. Throws the API's mid-stream error event.
     mutating func consume(_ line: String) throws -> String? {
@@ -18,24 +23,37 @@ struct SSEParser {
         let index = event["index"] as? Int ?? 0
         switch event["type"] as? String {
         case "message_start":
+            started = true
             merge((event["message"] as? [String: Any])?["usage"])
         case "content_block_start":
             // thinking, redacted_thinking, text, tool_use, fallback… kept as the API sent them.
-            blocks[index] = event["content_block"] as? [String: Any] ?? [:]
+            let block = event["content_block"] as? [String: Any] ?? [:]
+            blocks[index] = block
+            let type = block["type"] as? String ?? ""
+            if type == "server_tool_use" {
+                if block["name"] as? String == "web_search" { asked.searches += 1 } else { asked.fetches += 1 }
+            } else if type.hasSuffix("_tool_result") {
+                results.append((try? JSONSerialization.data(withJSONObject: block).count) ?? 0)
+            }
         case "content_block_delta":
             // Only text is shown. Thinking, its signature and tool input are kept for sending back.
             guard let delta = event["delta"] as? [String: Any] else { break }
             switch delta["type"] as? String {
             case "text_delta":
                 let text = delta["text"] as? String ?? ""
+                generated += text.count
                 append(text, to: "text", at: index)
                 return text
             case "thinking_delta":
-                append(delta["thinking"] as? String ?? "", to: "thinking", at: index)
+                let thinking = delta["thinking"] as? String ?? ""
+                generated += thinking.count
+                append(thinking, to: "thinking", at: index)
             case "signature_delta":
                 blocks[index]?["signature"] = delta["signature"]
             case "input_json_delta":
-                toolInput[index, default: ""] += delta["partial_json"] as? String ?? ""
+                let json = delta["partial_json"] as? String ?? ""
+                generated += json.count
+                toolInput[index, default: ""] += json
             case "citations_delta":
                 // Web search sources on the report's text: kept, so the block goes back as it came.
                 guard let citation = delta["citation"] else { break }
@@ -54,6 +72,7 @@ struct SSEParser {
                 blocks[index]?["input"] = input
             }
         case "message_delta":
+            final = true
             if let reason = (event["delta"] as? [String: Any])?["stop_reason"] as? String { stopReason = reason }
             merge(event["usage"])
         case "message_stop":
@@ -89,6 +108,29 @@ struct SSEParser {
         if stopReason == "refusal" { throw BrainError.refused }
         guard ended else { throw BrainError.network }
     }
+
+    /// R8: what a stream cut short (Stop, a time cap, a dropped connection) used. The API's own numbers when its last
+    /// usage arrived; otherwise an estimate on the safe side: `prompt` (the request's own size) when `message_start`
+    /// never came, every generated character as output, every search and page read asked for, and, for each server
+    /// tool result, one more sampling step reading the whole context so far, priced as fresh input. Nil: nothing to add.
+    func cut(prompt: Int) -> Usage? {
+        guard !final else { return nil }
+        var usage = usage
+        if !started { usage.input = prompt }
+        var context = usage.input + usage.cacheRead + usage.cacheWrite, steps = 0
+        for result in results {
+            context += Self.tokens(result)
+            steps += context
+        }
+        usage.input += steps
+        usage.output = max(usage.output, Self.tokens(generated))
+        usage.searches = max(usage.searches, asked.searches)
+        usage.fetches = max(usage.fetches, asked.fetches)
+        return usage
+    }
+
+    /// Tokens in `characters`, rounded up: one per 3 characters, more than the usual 3.5, so the estimate stays high.
+    static func tokens(_ characters: Int) -> Int { (characters + 2) / 3 }
 
     /// Counts are cumulative: the latest value of each field wins. After a server-side fallback the top level
     /// covers only the serving attempt, so the per-attempt `iterations` are summed instead.

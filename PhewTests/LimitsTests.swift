@@ -296,6 +296,24 @@ final class LimitsTests: XCTestCase {
         XCTAssertTrue(fake.requests.isEmpty)
     }
 
+    /// R31: 3 cents left today buy no search, page and report: the task is refused before anything is sent, and the
+    /// crumb it would have set aside is free again.
+    func testATaskIsRefusedWhenTooLittleIsLeftForAReport() async throws {
+        let fake = FakeProvider([:])
+        let limits = limits([line("2026-11-16T08:00:00Z", usd: 2.97)])
+        let brain = ClaudeBrain(provider: fake, map: BrainMap(open: { throw MapError.underTests }, maintenance: false), limits: limits)
+        do {
+            for try await _ in brain.runTask("Find sources", packet: nil, number: 1, folder: nil, add: nil) {}
+            XCTFail("the task ran")
+        } catch {
+            XCTAssertEqual(error as? BrainError, .limited(.dayUSD(3)))
+        }
+        XCTAssertTrue(fake.requests.isEmpty)
+        XCTAssertEqual(limits.reserve(task: 2, usd: 0.50), 0.03, accuracy: 1e-9, "the refused task holds nothing")
+        XCTAssertGreaterThan(Runner.minimumUSD, 0.10)
+        XCTAssertLessThan(Runner.minimumUSD, TaskLimits().usd)
+    }
+
     // MARK: D1: the one-hour cache
 
     func testCacheLifeFollowsTheGapsBetweenCalls() {

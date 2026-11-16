@@ -428,9 +428,12 @@ final class CardModel: ObservableObject {
 
     /// Undo ran: a plain line, or why not.
     @MainActor
-    func undone(_ end: HandEnd) {
-        canUndo = false
-        if end == .done { ended = Self.putBack; problem = nil } else { problem = ActJob.sentence(for: end) }
+    /// `lines`: what was left alone or cannot come back (fixed sentences of `HandUndo`). `again`: something was not
+    /// put back and is still kept, so Undo stays.
+    func undone(_ end: HandEnd, lines: [String] = [], again: Bool = false) {
+        canUndo = again
+        let said = ([end == .done ? Self.putBack : ActJob.sentence(for: end)] + lines).joined(separator: " ")
+        if end == .done { ended = said; problem = nil } else { problem = said }
     }
     private var started = false
 

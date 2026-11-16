@@ -1,5 +1,26 @@
 import AppKit
 
+/// Scroll events during a guide (R52): at most one frame read in flight; scrolls meanwhile make one more read when it
+/// ends, so the last place is always read. A trackpad's tens of events a second become at most one read per `gap`.
+struct ScrollReads {
+    static let gap: Duration = .milliseconds(66)
+    private var reading = false, again = false
+
+    /// A scroll: true when a read starts now.
+    mutating func scrolled() -> Bool {
+        if reading { again = true; return false }
+        reading = true
+        return true
+    }
+
+    /// A read ended (and its gap passed): true when one more starts.
+    mutating func ended() -> Bool {
+        if again { again = false; return true }
+        reading = false
+        return false
+    }
+}
+
 /// Following: after the student acts, a calm wait, then a look (capture and Brain check) that moves the guide on.
 /// Split out of TextCard.swift; the stored state stays on `TextCard`.
 extension TextCard {
@@ -69,11 +90,27 @@ extension TextCard {
         Self.anchor = (model.current, rect, element, frame)
     }
 
+    /// Scroll events, gated so a read runs at most once at a time (R52).
+    static var scrolls = ScrollReads()
+
     /// The content scrolled: the pointer moves with its target, read again from the anchored element. No look.
-    // shortcut: one frame read per scroll event, on the main thread (at most 0.1 s on a hung app); throttle if it stutters.
+    /// One read at a time, off the main thread, at most one per `ScrollReads.gap`; the last scroll is always read.
     private func followScroll() {
-        guard let anchor = Self.anchor, anchor.step == model.current, targets.indices.contains(anchor.step),
-              let now = WindowReader.frame(of: anchor.element) else { return }
+        guard Self.scrolls.scrolled() else { return }
+        Task { [weak self] in
+            repeat {
+                await self?.readScroll()
+                try? await Task.sleep(for: ScrollReads.gap)
+            } while Self.scrolls.ended()
+        }
+    }
+
+    private func readScroll() async {
+        guard let anchor = Self.anchor, anchor.step == model.current, targets.indices.contains(anchor.step) else { return }
+        let element = anchor.element
+        // The other app answers off Phew's main thread, so a slow one never holds up Stop, Escape or the pointer.
+        guard let now = await Task.detached(operation: { WindowReader.frame(of: element) }).value,
+              let still = Self.anchor, still.step == anchor.step, still.element == element, targets.indices.contains(still.step) else { return }
         let rect = FollowRule.moved(anchor.rect, anchorWas: anchor.frame, anchorNow: now)
         guard rect != targets[anchor.step] else { return }
         targets[anchor.step] = rect

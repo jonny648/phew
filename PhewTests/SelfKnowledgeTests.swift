@@ -115,10 +115,12 @@ final class SelfKnowledgeTests: XCTestCase {
         let text = SelfKnowledge.text
         for part in ["Research a task on your own and report back", "up to three tasks at once", "saved as a PDF",
                      "or Downloads, never over an existing file", "a note, a reminder, an event or a sheet in the background",
-                     "a task only adds, never changes or deletes"] {
+                     "a change or a delete of one named note, reminder or event waits in the menu for the user's confirm"] {
             XCTAssertTrue(text.contains(part), part)
         }
         XCTAssertFalse(text.contains("cannot do yet: research"))
+        // R59: the task tool also renames, edits, completes, moves and deletes, each held for one confirm.
+        XCTAssertFalse(text.contains("only adds"))
     }
 
     /// PB: he knows he imports what other assistants know, by paste and from a Claude Code folder, ticked, undoable.

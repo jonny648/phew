@@ -156,6 +156,16 @@ actor MapStore {
         for (name, query) in Self.termQueries {
             try db.query("INSERT OR IGNORE INTO main.terms (name, query) VALUES (?, ?)", [.text(name), .text(query)])
         }
+        // R10: past questions written before a Project's own sensitive mark counted for them, still in the normal
+        // file, go under the second lock. At every open; a second run finds nothing to move.
+        let filed = "project IN (SELECT id FROM s.nodes)"
+        if try db.scalar("SELECT count(*) FROM main.events WHERE \(filed)") != .int(0) {
+            try database.transaction {
+                try database.query("UPDATE main.events SET sensitive = 1 WHERE \(filed)")
+                try database.query("INSERT INTO s.events SELECT * FROM main.events WHERE \(filed)")
+                try database.query("DELETE FROM main.events WHERE \(filed)")
+            }
+        }
     }
 
     func close() { db.close() }
@@ -222,10 +232,13 @@ actor MapStore {
             try db.query("INSERT INTO \(to).edges SELECT * FROM \(from).edges e WHERE \(edges)", [.int(id)])
             try db.query("DELETE FROM \(from).edges WHERE id IN (SELECT id FROM \(to).edges) AND (from_node = ?1 OR to_node = ?1)", [.int(id)])
 
-            let mentionsOther = sensitive ? "0" : "EXISTS (SELECT 1 FROM json_each(e.mentions) m JOIN s.nodes n ON n.id = m.value)"
-            let events = "EXISTS (SELECT 1 FROM json_each(e.mentions) WHERE value = ?1) AND NOT \(mentionsOther)"
+            // R10: a past question belongs to the thing it mentions and to the Project it was filed under.
+            let mentionsOther = sensitive ? "0"
+                : "(EXISTS (SELECT 1 FROM json_each(e.mentions) m JOIN s.nodes n ON n.id = m.value) OR e.project IN (SELECT id FROM s.nodes))"
+            let touches = "(EXISTS (SELECT 1 FROM json_each(e.mentions) WHERE value = ?1) OR e.project = ?1)"
+            let events = "\(touches) AND NOT \(mentionsOther)"
             try db.query("INSERT INTO \(to).events SELECT * FROM \(from).events e WHERE \(events)", [.int(id)])
-            try db.query("UPDATE \(to).events SET sensitive = ?2 WHERE id IN (SELECT e.id FROM \(to).events e WHERE EXISTS (SELECT 1 FROM json_each(e.mentions) WHERE value = ?1))", [.int(id), flag])
+            try db.query("UPDATE \(to).events SET sensitive = ?2 WHERE id IN (SELECT e.id FROM \(to).events e WHERE \(touches))", [.int(id), flag])
             try db.query("DELETE FROM \(from).events WHERE id IN (SELECT id FROM \(to).events)")
         }
     }
@@ -265,8 +278,10 @@ actor MapStore {
 
     @discardableResult
     func add(_ event: MapEvent) throws -> Int64 {
+        // R10: also when it is filed under a sensitive Project.
         let mentionsSensitive = try db.scalar(
-            "SELECT count(*) FROM s.nodes WHERE id IN (SELECT value FROM json_each(?))", [.text(Self.json(event.mentions))])
+            "SELECT count(*) FROM s.nodes WHERE id IN (SELECT value FROM json_each(?1)) OR id = ?2",
+            [.text(Self.json(event.mentions)), SQLValue(event.project)])
         let sensitive = event.sensitive || mentionsSensitive != .int(0)
         let id = try db.nextID()
         try db.query("""

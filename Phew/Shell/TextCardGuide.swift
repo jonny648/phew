@@ -17,8 +17,8 @@ extension TextCard {
         self.steps = steps
         self.targets = targets
         model.current = 0
-        let screen = NSScreen.screens.first { $0.frame.contains(frame.origin) } ?? NSScreen.screens[0]
-        overlay = PointerOverlay(on: screen)
+        // No display for a moment while displays change (R43): the steps show without the pointer.
+        overlay = (NSScreen.screens.first { $0.frame.contains(frame.origin) } ?? NSScreen.screens.first).map(PointerOverlay.init(on:))
         startFollowing()
         shellLog("guide started: \(targets.count) steps, \(targets.compactMap { $0 }.count) with a target, following \(actionMonitor != nil)")
         pointAtCurrentStep()

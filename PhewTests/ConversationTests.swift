@@ -40,8 +40,22 @@ final class ConversationTests: XCTestCase {
         for n in 1...9 { for try await _ in brain.answer("Made-up question \(n)?", packet: packet("Screen \(n)")) {} }
         let last = try XCTUnwrap(fake.requests.last { $0.agent == "guide" })
         XCTAssertEqual(last.earlier.map(\.question), (1...8).map { "Question: Made-up question \($0)?" })
-        XCTAssertEqual(brain.memory.turns.count, 8)
-        XCTAssertEqual(brain.memory.turns.first?.question, "Question: Made-up question 2?")
+        // R48: past 8, the oldest go in one block, leaving the last 4.
+        XCTAssertEqual(brain.memory.turns.map(\.question), (6...9).map { "Question: Made-up question \($0)?" })
+    }
+
+    /// R48: the earlier turns are the start of every reply's messages, so they are dropped in blocks: from the ninth
+    /// reply on, the first turn sent stays the same for several replies in a row, and the cache of earlier turns is
+    /// read instead of written again on each one.
+    func testOldTurnsAreDroppedInBlocksSoTheCacheOfEarlierTurnsHolds() {
+        let memory = WorkingMemory()
+        var firsts: [String] = []
+        for n in 1...16 {
+            memory.add(Turn(question: "q\(n)", answer: "a\(n)"))
+            firsts.append(memory.turns.first?.question ?? "")
+            XCTAssertLessThanOrEqual(memory.turns.count, WorkingMemory.maxTurns)
+        }
+        XCTAssertEqual(Array(firsts[8...]), ["q6", "q6", "q6", "q6", "q6", "q11", "q11", "q11"])
     }
 
     // MARK: Closing forgets

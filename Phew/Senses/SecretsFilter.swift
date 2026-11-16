@@ -12,6 +12,11 @@ enum SecretsFilter {
         role == "AXSecureTextField" || subrole == "AXSecureTextField"
     }
 
+    /// `read` called only for a field that is not a password field: what every reader of a value goes through (R19).
+    static func unlessSecure(role: String, subrole: String, _ read: () -> String?) -> String? {
+        isSecure(role: role, subrole: subrole) ? nil : read()
+    }
+
     /// Removes API keys, tokens, card numbers and the value after a password word. Ordinary numbers, dates and phone numbers stay.
     static func clean(_ text: String) -> String {
         let noKeys = keys.stringByReplacingMatches(in: text, range: NSRange(location: 0, length: (text as NSString).length), withTemplate: keyMarker)
@@ -42,11 +47,14 @@ enum SecretsFilter {
     // - after "is", "was", "è", ":", "=" or " - " within a few words ("the wifi password is gatto", "PIN = 4421");
     // - right after the word when the value holds a digit or a symbol ("the password Brisk-Otter-77", "pin 4421");
     // - right after "pw" or "pwd", always ("pw tango").
+    // The word may be glued to others by "_" or "-", as settings files and JSON write it ("DB_PASSWORD=", "API_KEY:",
+    // "access_token"), but not followed by more of a name ("input_tokens", "PASSWORD_HASH_ROUNDS") (R24). Bare "secret"
+    // counts only before ":" or "=" ("client_secret=…"), so "the secret garden" stays.
     // So "password manager", "Forgot password?" and "reset the PIN code" stay. Bare Italian "codice" is not a word
     // here ("il codice è pronto" is about code); "parola chiave" is not either (it means keyword).
     // shortcut: "The password is incorrect" loses "incorrect"; a word list of harmless values would fix it if it matters.
     private static let passwords = try! NSRegularExpression(pattern:
-        #"(?i)\b(password|passwort|passcode|passphrase|pwd?|pin|otp|parola d['’]ordine|codice (?:pin|segreto|d['’]accesso|di accesso)|chiave api|api key|secret key|access token|token)\b"#
+        #"(?i)(?<![A-Za-z0-9])(password|passwort|passcode|passphrase|pwd?|pin|otp|parola d['’]ordine|codice (?:pin|segreto|d['’]accesso|di accesso)|chiave api|api[ _-]?(?:key|secret)|secret[ _-]?access[ _-]?key|secret[ _-]?key|client[ _-]?secret|private[ _-]?key|access[ _-]?token|auth[ _-]?token|token|secret(?=\s*[:=]))(?![A-Za-z0-9_])"#
         + #"(?:[^.?!\n]{0,30}?(?:\bis\b|\bwas\b|\bè\b|:|=|\s[-–]\s)\s*(?!\[(?:key|card|secret) removed\])\S+"#
         + #"|\s+["'“]?(?=[^\s"'”]*[0-9_!@#$%^&*+=-])(?!\[(?:key|card|secret) removed\])[^\s"'”]{3,}"#
         + #"|(?<=pw|pwd)\s+["'“]?(?!\[(?:key|card|secret) removed\])[^\s"'”]+)"#)

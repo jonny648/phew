@@ -607,6 +607,13 @@ final class ActJobTests: XCTestCase {
         model.canUndo = true
         model.begin("A made-up next question")
         XCTAssertFalse(model.canUndo, "the turn ends: Undo goes")
+        // R6, R16, R17: what could not come back is said, and Undo stays while something is still kept.
+        model.undone(.timeout, lines: [HandUndo.changedSinceLine], again: true)
+        XCTAssertTrue(model.canUndo)
+        XCTAssertTrue(model.problem?.hasSuffix(HandUndo.changedSinceLine) == true)
+        model.undone(.done, lines: [HandUndo.lost(.note)])
+        XCTAssertFalse(model.canUndo)
+        XCTAssertEqual(model.ended, CardModel.putBack + " " + HandUndo.lost(.note))
     }
 
     func testAJobsChangesAreTaggedFollowedAndUndone() async throws {

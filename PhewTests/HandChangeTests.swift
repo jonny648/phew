@@ -3,8 +3,14 @@ import XCTest
 
 /// Made-up Notes and Excel answering Phew's fixed scripts, told apart by which script it is. No osascript, no app.
 final class FakeScripts: @unchecked Sendable {
-    struct Note: Equatable { var id: String, name: String, body: String, text: String }
+    /// `folder` and `attachments`: what a note made again by script gets or loses, as in Notes (R17).
+    struct Note: Equatable { var id: String, name: String, body: String, text: String, folder = "folder-default", attachments = 0 }
     var notes: [Note] = []
+    var folders: Set<String> = ["folder-default"]
+    /// The script, by its short name, that is cut (Stop or the time limit) after the app took the change (R5).
+    var cut: String?
+    /// The title each find was given, as the script got it.
+    private(set) var found: [String] = []
     var books: [String] = []
     /// What a range holds, by "book|range".
     var cells: [String: [String]] = [:]
@@ -14,26 +20,35 @@ final class FakeScripts: @unchecked Sendable {
     private(set) var ran: [String] = []
     private var next = 0
 
-    func add(_ title: String, _ lines: [String] = []) {
+    func add(_ title: String, _ lines: [String] = [], folder: String = "folder-default", attachments: Int = 0) {
         next += 1
-        notes.append(Note(id: "note-\(next)", name: "", body: "", text: ""))
+        folders.insert(folder)
+        notes.append(Note(id: "note-\(next)", name: "", body: "", text: "", folder: folder, attachments: attachments))
         set(notes.count - 1, AXSurface.html([title] + lines))
     }
+
+    /// The user edits a note in Notes after the job.
+    func edit(_ i: Int, _ lines: [String]) { set(i, AXSurface.html(lines)) }
 
     func run(_ source: String, _ args: [String]) -> (HandEnd, String) {
         switch source {
         case HandChanges.findNotes:
             ran.append("find")
+            found.append(args[0])
             // Notes matches names without case: the exact one is picked in Swift.
             let found = notes.filter { $0.name.lowercased() == args[0].lowercased() }
             return (.done, found.map { "\($0.id)\u{1E}\($0.name)" }.joined(separator: "\u{1F}"))
+        case HandChanges.readNote:
+            ran.append("read")
+            guard let note = notes.first(where: { $0.id == args[0] }) else { return (.done, "") }
+            return (.done, [note.body, note.name, note.folder, note.text].joined(separator: "\u{1F}"))
         case HandChanges.changeNote:
             ran.append("change")
             guard let i = notes.firstIndex(where: { $0.id == args[0] }) else { return (.failed, "") }
             let old = notes[i]
             var seen = wrongWrite ? "still" : "gone"
             if args[1] == "delete" {
-                notes.remove(at: i)
+                notes.remove(at: i)  // as if Recently Deleted were emptied: Undo makes it again
             } else {
                 if args[1] == "name" {
                     var lines = old.text.components(separatedBy: "\n")
@@ -44,13 +59,24 @@ final class FakeScripts: @unchecked Sendable {
                 }
                 seen = "\(notes[i].name)\u{1E}\(notes[i].text)"
             }
-            return (.done, "\(old.body)\u{1F}\(old.name)\u{1F}\(seen)")
+            // Cut: the app took the change, the answer never came.
+            return cut == "change" ? (.timeout, "") : (.done, seen)
         case HandChanges.restoreNote:
             ran.append("restore")
-            if args[0].isEmpty { add("") }
-            guard let i = args[0].isEmpty ? notes.count - 1 : notes.firstIndex(where: { $0.id == args[0] }) else { return (.failed, "") }
-            set(i, args[1])
-            return (.done, "\(notes[i].id)\u{1E}\(notes[i].name)")
+            var how = "body"
+            if args[3] == "again" {
+                if let i = notes.firstIndex(where: { $0.id == args[0] }) {
+                    notes[i].folder = args[2]
+                    how = "moved"
+                } else {
+                    // Made again: in its folder when it still exists, with no attachment, as Notes' scripting does.
+                    add("", folder: folders.contains(args[2]) ? args[2] : "folder-default")
+                    how = "made"
+                }
+            }
+            guard let i = how == "made" ? notes.count - 1 : notes.firstIndex(where: { $0.id == args[0] }) else { return (.failed, "") }
+            if how != "moved" { set(i, args[1]) }
+            return (.done, "\(notes[i].id)\u{1E}\(notes[i].name)\u{1E}\(how)")
         case HandChanges.workbooks:
             return (.done, books.joined(separator: "\u{1F}"))
         case HandChanges.readCells:
@@ -78,6 +104,11 @@ final class FakeScripts: @unchecked Sendable {
 /// Made-up reminders and events in memory: the fake `HandItems`. No EventKit.
 final class FakeItems: HandItems, @unchecked Sendable {
     var entries: [HandItem: [HandEntry]] = [:]
+    /// What EventKit holds but cannot hand over or set (a reminder's flag, subtasks, a location alert), by item id:
+    /// kept by a save under the same id, lost by one made again (R13, R17).
+    var hidden: [String: Set<String>] = [:]
+    /// Ids whose save the app refuses.
+    var refuse: Set<String> = []
     var access = true
     /// The app saves something else, or keeps what it was told to remove: the read-back must catch it.
     var wrongWrite = false
@@ -88,6 +119,7 @@ final class FakeItems: HandItems, @unchecked Sendable {
 
     func save(_ entry: HandEntry, _ kind: HandItem) -> String? {
         var entry = entry
+        if refuse.contains(entry.id) { return nil }
         if wrongWrite { entry.title += " (not this)" }
         if !entry.id.isEmpty, let i = entries[kind]?.firstIndex(where: { $0.id == entry.id }) {
             entries[kind]![i] = entry
@@ -101,7 +133,7 @@ final class FakeItems: HandItems, @unchecked Sendable {
 
     func remove(_ id: String, _ kind: HandItem) -> Bool {
         guard let i = entries[kind]?.firstIndex(where: { $0.id == id }) else { return false }
-        if !wrongWrite { entries[kind]!.remove(at: i) }
+        if !wrongWrite { entries[kind]!.remove(at: i); hidden[id] = nil }
         return true
     }
 }
@@ -158,11 +190,14 @@ final class HandChangeTests: XCTestCase {
         var (end, kept) = changes.run(.rename(.note, title: "Made-up plan", to: "Made-up plan two"))
         XCTAssertEqual(end, .done)
         XCTAssertEqual(fake.apps.notes.map(\.name), ["Made-up plan two", "made-up plan"])
-        XCTAssertEqual(kept, .note(id: "note-1", title: "Made-up plan", body: "<div>Made-up plan</div><div>First made-up line</div>"))
+        XCTAssertEqual(kept, .note(id: "note-1", title: "Made-up plan", body: "<div>Made-up plan</div><div>First made-up line</div>",
+                                   folder: "folder-default", after: "Made-up plan two\u{1E}Made-up plan two\nFirst made-up line"))
         (end, kept) = changes.run(.noteBody(title: "Made-up plan two", body: "New made-up line\nLast made-up line"))
         XCTAssertEqual(end, .done)
         XCTAssertEqual(fake.apps.notes[0].text, "Made-up plan two\nNew made-up line\nLast made-up line", "the title stays")
-        XCTAssertEqual(kept, .note(id: "note-1", title: "Made-up plan two", body: "<div>Made-up plan two</div><div>First made-up line</div>"))
+        XCTAssertEqual(kept, .note(id: "note-1", title: "Made-up plan two", body: "<div>Made-up plan two</div><div>First made-up line</div>",
+                                   folder: "folder-default",
+                                   after: "Made-up plan two\u{1E}Made-up plan two\nNew made-up line\nLast made-up line"))
     }
 
     func testNoneOrManyChangesNothing() {
@@ -193,7 +228,7 @@ final class HandChangeTests: XCTestCase {
         XCTAssertEqual(fake.items.one("e1", .event)?.end, start + 86_400 + 1800, "it keeps its length")
         let (end, kept) = changes.run(.changeCells(book: "Made-up budget.xlsx", top: "b2", rows: [["12", "13"]]))
         XCTAssertEqual(end, .done)
-        XCTAssertEqual(kept, .cells(book: "Made-up budget.xlsx", range: "B2:C2", width: 2, values: ["10", "=B2*2"]))
+        XCTAssertEqual(kept, .cells(book: "Made-up budget.xlsx", range: "B2:C2", width: 2, values: ["10", "=B2*2"], after: ["12", "13"]))
         XCTAssertEqual(changes.run(.changeCells(book: "made-up budget.xlsx", top: "B2", rows: [["1"]])).0, .notFound, "the exact name")
     }
 
@@ -213,7 +248,7 @@ final class HandChangeTests: XCTestCase {
         XCTAssertEqual(changes.run(.delete(.event, title: "Made-up review")).0, .checkFailed, "still there after the delete")
         (end, kept) = changes.run(.changeCells(book: "Made-up budget.xlsx", top: "A1", rows: [["2"]]))
         XCTAssertEqual(end, .checkFailed)
-        XCTAssertEqual(kept, .cells(book: "Made-up budget.xlsx", range: "A1", width: 1, values: ["1"]))
+        XCTAssertEqual(kept, .cells(book: "Made-up budget.xlsx", range: "A1", width: 1, values: ["1"], after: ["2"]))
     }
 
     // MARK: N2.3 Delete, and Undo through the Hand
@@ -368,5 +403,113 @@ final class HandChangeTests: XCTestCase {
             XCTAssertEqual(json["kind"] as? String, "script")
         }
         XCTAssertEqual(text.split(separator: "\n").count, 4, "two changes, two put back")
+    }
+
+    // MARK: NR: Undo after review (R5, R6, R13, R16, R17)
+
+    /// R5: a change cut after Notes took it (Stop, the time limit) still keeps what the note held, for Undo.
+    func testACutNoteChangeKeepsWhatItHeld() {
+        fake.apps.add("Made-up plan", ["A made-up line"])
+        fake.apps.cut = "change"
+        let (end, kept) = changes.run(.noteBody(title: "Made-up plan", body: "Another made-up line"))
+        XCTAssertEqual(end, .timeout)
+        XCTAssertEqual(kept?.id, "note-1", "what it held is kept")
+        if case let .note(_, title, body, deleted, _, _)? = kept {
+            XCTAssertEqual([title, body], ["Made-up plan", "<div>Made-up plan</div><div>A made-up line</div>"])
+            XCTAssertFalse(deleted)
+        }
+    }
+
+    /// R6: a put-back is not held by the per-minute ceiling: it only puts back what Phew changed.
+    func testUndoIsNotHeldByTheMinuteCeiling() {
+        fake.items.entries[.reminder] = (1...12).map { HandEntry(id: "r\($0)", title: "Made-up call \($0)") }
+        let hand = hand(), job = hand.begin(watchUser: false)
+        for n in 1...12 {
+            XCTAssertEqual(hand.act(step(.rename(.reminder, title: "Made-up call \(n)", to: "Made-up later \(n)")), in: job).end, .done)
+        }
+        XCTAssertEqual(hand.undo(job), .done, "24 actions in a minute, yet every one put back")
+        XCTAssertEqual(fake.items.entries[.reminder]?.map(\.title), (1...12).map { "Made-up call \($0)" })
+    }
+
+    /// R6: an Undo that stops keeps what it did not put back, so a second Undo can.
+    func testAFailedUndoKeepsWhatItDidNotPutBack() {
+        fake.items.entries[.reminder] = (1...3).map { HandEntry(id: "r\($0)", title: "Made-up call \($0)") }
+        let hand = hand(), job = hand.begin(watchUser: false)
+        for n in 1...3 {
+            XCTAssertEqual(hand.act(step(.rename(.reminder, title: "Made-up call \(n)", to: "Made-up later \(n)")), in: job).end, .done)
+        }
+        fake.secureInputOn = true  // a password field has the keyboard somewhere
+        XCTAssertEqual(hand.undo(job), .secureInput)
+        XCTAssertEqual(job.kept.count, 3, "nothing put back, nothing lost")
+        fake.secureInputOn = false
+        fake.items.refuse = ["r2"]  // newest first: r3 goes back, r2 is refused, r1 is not tried
+        XCTAssertEqual(hand.undo(job), .failed)
+        XCTAssertEqual(fake.items.entries[.reminder]?.map(\.title), ["Made-up later 1", "Made-up later 2", "Made-up call 3"])
+        XCTAssertEqual(job.kept.count, 2)
+        fake.items.refuse = []
+        XCTAssertEqual(hand.undo(job), .done)
+        XCTAssertEqual(fake.items.entries[.reminder]?.map(\.title), (1...3).map { "Made-up call \($0)" })
+        XCTAssertTrue(job.kept.isEmpty)
+    }
+
+    /// R16: what the user changed after the job is left as it is, and the card says so; the rest is put back.
+    func testUndoLeavesWhatTheUserChangedSince() {
+        fake.apps.add("Made-up plan", ["A made-up line"])
+        fake.items.entries[.reminder] = [HandEntry(id: "r1", title: "Made-up call")]
+        fake.items.entries[.event] = [HandEntry(id: "e1", title: "Made-up review", start: start, end: start + 1800)]
+        fake.apps.books = ["Made-up budget.xlsx"]
+        fake.apps.cells["Made-up budget.xlsx|B2:C2"] = ["10", "20"]
+        let hand = hand(), job = hand.begin(watchUser: false)
+        for script in [HandScript.rename(.note, title: "Made-up plan", to: "Made-up plan two"),
+                       .rename(.reminder, title: "Made-up call", to: "Made-up call later"),
+                       .move(title: "Made-up review", start: start + 3600, end: nil),
+                       .changeCells(book: "Made-up budget.xlsx", top: "B2", rows: [["12", "13"]])] {
+            XCTAssertEqual(hand.act(step(script), in: job).end, .done)
+        }
+        // The user works on three of them after the job.
+        fake.apps.edit(0, ["Made-up plan two", "A line the user added"])
+        fake.items.entries[.reminder]![0].notes = "A made-up note of the user's"
+        fake.apps.cells["Made-up budget.xlsx|B2:C2"] = ["12", "99"]
+        let undo = hand.restore(job)
+        XCTAssertEqual(undo, HandUndo(end: .done, changedSince: 3))
+        XCTAssertEqual(undo.lines, [HandUndo.changedSinceLine])
+        XCTAssertEqual(fake.apps.notes[0].text, "Made-up plan two\nA line the user added")
+        XCTAssertEqual(fake.items.one("r1", .reminder)?.title, "Made-up call later")
+        XCTAssertEqual(fake.items.one("r1", .reminder)?.notes, "A made-up note of the user's")
+        XCTAssertEqual(fake.apps.cells["Made-up budget.xlsx|B2:C2"], ["12", "99"])
+        XCTAssertEqual(fake.items.one("e1", .event)?.start, start, "the untouched one is put back")
+    }
+
+    /// R13, R17: a deleted item comes back with all its app lets be set (alerts, priority, link, folder), and the card
+    /// says what cannot come back. The fakes lose what EventKit and Notes lose.
+    func testADeletedItemComesBackWholeAndTheRestIsSaid() throws {
+        let link = try XCTUnwrap(URL(string: "https://example.com/made-up"))
+        let reminder = HandEntry(id: "r1", title: "Made-up call", due: DateComponents(year: 2033, month: 5, day: 18, hour: 10),
+                                 notes: "Made-up notes", calendar: "list-1",
+                                 alarms: [HandAlarm(date: start), HandAlarm(offset: -600)], priority: 1, url: link)
+        let event = HandEntry(id: "e1", title: "Made-up review", start: start, end: start + 1800, location: "Made-up room",
+                              calendar: "cal-1", alarms: [HandAlarm(offset: -900)], url: link)
+        fake.items.entries[.reminder] = [reminder]
+        fake.items.entries[.event] = [event]
+        fake.items.hidden = ["r1": ["flag", "subtasks"], "e1": ["attachment"]]
+        fake.apps.add("Made-up plan", ["A made-up line"], folder: "folder-work", attachments: 1)
+        let hand = hand(), job = hand.begin(watchUser: false)
+        for (item, title) in [(HandItem.note, "Made-up plan"), (.reminder, "Made-up call"), (.event, "Made-up review")] {
+            XCTAssertEqual(hand.act(step(.delete(item, title: title)), in: job).end, .done)
+        }
+        let undo = hand.restore(job)
+        XCTAssertEqual(undo.end, .done)
+        XCTAssertEqual(Set(undo.lost), Set([HandUndo.lost(.note), HandUndo.lost(.reminder), HandUndo.lost(.event)]))
+        let back = try XCTUnwrap(fake.items.entries[.reminder]?.first)
+        var want = reminder
+        want.id = back.id
+        XCTAssertEqual(back, want, "alerts, priority and link come back")
+        let backEvent = try XCTUnwrap(fake.items.entries[.event]?.first)
+        want = event
+        want.id = backEvent.id
+        XCTAssertEqual(backEvent, want)
+        XCTAssertNil(fake.items.hidden[back.id], "made again: what EventKit cannot set is gone, and the card said so")
+        XCTAssertEqual(fake.apps.notes.map(\.folder), ["folder-work"], "back in its folder")
+        XCTAssertEqual(fake.apps.notes.map(\.attachments), [0])
     }
 }

@@ -2,11 +2,11 @@
 
 A macOS companion for people who create projects. You call him with a shortcut and he works with you: he does the jobs you ask for in your apps, explains what is on screen, guides you step by step by pointing, remembers your projects, and researches a task alone.
 
-Version 0.1.1 (the MVP was 0.1.0). Private repository.
+Version 0.2.0 (the MVP was 0.1.0). Private repository.
 
 ## Install
 
-Download `Phew-0.1.1.dmg` from the Releases page, open it and drag Phew to Applications. The app is signed with a development certificate, not notarised by Apple: on a Mac other than the owner's, macOS refuses to open it unless you right-click it and choose Open.
+Download `Phew-0.2.0.dmg` from the Releases page, open it and drag Phew to Applications. The app is signed with a development certificate, not notarised by Apple: on a Mac other than the owner's, macOS refuses to open it unless you right-click it and choose Open.
 
 At first launch Phew asks for three things, once: a Claude API key (kept only in the Keychain), Accessibility, and Screen Recording. The microphone is asked the first time you hold the shortcut to talk.
 

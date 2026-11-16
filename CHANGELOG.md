@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0, 17 November 2026
+
+Phase N2, acting and agents second pass. Tested with stand-ins for the apps and for the model; not yet run live.
+
+- He changes and deletes notes, reminders, events and cells, named by their exact title, with Undo on the card.
+- A "can't be undone" tag on actions that send, publish, delete or replace. A research agent's change or delete waits in the menu for one confirm.
+- He reads an app's menu commands before acting, and asks Chromium and Electron apps (Dia, Figma) to describe their controls.
+- He returns you to the exact window; the pointer lands on a second display.
+- Research plans first, reads what it cites, and ends every report with "Not checked". "Keep facts from …" proposes a report's facts for your memory, by tick.
+- A task reserves its budget from the day's ceiling; the limits no longer read the call log on every request.
+
 ## 0.1.1, 16 November 2026
 
 - Limits: a "Limits…" entry in the menu with requests per minute, requests per day and dollars per day. He stops and says so when one is reached.

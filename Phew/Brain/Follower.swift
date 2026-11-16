@@ -120,9 +120,13 @@ enum Follower {
         var look = packet
         look.visibleText = String(packet.visibleText.prefix(maxText))
         look.pointables = elements(packet, steps: Array(steps.dropFirst(current)))
+        // R58: cut from the captured pixels when the look has them: no PNG decoded, and a whole display sent smaller
+        // is still cut at full size.
+        let image = packet.image
         guard let png = packet.screenshot, let frame = packet.screenshotFrame, let mouse = packet.mouse,
-              let rect = cutRect(png: png, mouse: CGPoint(x: mouse.x - frame.minX, y: mouse.y - frame.minY)),
-              let cut = crop(png, to: rect)
+              let size = image.map({ ScreenshotSize(width: $0.width, height: $0.height) }) ?? ScreenshotSize(png: png),
+              let rect = cutRect(size: size, mouse: CGPoint(x: mouse.x - frame.minX, y: mouse.y - frame.minY)),
+              let cut = image.map({ $0.cropping(to: rect).flatMap(ScreenshotSize.png) }) ?? crop(png, to: rect)
         else { return (look, (0, 0)) }
         look.screenshot = cut
         look.screenshotFrame = CGRect(x: frame.minX + rect.minX, y: frame.minY + rect.minY, width: rect.width, height: rect.height)
@@ -131,8 +135,10 @@ enum Follower {
 
     /// The cut in screenshot pixels, kept inside the picture. Nil when the picture is not larger than the cut, or the
     /// mouse is not on it.
-    static func cutRect(png: Data, mouse: CGPoint) -> CGRect? {
-        guard let size = ScreenshotSize(png: png), size.width > cut.width || size.height > cut.height,
+    static func cutRect(png: Data, mouse: CGPoint) -> CGRect? { ScreenshotSize(png: png).flatMap { cutRect(size: $0, mouse: mouse) } }
+
+    static func cutRect(size: ScreenshotSize, mouse: CGPoint) -> CGRect? {
+        guard size.width > cut.width || size.height > cut.height,
               mouse.x >= 0, mouse.y >= 0, mouse.x < CGFloat(size.width), mouse.y < CGFloat(size.height) else { return nil }
         let (w, h) = (min(cut.width, size.width), min(cut.height, size.height))
         let x = min(max(Int(mouse.x) - w / 2, 0), size.width - w)
@@ -144,10 +150,7 @@ enum Follower {
     static func crop(_ png: Data, to rect: CGRect) -> Data? {
         guard let source = CGImageSourceCreateWithData(png as CFData, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil)?.cropping(to: rect) else { return nil }
-        let data = NSMutableData()
-        guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else { return nil }
-        CGImageDestinationAddImage(destination, image, nil)
-        return CGImageDestinationFinalize(destination) ? data as Data : nil
+        return ScreenshotSize.png(image)
     }
 
     /// The elements a look sends, in the packet's order: every one whose label a remaining step names, then the

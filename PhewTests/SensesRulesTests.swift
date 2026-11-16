@@ -14,6 +14,67 @@ final class SensesRulesTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
     }
 
+    // MARK: R55, R58: the picture beside the walk, encoded once
+
+    /// R55: the picture starts while the walk still runs, not after it.
+    func testThePictureIsTakenBesideTheWalk() async {
+        final class Seen: @unchecked Sendable {
+            private let lock = NSLock()
+            private var started = false
+            func start() { lock.withLock { started = true } }
+            var value: Bool { lock.withLock { started } }
+        }
+        let seen = Seen()
+        var pictureBeforeWalkEnded = false
+        let (window, shot) = await Senses.beside({ seen.start(); return 7 }) {
+            // The walk waits up to 2 s for the picture to start: taken in turn, it never would.
+            for _ in 0..<200 where !seen.value { try? await Task.sleep(for: .milliseconds(10)) }
+            pictureBeforeWalkEnded = seen.value
+            return ("Made up", nil, nil, [], [])
+        }
+        XCTAssertTrue(pictureBeforeWalkEnded)
+        XCTAssertEqual(window.title, "Made up")
+        XCTAssertEqual(shot, 7)
+    }
+
+    private func image(_ width: Int, _ height: Int) throws -> CGImage {
+        let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(red: 0.2, green: 0.4, blue: 0.8, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        return try XCTUnwrap(context.makeImage())
+    }
+
+    /// R58: a large whole display is encoded once, at the size that is sent; the Brain sends it as it is, and still
+    /// maps a point back to the captured pixels. A window's picture is encoded at full size.
+    func testALargeDisplayIsEncodedOnceAtTheSentSize() throws {
+        let display = try image(2560, 1440)
+        let capped = ScreenshotSize(width: 2560, height: 1440, maxTokens: ScreenshotSize.displayTokens)
+        let png = try XCTUnwrap(ScreenCapture.png(display, display: true))
+        XCTAssertEqual(ScreenshotSize(png: png).map { [$0.width, $0.height] }, [capped.seenWidth, capped.seenHeight])
+        XCTAssertEqual(ScreenshotSize(png: try XCTUnwrap(ScreenCapture.png(display, display: false)))?.width, 2560)
+        var packet = ContextPacket(appName: "Finder", bundleID: "com.apple.finder", windowTitle: "", visibleText: "", cursor: nil,
+                                   screenshot: png, screenshotFrame: CGRect(x: 0, y: 0, width: 2560, height: 1440))
+        packet.wholeDisplay = true
+        let (sent, size) = ScreenshotSize.sent(packet)
+        XCTAssertEqual(sent.screenshot, png, "not decoded and encoded again")
+        XCTAssertEqual(size, capped)
+    }
+
+    /// R58: a guide look cuts from the captured pixels: the PNG is not decoded (here it cannot be: a header only).
+    func testAGuideLookCutsFromTheCapturedPixels() throws {
+        var packet = ContextPacket(appName: "Practice", bundleID: "com.example.practice", windowTitle: "", visibleText: "", cursor: nil,
+                                   screenshot: TestPNG.make(width: 1600, height: 1000), screenshotFrame: CGRect(x: 100, y: 50, width: 1600, height: 1000))
+        packet.mouse = CGPoint(x: 900, y: 550)
+        XCTAssertEqual(Follower.less(packet, steps: [], current: 0).0.screenshot, packet.screenshot, "the PNG alone cannot be cut")
+        packet.image = try image(1600, 1000)
+        let (look, offset) = Follower.less(packet, steps: [], current: 0)
+        XCTAssertEqual(look.screenshot.flatMap(ScreenshotSize.init(png:)).map { [$0.width, $0.height] }, [800, 600])
+        XCTAssertEqual([offset.x, offset.y], [400, 200])
+        XCTAssertEqual(look.screenshotFrame, CGRect(x: 500, y: 250, width: 800, height: 600))
+    }
+
     func testPictureIsTheWindowOnlyWhenTheMouseIsInsideIt() {
         let window = CGRect(x: 100, y: 50, width: 800, height: 600)
         XCTAssertTrue(ScreenCapture.picksWindow(mouse: CGPoint(x: 400, y: 300), windowFrame: window))

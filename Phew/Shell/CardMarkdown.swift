@@ -9,17 +9,27 @@ enum CardMarkdown {
     nonisolated(unsafe) private(set) static var parses = 0
     /// The last texts parsed: the view body asks again on every streamed piece and typed character (R51).
     nonisolated(unsafe) private static var kept: [String: AttributedString] = [:]
+    /// The kept texts, least recently asked first: a streamed answer's passing texts go before the earlier answers,
+    /// which every redraw asks for again (R51).
+    nonisolated(unsafe) private static var order: [String] = []
     private static let lock = NSLock()
     /// The current answer and the earlier ones of a thread (8 kept turns), with room to spare.
     private static let keptCap = 32
 
     static func attributed(_ text: String) -> AttributedString {
-        if let done = lock.withLock({ kept[text] }) { return done }
+        let done = lock.withLock { () -> AttributedString? in
+            guard let done = kept[text] else { return nil }
+            order.removeAll { $0 == text }
+            order.append(text)
+            return done
+        }
+        if let done { return done }
         let parsed = parse(text)
         lock.withLock {
             parses += 1
-            if kept.count >= keptCap { kept = [:] }  // shortcut: drops all at the cap, not the oldest; fine for one card
+            if kept[text] == nil { order.append(text) }
             kept[text] = parsed
+            while order.count > keptCap { kept[order.removeFirst()] = nil }
         }
         return parsed
     }

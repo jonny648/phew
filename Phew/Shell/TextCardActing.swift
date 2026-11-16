@@ -19,7 +19,8 @@ extension TextCard {
 
     /// Runs the job in `app`, the app the user asked in. Returns when it ends; the Hand's watch goes with it.
     /// If another app has come to the front meanwhile, it stops before any look, so no other app's screen is read.
-    func act(_ request: String, spoken: [Hearing] = [], in app: NSRunningApplication?) async {
+    /// `first`: the look taken at the shortcut; round 1 uses it when it is of `app` (R53).
+    func act(_ request: String, spoken: [Hearing] = [], in app: NSRunningApplication?, first: ContextPacket? = nil) async {
         var app = app
         // Each look reads the app the job works in, never whatever came to the front meanwhile (the Hand stops then).
         var look: ((pid_t) async -> ContextPacket?)?
@@ -56,6 +57,7 @@ extension TextCard {
                              pointer?.act(on: spot)
                          })
         run.spoken = spoken
+        if look == nil, let first, first.bundleID == app.bundleIdentifier { run.firstLook = first }
         run.menus = { pid in await Task.detached { MenuReader.names(pid: pid) }.value }
         run.starting = { [weak self] line in self?.model.actions.append(CardModel.Action(line: line)) }
         run.landed = { [weak self] step, result in self?.model.landed(ActJob.line(step), step: step, result: result) }

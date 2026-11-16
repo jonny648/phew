@@ -103,8 +103,10 @@ final class ActJobTests: XCTestCase {
         XCTAssertEqual(lines, ["Pressed Bold", "Picked Format > Font > Bold"])
         let calls = provider.requests
         XCTAssertEqual(calls.count, 3)
-        XCTAssertTrue(calls.allSatisfy { $0.text.contains("<menus>\nFormat: Font > [Bold | Italic]\nEdit: Paste \(SecretsFilter.keyMarker)\n</menus>") })
-        XCTAssertFalse(calls.contains { $0.text.contains(key) })
+        // R56: in the part of the turn sent first and cached, the same on every call; not in the changing text.
+        XCTAssertTrue(calls.allSatisfy { $0.cached == "<menus>\nFormat: Font > [Bold | Italic]\nEdit: Paste \(SecretsFilter.keyMarker)\n</menus>" })
+        XCTAssertFalse(calls.contains { $0.text.contains("<menus>") })
+        XCTAssertFalse(calls.contains { $0.text.contains(key) || ($0.cached ?? "").contains(key) })
         XCTAssertTrue(Doer.system.contains("prefer pick"))
 
         // Never read: no menus read, no block.
@@ -115,7 +117,7 @@ final class ActJobTests: XCTestCase {
         neverRun.menus = { reads.append($0); return "Made-up: Never" }
         _ = await neverRun.run("Make it bold", job: otherJob) { _ in }
         XCTAssertEqual(reads, [FakeSurface.pid])
-        XCTAssertFalse(otherProvider.requests.contains { $0.text.contains("<menus>") })
+        XCTAssertFalse(otherProvider.requests.contains { $0.text.contains("<menus>") || $0.cached != nil })
     }
 
     func testStopsOnAHandEndWithoutRetry() async {
@@ -311,6 +313,34 @@ final class ActJobTests: XCTestCase {
         XCTAssertTrue(provider.requests[2].text.contains("2. Filled 4 cells from A1 in Excel: done"))
         XCTAssertTrue(provider.requests[0].text.contains("\nNow: 20"), "the date for \"tomorrow\"")
         XCTAssertEqual(ActJob.sentence(for: .noAccess), "macOS has not allowed me to use that app. You can allow it in System Settings, Privacy & Security.")
+    }
+
+    /// R54: a step behind the app does not show on the screen, and the Hand read it back: the next round takes no new
+    /// look and sends no picture.
+    func testAfterAStepBehindTheAppNoNewLookAndNoPicture() async {
+        var shot = packet
+        shot.screenshot = png(400, 300)
+        shot.screenshotFrame = CGRect(x: 0, y: 0, width: 400, height: 300)
+        let (run, provider, job, _) = make([script("workbook"), script("cells", cell: "A1", rows: [["1"]]),
+                                            reply("press", element: "e1"), reply("done", text: "Made it.")], packet: shot)
+        let outcome = await run.run("Make a workbook with 1 in A1, then press Bold", job: job) { _ in }
+        XCTAssertEqual(outcome, .done("Made it."))
+        XCTAssertEqual(looked.count, 2, "a look before the first step and after the press, none after the two scripts")
+        XCTAssertEqual(provider.requests.map { $0.image != nil }, [true, false, false, true])
+        XCTAssertTrue(provider.requests[2].text.contains("<screen>"), "the screen's text still goes")
+    }
+
+    // MARK: The look from the shortcut (R53)
+
+    func testTheShortcutsLookServesTheFirstRound() async {
+        let (made, provider, job, _) = make([reply("press", element: "e1"), reply("done", text: "Made it bold.")])
+        var run = made
+        run.firstLook = packet
+        let outcome = await run.run("Make it bold", job: job) { _ in }
+        XCTAssertEqual(outcome, .done("Made it bold."))
+        XCTAssertEqual(looked.count, 1, "no second read before the first action; a fresh look after it")
+        XCTAssertEqual(provider.requests.count, 2)
+        XCTAssertEqual(fake.sentCount, 1)
     }
 
     // MARK: Several apps in one job (PH.7)

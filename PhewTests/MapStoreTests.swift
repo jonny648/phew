@@ -130,6 +130,28 @@ final class MapStoreTests: XCTestCase {
         XCTAssertEqual(found.map(\.id), [living])
     }
 
+    /// R50: keeping many facts reads the current Notes once for the whole keep, not once per fact, and still finds a
+    /// twin stored earlier in the same keep or before it.
+    func testKeepingManyFactsReadsTheNotesOnce() async throws {
+        final class Reads: @unchecked Sendable { var notes = 0 }
+        let store = try MapStore()
+        _ = try await store.add(MapNode(mapClass: .note, kind: "fact", text: "The made-up kiln runs on Tuesdays", origin: .told))
+        let reads = Reads()
+        let db = await store.db
+        db.traced = { if $0.contains("class = 'Note' AND valid_to IS NULL") { reads.notes += 1 } }
+        func fact(_ i: Int, _ sentence: String) -> ImportCandidate {
+            ImportCandidate(id: i, sentence: sentence, kind: "fact", aboutMe: true, things: [], date: "", sensitive: false,
+                            instruction: false, ticked: true, source: .other)
+        }
+        let facts = (0..<30).map { fact($0, "Made-up fact number \($0)") }
+            + [fact(30, "made-up FACT number 3"), fact(31, "The made-up kiln runs on Tuesdays")]
+        let kept = try await store.keep(facts)
+        db.traced = nil
+        XCTAssertEqual(reads.notes, 1)
+        XCTAssertEqual(kept.stored, 30)
+        XCTAssertEqual(kept.seen, 2, "a twin from the same keep and one from before")
+    }
+
     func testSensitiveMoveLeavesTheRowInExactlyOneFile() async throws {
         let store = try MapStore()
         let person = try await store.add(MapNode(mapClass: .person, name: "Quillon", origin: .told))

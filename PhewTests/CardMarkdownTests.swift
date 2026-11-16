@@ -61,4 +61,19 @@ final class CardMarkdownTests: XCTestCase {
         for _ in 0..<20 { XCTAssertEqual(CardMarkdown.attributed(text), first) }
         XCTAssertEqual(CardMarkdown.parses - before, 1, "a redraw with the same words must not parse again")
     }
+
+    /// R51: a long streamed answer, with the thread open, parses each new piece once and never the earlier answers
+    /// again: its passing texts do not push them out of the kept ones.
+    func testAStreamedAnswerDoesNotReparseTheEarlierOnes() {
+        let run = UUID().uuidString
+        let earlier = (1...7).map { "Made-up **earlier** answer \($0) \(run)" }
+        let before = CardMarkdown.parses
+        var streamed = ""
+        for piece in 1...60 {
+            streamed += "piece \(piece) "
+            for answer in earlier { _ = CardMarkdown.attributed(answer) }  // each redraw draws the thread
+            _ = CardMarkdown.attributed(streamed + run)
+        }
+        XCTAssertEqual(CardMarkdown.parses - before, 7 + 60)
+    }
 }

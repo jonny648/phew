@@ -130,6 +130,31 @@ final class MapEncryptionTests: XCTestCase {
         }
     }
 
+    /// R49: reads by link end, Project, replacement and source use an index in both files, and an encrypted Map made
+    /// before the indexes gets them the next time it opens.
+    func testIndexesAreAddedToAnExistingEncryptedMap() throws {
+        let reads = ["all_edges WHERE from_node = 1": "edges_from", "all_edges WHERE to_node = 1": "edges_to",
+                     "all_events WHERE project = 1": "events_project", "all_nodes WHERE superseded_by = 1": "nodes_superseded",
+                     "all_nodes WHERE source_event = 1": "nodes_source"]
+        func indexed(_ db: Database) throws -> [String] {
+            try reads.keys.sorted().filter { read in
+                let plan = try db.query("EXPLAIN QUERY PLAN SELECT * FROM \(read)").compactMap { $0.text("detail") }
+                return plan.filter { $0.contains("USING INDEX \(reads[read]!)") }.count == 2  // main and s
+            }
+        }
+        var db = try Database(folder: folder, key: key1, sensitiveKey: key2)
+        XCTAssertEqual(try indexed(db), reads.keys.sorted())
+        // A Map from before: no indexes.
+        for file in ["main", "s"] {
+            for index in reads.values { try db.query("DROP INDEX \(file).\(index)") }
+        }
+        XCTAssertEqual(try indexed(db), [])
+        db.close()
+        db = try Database(folder: folder, key: key1, sensitiveKey: key2)
+        XCTAssertEqual(try indexed(db), reads.keys.sorted())
+        db.close()
+    }
+
     private func assertAbsent(_ words: [String], in bytes: Data, _ file: String, line: UInt = #line) {
         for word in words {
             for form in [word, word.lowercased()] {

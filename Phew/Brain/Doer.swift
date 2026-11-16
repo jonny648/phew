@@ -246,11 +246,12 @@ enum Doer {
         // The screen and the done lines are data, in their delimiters; a line cannot close a block early.
         let block = Guide.block
         let actions = done.isEmpty ? "None yet." : done.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
-        // The app's menu commands, when read (N2.6): labels, still data in their own block.
-        let menus = packet.menus.isEmpty ? [] : [block("menus", packet.menus)]
-        let parts = [block("screen", Guide.context(packet, shot: shot))] + menus
-            + [block("actions", actions), "Now: \(nowFormat.string(from: now))", Spoken.after("Request: \(request)", spoken)]
-        return ModelRequest(agent: "doer", tier: .main, system: system, text: parts.joined(separator: "\n\n"),
+        // The app's menu commands, when read (N2.6): labels, still data in their own block. The same on every call of
+        // the job, so they go first, cached (R56).
+        let menus = packet.menus.isEmpty ? nil : block("menus", packet.menus)
+        let parts = [block("screen", Guide.context(packet, shot: shot)), block("actions", actions),
+                     "Now: \(nowFormat.string(from: now))", Spoken.after("Request: \(request)", spoken)]
+        return ModelRequest(agent: "doer", tier: .main, system: system, text: parts.joined(separator: "\n\n"), cached: menus,
                             image: shot == nil ? nil : packet.screenshot, schema: schema, maxTokens: 2048)
     }
 }

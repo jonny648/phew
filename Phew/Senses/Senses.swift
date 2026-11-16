@@ -22,25 +22,32 @@ enum Senses {
         let cursorMS = ms(since: start)
 
         return Task.detached(priority: .userInitiated) {
-            // An Electron tree was still empty 0.5 s after the first ask, and full on the next capture.
-            // shortcut: one fixed 1 s wait, the first time per app process; poll until the text stops growing if too short.
-            // The app is not on the Never read list (checked above), so the ask is never for one that is.
-            let tree = WindowReader.askForFullTree(pid: pid)
-            if tree.wait { try? await Task.sleep(for: .seconds(1)) }
-            let walkStart = Date()
-            let window = WindowReader.readWindow(pid: pid)
-            let walkMS = ms(since: walkStart)
-            // VoiceOver's flag slows the app's window animations and window managers: off again once read.
-            // shortcut: the 1 s wait is only the first time per process; with the flag set back, a canvas tree
-            // (Keynote) may need it each time; wait each time if a live run shows a thin tree.
-            if tree.restore { WindowReader.setBack(pid: pid) }
-            var packet = Senses.packet(appName: name, bundleID: bundleID, window: window, cursor: cursor, mouse: point)
-            // Text and picture together, every time.
+            // Text and picture together, every time. The picture needs only the window's frame: it is taken beside
+            // the first-time wait and the walk (R55).
             // shortcut: screenshot pixels are not filtered (a key on screen stays visible); OCR redaction if that matters.
-            if let shot = await ScreenCapture.picture(pid: pid, windowFrame: window.frame, mouse: point, windowOnly: windowOnly, list: list) {
+            let frame = WindowReader.windowFrame(pid: pid)
+            var walkMS = 0
+            let (window, shot) = await beside({ await ScreenCapture.picture(pid: pid, windowFrame: frame, mouse: point, windowOnly: windowOnly, list: list) }) {
+                // An Electron tree was still empty 0.5 s after the first ask, and full on the next capture.
+                // shortcut: one fixed 1 s wait, the first time per app process; poll until the text stops growing if too short.
+                // The app is not on the Never read list (checked above), so the ask is never for one that is.
+                let tree = WindowReader.askForFullTree(pid: pid)
+                if tree.wait { try? await Task.sleep(for: .seconds(1)) }
+                let walkStart = Date()
+                let window = WindowReader.readWindow(pid: pid)
+                walkMS = ms(since: walkStart)
+                // VoiceOver's flag slows the app's window animations and window managers: off again once read.
+                // shortcut: the 1 s wait is only the first time per process; with the flag set back, a canvas tree
+                // (Keynote) may need it each time; wait each time if a live run shows a thin tree.
+                if tree.restore { WindowReader.setBack(pid: pid) }
+                return window
+            }
+            var packet = Senses.packet(appName: name, bundleID: bundleID, window: window, cursor: cursor, mouse: point)
+            if let shot {
                 packet.screenshot = shot.png
                 packet.screenshotFrame = shot.frame
                 packet.wholeDisplay = shot.display
+                packet.image = shot.image
             }
             #if DEBUG
             packet.logStats(pointablesFound: window.pointables.count, cursorMS: cursorMS, walkMS: walkMS,
@@ -49,6 +56,14 @@ enum Senses {
             #endif
             return packet
         }
+    }
+
+    /// Runs `picture` beside `walk` and waits for both (R55): a capture costs the longer of the two, not their sum.
+    static func beside<Shot>(_ picture: @escaping @Sendable () async -> Shot,
+                             walk: () async -> WindowReader.Window) async -> (WindowReader.Window, Shot) {
+        async let shot = picture()
+        let window = await walk()
+        return (window, await shot)
     }
 
     /// The packet from what was read, through the secrets filter: no screen read here, so it is unit-tested (R20).

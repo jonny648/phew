@@ -26,6 +26,10 @@ struct ScreenshotSize: Equatable {
     static func sent(_ packet: ContextPacket) -> (ContextPacket, ScreenshotSize?) {
         guard let png = packet.screenshot, let size = ScreenshotSize(png: png) else { return (packet, nil) }
         guard packet.wholeDisplay else { return (packet, size) }
+        // R58: captured at the sent size already (`ScreenCapture.png`); the frame keeps the captured size, one pixel per point.
+        if let frame = packet.screenshotFrame, Int(frame.width) > size.width {
+            return (packet, ScreenshotSize(width: Int(frame.width), height: Int(frame.height), maxTokens: displayTokens))
+        }
         let capped = ScreenshotSize(width: size.width, height: size.height, maxTokens: displayTokens)
         guard capped.seenWidth < size.width, let smaller = scaled(png, width: capped.seenWidth, height: capped.seenHeight)
         else { return (packet, size) }
@@ -37,16 +41,25 @@ struct ScreenshotSize: Equatable {
     /// The PNG redrawn at `width` by `height` pixels; nil on failure.
     static func scaled(_ png: Data, width: Int, height: Int) -> Data? {
         guard let source = CGImageSourceCreateWithData(png as CFData, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
-              let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+        return scaled(image, width: width, height: height)
+    }
+
+    /// The image redrawn at `width` by `height` pixels, as a PNG; nil on failure.
+    static func scaled(_ image: CGImage, width: Int, height: Int) -> Data? {
+        guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
                                       space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                       bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
         context.interpolationQuality = .high
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return context.makeImage().flatMap(png)
+    }
+
+    /// The image as a PNG, in memory only; nil on failure.
+    static func png(_ image: CGImage) -> Data? {
         let data = NSMutableData()
-        guard let small = context.makeImage(),
-              let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else { return nil }
-        CGImageDestinationAddImage(destination, small, nil)
+        guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(destination, image, nil)
         return CGImageDestinationFinalize(destination) ? data as Data : nil
     }
 

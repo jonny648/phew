@@ -176,7 +176,7 @@ final class TextCard: EditPanel {
                 }
                 // With acting off the Brain gave a guide with the fixed line; with it on, he does the job.
                 if try await play(state), state.acting, !Task.isCancelled {
-                    await self?.act(question, spoken: spoken, in: asked)
+                    await self?.act(question, spoken: spoken, in: asked, first: packet)
                 }
             } catch {
                 failure = BrainError(error)

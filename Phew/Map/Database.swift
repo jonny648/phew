@@ -37,6 +37,11 @@ final class Database {
 
     private var handle: OpaquePointer?
 
+    #if DEBUG
+    /// Unit tests only: each statement's SQL as it runs, to count reads (R50). Never set by the app.
+    var traced: ((String) -> Void)?
+    #endif
+
     /// `folder` nil: both databases in memory with no key (unit tests). Keys nil with a folder: plain files, used only
     /// by the secure-delete test, which must see plain pages. The app always passes both keys (MapStore).
     init(folder: URL?, key: String?, sensitiveKey: String?) throws {
@@ -108,6 +113,9 @@ final class Database {
     @discardableResult
     func query(_ sql: String, _ params: [SQLValue] = []) throws -> [SQLRow] {
         guard let handle else { throw Failure(code: SQLITE_MISUSE, step: "closed") }
+        #if DEBUG
+        traced?(sql)
+        #endif
         var statement: OpaquePointer?
         var rc = sqlite3_prepare_v2(handle, sql, -1, &statement, nil)
         guard rc == SQLITE_OK, let statement else { throw Failure(code: rc, step: "prepare") }
@@ -189,7 +197,9 @@ final class Database {
         guard rc == SQLITE_OK else { throw Failure(code: rc, step: "schema") }
     }
 
-    /// The tables of 5.12 (terms only in main) and the two text indexes of one file. A row in Recently deleted
+    /// The tables of 5.12 (terms only in main) and the two text indexes of one file. The plain indexes (R49) serve
+    /// the reads by link end, Project, replacement and source on every answer; "IF NOT EXISTS" adds them to a
+    /// Map made before them the next time it opens, inside its encryption like every other page. A row in Recently deleted
     /// (`deleted` not empty) is kept out of its index by the triggers, so a forget and a restore update the index too.
     private static func tables(in s: String) -> String {
         """
@@ -209,6 +219,11 @@ final class Database {
           kind TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', project INTEGER, mentions TEXT NOT NULL DEFAULT '[]',
           sensitive INTEGER NOT NULL DEFAULT 0, deleted TEXT NOT NULL DEFAULT '', embedding BLOB);
         CREATE TABLE IF NOT EXISTS \(s).forgets (id INTEGER PRIMARY KEY, time TEXT NOT NULL, label TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS \(s).edges_from ON edges(from_node);
+        CREATE INDEX IF NOT EXISTS \(s).edges_to ON edges(to_node);
+        CREATE INDEX IF NOT EXISTS \(s).events_project ON events(project);
+        CREATE INDEX IF NOT EXISTS \(s).nodes_superseded ON nodes(superseded_by);
+        CREATE INDEX IF NOT EXISTS \(s).nodes_source ON nodes(source_event);
         CREATE VIRTUAL TABLE IF NOT EXISTS \(s).nodes_fts USING fts5(name, aliases, kind, text,
           content='nodes', content_rowid='id', tokenize='unicode61 remove_diacritics 2');
         CREATE VIRTUAL TABLE IF NOT EXISTS \(s).events_fts USING fts5(summary,

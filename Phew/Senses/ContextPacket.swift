@@ -25,6 +25,9 @@ struct ContextPacket: Codable {
     /// The screenshot is the whole display, not cut to a window: the Brain sends it smaller (A3,
     /// `ScreenshotSize.sent`). Its pixels and `screenshotFrame` stay as captured.
     var wholeDisplay = false
+    /// The captured pixels behind `screenshot`, full size: a guide look cuts from them without decoding the PNG
+    /// (R58). Memory only, gone with the packet; never sent or written.
+    var image: CGImage? = nil
     /// The open document's file path or page address, when the app gives one (`WindowReader.documentPath`).
     /// A label for project detection (docs/05-map.md 5.11), not capture: the Map may keep it.
     var documentPath: String? = nil

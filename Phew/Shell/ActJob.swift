@@ -10,7 +10,8 @@ import AppKit
 struct ActJob {
     let brain: any Brain
     let hand: Hand
-    /// A fresh look at the app the job works in now (its pid), once per round.
+    /// A fresh look at the app the job works in now (its pid), once per round; not in round 1 when `firstLook` is
+    /// given, nor after a step behind the app (R53, R54).
     let capture: (pid_t) async -> ContextPacket?
     /// Before each action, where it acts, screen points with a top-left origin: the card moves out of its way.
     var aside: (CGRect) -> Void = { _ in }
@@ -22,6 +23,9 @@ struct ActJob {
     var landed: (HandStep, HandResult) -> Void = { _, _ in }
     /// The names of an app's menu commands (`MenuReader.names(pid:)`), read once per job and per app (N2.6).
     var menus: (pid_t) async -> String = { _ in "" }
+    /// The look taken at the shortcut, of the app the job starts in: round 1 uses it instead of a second screen read
+    /// (R53). The Hand's own checks (gone, moved, front changed) stop a step this look no longer fits. Gone with the job.
+    var firstLook: ContextPacket?
 
     enum Outcome: Equatable {
         case done(String)
@@ -43,10 +47,15 @@ struct ActJob {
         var done: [String] = []  // for the Brain: what was made, by name, and how it ended
         var last = "", repeats = 0  // the same action on the same spot, in a row
         var menuNames: [pid_t: String] = [:]  // once per app, gone with the job
+        // R54: after a step behind the app, the last look again without its picture: the step does not show on the
+        // screen, and the Hand already read it back. Each is used for one round only.
+        var reuse = firstLook
         while true {
             if let end = job.end { return .ended(end) }
             let app = job.app
-            var packet = await capture(app)
+            var packet = reuse
+            reuse = nil
+            if packet == nil { packet = await capture(app) }
             // Not for an app on the Never read list: its look came back empty, and so do its menus.
             if packet?.neverRead == false {
                 if menuNames[app] == nil { menuNames[app] = await menus(app) }
@@ -90,6 +99,10 @@ struct ActJob {
             guard result.end == .done else { return .ended(result.end) }
             listed(line)
             landed(step, result)
+            if step.kind == .script, var last = packet {
+                last.screenshot = nil
+                reuse = last
+            }
         }
     }
 

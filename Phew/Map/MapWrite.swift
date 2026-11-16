@@ -350,9 +350,15 @@ extension MapStore {
         // A Note about nothing: about what the Note it replaces was about, else the Project of the question.
         if about.isEmpty, status == "replaces" { about = namedAbout }
         if about.isEmpty, let project { about = [project] }
-        // The same sentence as a current Note, ignoring capitals and accents: seen again, not stored twice.
-        let twin = try db.query("SELECT * FROM all_nodes WHERE class = 'Note' AND valid_to IS NULL AND deleted = ''")
-            .compactMap(MapStore.node).first { MapStore.folded($0.text) == MapStore.folded(text) }
+        // The same sentence as a current Note, ignoring capitals and accents: seen again, not stored twice. The
+        // current Notes are read and folded once per transaction (R50), then kept up to date below.
+        if s.twins == nil {
+            s.twins = [:]
+            for row in try db.query("SELECT id, text FROM all_nodes WHERE class = 'Note' AND valid_to IS NULL AND deleted = ''") {
+                if let id = row.int("id") { s.twins?[MapStore.folded(row.text("text") ?? ""), default: []].append(id) }
+            }
+        }
+        let twin = try s.twins?[MapStore.folded(text)]?.first.flatMap(node)
         if let seen = twin ?? (status == "same" ? named : nil) {
             try seenAgain(seen, origin, s, &out)
             return
@@ -381,7 +387,9 @@ extension MapStore {
             }
             out.replaced.append(old.id)
             s.corrected = true
+            s.twins?[MapStore.folded(old.text)]?.removeAll { $0 == old.id }
         }
+        s.twins?[MapStore.folded(text), default: []].append(id)
         if kind == "unconfirmed" { out.unconfirmed.append(id) } else { out.stored.append(id) }
         s.mention(id)
     }
@@ -796,6 +804,8 @@ private final class WriteState {
     var refs: [String: Int64]
     var mentions: [Int64] = []
     var corrected = false
+    /// The current Notes' ids by folded text, read once on the first Note of the transaction (R50).
+    var twins: [String: [Int64]]?
     /// Set on an import (5.10): every fact is then "imported", whatever the reply says.
     let importing: ImportSource?
 

@@ -149,6 +149,10 @@ enum WindowReader {
         return axValue(v[0], .cgPoint, &origin) && axValue(v[1], .cgSize, &size) ? CGRect(origin: origin, size: size) : nil
     }
 
+    /// The frame of the window `readWindow` reads, and nothing else: read before the walk so the picture can be taken
+    /// beside it (R55).
+    static func windowFrame(pid: pid_t) -> CGRect? { window(pid).flatMap(frame(of:)) }
+
     /// Visible text under `root`, skipping secure fields and anything outside `clip` (scrolled out of sight).
     /// Reading order, or nearest `point` first when given, so a big container gives the text by the mouse.
     /// With `pointables`, also the named controls on screen (`pointableRoles`), and secure fields without a name.

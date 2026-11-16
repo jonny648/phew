@@ -173,6 +173,28 @@ final class ClaudeProviderHTTPTests: XCTestCase {
         XCTAssertFalse(all.contains(secret))
     }
 
+    /// R56: the Doer's menus, the same on every call of a job, go first in the turn with their own mark; the picture
+    /// and the changing text come after it, unmarked.
+    func testTheRepeatedPartOfATurnGoesFirstAndCached() throws {
+        var packet = ContextPacket(appName: "Practice", bundleID: "com.example.practice", windowTitle: "Made up", visibleText: "Made up", cursor: nil)
+        packet.screenshot = TestPNG.make(width: 40, height: 30)
+        packet.menus = "Format: Font > [Bold | Italic]"
+        let request = Doer.request("Make it bold", packet: packet, shot: ScreenshotSize(width: 40, height: 30), done: [])
+        let messages = try XCTUnwrap(try body(request)["messages"] as? [[String: Any]])
+        let current = try XCTUnwrap(messages.last?["content"] as? [[String: Any]])
+        XCTAssertEqual(current.map { $0["type"] as? String }, ["text", "image", "text"])
+        XCTAssertEqual(current[0]["text"] as? String, "<menus>\nFormat: Font > [Bold | Italic]\n</menus>")
+        XCTAssertEqual(current[0]["cache_control"] as? [String: String], ["type": "ephemeral"])
+        XCTAssertNil(current[1]["cache_control"])
+        XCTAssertNil(current[2]["cache_control"])
+        XCTAssertFalse((current[2]["text"] as? String ?? "").contains("<menus>"))
+        // No menus: nothing extra, no mark.
+        packet.menus = ""
+        let plain = Doer.request("Make it bold", packet: packet, shot: ScreenshotSize(width: 40, height: 30), done: [])
+        let turn = try XCTUnwrap((try body(plain)["messages"] as? [[String: Any]])?.last?["content"] as? [[String: Any]])
+        XCTAssertEqual(turn.map { $0["type"] as? String }, ["image", "text"])
+    }
+
     func testAFirstQuestionMarksOnlyTheSystemPrompt() throws {
         let sent = try body(request)
         XCTAssertEqual((sent["system"] as? [[String: Any]])?.first?["cache_control"] as? [String: String], ["type": "ephemeral"])

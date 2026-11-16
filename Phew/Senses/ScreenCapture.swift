@@ -17,7 +17,7 @@ enum ScreenCapture {
     /// `windowOnly` (live acting tests, PH.10): the front window wherever the mouse is, and never the whole display.
     /// `display`: the picture is the whole display, which the Brain sends smaller (A3); captured at full size here.
     static func picture(pid: pid_t, windowFrame: CGRect?, mouse: CGPoint, windowOnly: Bool = false,
-                        list: NeverReadList = .shared) async -> (png: Data, frame: CGRect, display: Bool)? {
+                        list: NeverReadList = .shared) async -> (png: Data, frame: CGRect, display: Bool, image: CGImage)? {
         guard CGPreflightScreenCaptureAccess() else { return nil }
         do {
             // Off-screen windows too: Phew's panel or card, still being ordered in, must be listed to be left out.
@@ -50,12 +50,21 @@ enum ScreenCapture {
             config.height = Int(filter.contentRect.height)
             config.showsCursor = false
             let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
-            guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { return nil }
-            return (png, CGRect(origin: origin, size: filter.contentRect.size), whole)
+            guard let png = Self.png(image, display: whole) else { return nil }
+            return (png, CGRect(origin: origin, size: filter.contentRect.size), whole, image)
         } catch {
             shellLog("screenshot failed: \(error.localizedDescription)")
             return nil
         }
+    }
+
+    /// The picture encoded once, at the size it is sent (R58): a whole display over `ScreenshotSize.displayTokens`
+    /// drawn at the smaller size the Brain sends (`ScreenshotSize.sent` reads the captured size from the frame);
+    /// anything else as captured.
+    static func png(_ image: CGImage, display: Bool) -> Data? {
+        let capped = ScreenshotSize(width: image.width, height: image.height, maxTokens: ScreenshotSize.displayTokens)
+        guard display, capped.seenWidth < image.width else { return ScreenshotSize.png(image) }
+        return ScreenshotSize.scaled(image, width: capped.seenWidth, height: capped.seenHeight)
     }
 
     /// Whether a whole-display picture leaves out the app `pid` (`bundleID`), when Phew was called on `front` (R1):

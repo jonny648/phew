@@ -102,7 +102,7 @@ struct ClaudeProvider: ModelProvider {
     /// R8: the request's input tokens, from its size, for a cut that came before the API's first numbers. On the safe
     /// side: one token per 3 characters, and a picture's 28-by-28-pixel blocks.
     static func promptTokens(_ request: ModelRequest) -> Int {
-        let characters = request.system.count + request.text.count
+        let characters = request.system.count + request.text.count + (request.cached?.count ?? 0)
             + request.earlier.reduce(0) { $0 + $1.question.count + $1.answer.count }
             + request.after.reduce(0) { $0 + $1.content.count }
             + request.tools.reduce(0) { $0 + $1.description.count + $1.schema.count }
@@ -120,6 +120,10 @@ struct ClaudeProvider: ModelProvider {
     /// `hour`: the system prompt's mark lasts one hour.
     static func urlRequest(_ request: ModelRequest, key: String, hour: Bool = false) throws -> URLRequest {
         var content: [[String: Any]] = []
+        // R56: the part of the turn that repeats from call to call, read from the cache after the first call.
+        if let cached = request.cached {
+            content.append(["type": "text", "text": cached, "cache_control": ephemeral])
+        }
         if let image = request.image {
             content.append(["type": "image",
                             "source": ["type": "base64", "media_type": "image/png", "data": image.base64EncodedString()]])

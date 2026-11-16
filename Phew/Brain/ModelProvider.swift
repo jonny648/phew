@@ -57,6 +57,9 @@ struct ModelRequest: Sendable {
     var tier: Tier
     var system: String
     var text: String
+    /// Text that is the same on every call of a job (the Doer's menus, R56): sent first in the current turn, before
+    /// the picture, with its own cache mark. Already filtered, like `text`.
+    var cached: String? = nil
     var image: Data? = nil
     /// JSON schema the answer must follow (structured output). The answer then streams as JSON text.
     var schema: String? = nil

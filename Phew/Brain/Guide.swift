@@ -199,7 +199,7 @@ enum Guide {
     }
 
     static func inert(_ text: String) -> String {
-        text.replacing(#/(?i)<\s*(\/?)\s*(map|self|project_memory|spoken|screen|menus|actions)\b/#) { "<\($0.1) \($0.2)" }
+        text.replacing(#/(?i)<\s*(\/?)\s*(map|self|project_memory|spoken|screen|menus|actions|skills?)\b/#) { "<\($0.1) \($0.2)" }
     }
 
     /// R15, R18: the screen as data, in its block. The tags the prompts trust (`<map>`, `<self>`, `<project_memory>`,

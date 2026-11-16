@@ -44,4 +44,5 @@ Start with `00-now.md`.
 | `docs/19-review.md` | The developer review of all the code, 16 November 2026: 56 findings in plain words, with where, a case, the fix, and what three checkers said of each | current |
 | `docs/20-language.md` | Swift or TypeScript for the thinking part: the recommendation, four shapes compared, a measured trial, the research with sources | current |
 | `docs/review.html` | The code review as one page to read | current |
+| `docs/21-skills.md` | Skills: the functions Phew writes for himself, the TypeScript helper, the closed box, the rules and what keeps each (phase NC) | current |
 | `docs/language.html` | The language question as one page to read | current |

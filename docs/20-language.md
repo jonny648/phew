@@ -2,6 +2,10 @@
 
 Written 16 November 2026, at your request. Research with sources (20.3) and a small trial with measured numbers (20.4). Nothing in the app was changed. The decision is yours (decision 48 in `07-decisions.md`).
 
+## 20.0 What you chose, 16 November 2026
+
+After reading this note you chose: Swift stays for the brain and every gate, and one small TypeScript helper is added, on Node shipped inside the app, with no network, to run self-made skills. This is the "worker, not the brain" of 20.1, with Node rather than the Mac's own engine. Built the same day: `docs/21-skills.md`. The Notion test (NB.1) is not needed for this choice; it still settles the separate question of connections.
+
 ## 20.1 In plain words
 
 **Recommendation: stay all Swift for now.** Do not move the thinking part to TypeScript. Keep one door open: a small helper, only for connections, only if the tools refuse the Swift kit.

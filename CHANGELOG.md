@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0, 16 November 2026
+
+Phase NC, first form: skills. Tested offline with the real helper in the real box; not yet with the model.
+
+- During a research task he can write a small function for himself, test it, keep it and use it again. A skill only computes: text in, text out.
+- Skills run in a closed box: a small TypeScript helper on Node inside the app, with no network, no file writes, no apps.
+- Memory, Skills… in the menu lists them, with Delete. A report names the skills its task used.
+- The app is now about 125 MB (Node is inside it). Apple silicon only.
+
 ## 0.2.3, 16 November 2026
 
 The rest of the developer review. Tested offline; nothing run live.

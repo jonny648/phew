@@ -32,6 +32,7 @@ struct PhewApp: App {
                 Button("Recently deleted…") { delegate.showRecentlyDeleted() }
                 Button("Export the Map…") { delegate.showExport() }
                 Button("Never-read apps…") { delegate.showNeverRead() }
+                Button("Skills…") { delegate.showSkills() }
             }
             Menu("Reports") {
                 Button("Choose reports folder…") { delegate.chooseReportsFolder() }
@@ -179,7 +180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A test copy under another bundle id: no Map maintenance at launch, so it never touches the user's Map folder.
         if CommandLine.arguments.contains("--debug-no-map") { return ClaudeBrain(map: BrainMap(maintenance: false), limits: Limits(), answerEarly: false) }
         #endif
-        return ClaudeBrain(limits: Limits(), answerEarly: false)
+        return ClaudeBrain(skills: SkillTools(), limits: Limits(), answerEarly: false)
     }()
     let panel = InputPanel()
     let card = TextCard()
@@ -357,6 +358,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func showNeverRead() {
         menuPanel.show(title: "Never-read apps", NeverReadView(model: NeverReadModel()))
+    }
+
+    func showSkills() {
+        menuPanel.show(title: "Skills", SkillsView(model: SkillsModel(brain: brain)))
     }
 
     func showLimits() {

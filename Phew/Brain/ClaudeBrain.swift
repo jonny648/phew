@@ -6,6 +6,8 @@ struct ClaudeBrain: Brain {
     var provider: any ModelProvider = ClaudeProvider()
     /// The Guide's tools. Nil: `search_map` on the Map when it is open, else none. Never the Follower's.
     var tools: (any ToolRunner)? = nil
+    /// NC: the self-made skills a task may write and run, in the closed box. Nil: no such tools (tests, checks).
+    var skills: SkillTools? = nil
     /// The last turns as text, for follow-up questions. A reference, so every copy of this Brain shares it.
     var memory = WorkingMemory()
     /// The Map, opened on first need, and the Librarian's runs. A reference, shared like `memory`.
@@ -244,7 +246,7 @@ extension ClaudeBrain {
             return search.map(RunnerTools.init)
         }, projectMemory: {
             await brain.projectMemoryBlock(SecretsFilter.clean(words), packet: packet, store: await map.now()).map(Runner.withoutAddresses)
-        }, add: add, provider: provider, limits: taskLimits)
+        }, add: add, skills: skills, provider: provider, limits: taskLimits)
         guard let limits else { return stream }
         // What the task did not spend goes back when it ends, fails or is stopped.
         return AsyncThrowingStream { continuation in

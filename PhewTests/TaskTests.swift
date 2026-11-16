@@ -215,6 +215,34 @@ final class TaskTests: XCTestCase {
         XCTAssertTrue(markdown.hasSuffix("## Added on your Mac\n\n- Note “Made-up note”\n- Reminder “Made-up reminder”\n- Event “Made-up event”\n- Sheet “Made-up sheet”"))
     }
 
+    // MARK: Skills (NC)
+
+    /// A task writes a skill, runs it, and the report names it. The real helper in the real box; made-up numbers.
+    func testATaskWritesASkillRunsItAndTheReportNamesIt() async throws {
+        let code = "function run(input) { return input.split(',').map(Number).reduce((a, b) => a + b, 0).toString(); }"
+        let write = try String(data: JSONSerialization.data(withJSONObject: [
+            "name": "sum-list", "about": "Adds numbers separated by commas", "code": code, "test_input": "1,2", "expected": "3"]), encoding: .utf8)!
+        let script = Script([
+            call(write, name: "write_skill"),
+            call(#"{"name":"sum-list","input":"20,22"}"#, name: "run_skill"),
+            call(#"{"name":"no-such-skill","input":"1"}"#, name: "run_skill"),
+            .init(text: report),
+        ])
+        let store = SkillStore(folder: root.appending(path: "skills"))
+        let folder = folder!
+        let brain = ClaudeBrain(provider: script, tools: RunnerTests.FakeMap(out: ""), skills: SkillTools(store: store))
+        let list = TaskList(brain: brain, hand: hand, folder: { folder })
+        _ = list.start("Add up a made-up list", packet: nil)
+        let item = try await finished(list)
+        XCTAssertEqual(script.requests.first?.tools.map(\.name), ["search_map", "add_item", "write_skill", "run_skill"])
+        XCTAssertEqual(try result(script, 1), "Kept as sum-list.")
+        XCTAssertEqual(try result(script, 2), "<skill>\n42\n</skill>")
+        XCTAssertEqual(try result(script, 3), "The skill failed: There is no skill named \"no-such-skill\".")
+        XCTAssertEqual(store.all().map(\.name), ["sum-list"])
+        XCTAssertEqual(item.report?.markdown, report + "\n\n## Skills he used\n\n- sum-list\n- no-such-skill")
+        XCTAssertEqual(fake.scripts, [], "a skill never reaches the Hand")
+    }
+
     func testANonScriptActionIsRefused() async throws {
         let script = Script([
             call(#"{"kind":"click","title":"Bold"}"#),

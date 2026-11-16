@@ -872,6 +872,9 @@ final class HandTests: XCTestCase {
         "Map/ClaudeExport.swift": { $0.contains("let process = Process()") },
         "Map/ImportSelfCheck.swift": { $0.contains("let process = Process()") },
         "Senses/HearCheck.swift": { $0.contains("let say = Process()") },
+        // NC: the closed box starts one program, the helper on Node under the sandbox tool: no network, no file
+        // writes, no child programs, so it cannot act (SkillTests checks each door).
+        "Brain/SkillBox.swift": { $0.contains("let process = Process(), stdin = Pipe(), stdout = Pipe()") },
         // The live checks remove, by id, what their own scripts made, and show one made-up note (DEBUG only).
         "Shell/DebugChecks.swift": { $0.contains("Hand.shared.removeTestItems()") || $0.contains("Hand.shared.showTestNote(")
             || $0.contains("(`Hand.removeTestItems`)") },
@@ -883,7 +886,6 @@ final class HandTests: XCTestCase {
         return (acting + surfaces).contains(where: line.contains) && exceptions[relative]?(line) != true
     }
 
-    /// Fails the build if any file under Phew/ other than Senses/Hand.swift can send an action.
     /// R38: a typed value is read back; a field that kept something else ends the job as "check failed", not "done".
     func testATypedValueThatDidNotLandIsNoticed() {
         var step = fake.add("Title", role: "AXTextField", frame: frame(0))
@@ -896,6 +898,7 @@ final class HandTests: XCTestCase {
         XCTAssertEqual(hand.act(step, in: job).end, .checkFailed)
     }
 
+    /// Fails the build if any file under Phew/ other than Senses/Hand.swift can send an action.
     func testOnlyHandActs() throws {
         let root = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent().appending(path: "Phew")
         var files = 0, offenders: [String] = []

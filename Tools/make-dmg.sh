@@ -17,6 +17,19 @@ codesign --verify --deep --strict "$app"
 built=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")
 [[ $built == "$version" ]] || fail "the app is version $built, not $version"
 # The debugger door must be shut: get-task-allow lets any program of the user read Phew's memory (R14).
+# The helper's Node program goes inside the app (Tools/fetch-node.sh fetched it), signed by the same certificate with
+# only what Node needs to run: the copy from nodejs.org also carries get-task-allow, the debugger door. Then the app
+# is signed again, since its contents changed. Without Node the image is not made: skills would silently not run.
+node="$root/Vendor/node/node"
+[[ -x $node ]] || fail "no Node program: run Tools/fetch-node.sh first"
+[[ -f $app/Contents/Resources/engine.js ]] || fail "the helper (engine.js) is not in the app: run Tools/build-engine.sh"
+identity=$(security find-identity -v -p codesigning | awk '/Apple Development/{print $2; exit}')
+[[ -n $identity ]] || fail "no signing certificate found"
+mkdir -p "$app/Contents/Helpers"; cp "$node" "$app/Contents/Helpers/node"
+codesign --force --options runtime --entitlements "$root/Engine/node.entitlements" --sign "$identity" "$app/Contents/Helpers/node"
+codesign --force --options runtime --entitlements "$root/Phew.entitlements" --sign "$identity" "$app"
+codesign --verify --deep --strict "$app"
+[[ $(codesign -d --entitlements - "$app/Contents/Helpers/node" 2>/dev/null) != *get-task-allow* ]] || fail "Node carries get-task-allow"
 # Read into variables first: with pipefail, a grep -q that stops early would fail the pipe and flip the answer.
 ents=$(codesign -d --entitlements - "$app" 2>/dev/null); sig=$(codesign -d --verbose "$app" 2>&1)
 [[ $ents != *get-task-allow* ]] || fail "the app carries get-task-allow"

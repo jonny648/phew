@@ -95,6 +95,9 @@ protocol Brain: Sendable {
     func undoLastImport() async -> String?
     /// True while the Map cannot be opened, for the menu's one fixed line (R28). Asking tries the open again.
     func memoryOff() async -> Bool
+    /// NC: the skills Phew wrote for himself, for the menu's list, and deleting one by name.
+    func skills() async -> [Skill]
+    func deleteSkill(_ name: String) async
 
     // MARK: Limits
 
@@ -276,6 +279,8 @@ extension Brain {
     func lastImport() async -> ImportInfo? { nil }
     func undoLastImport() async -> String? { nil }
     func memoryOff() async -> Bool { false }
+    func skills() async -> [Skill] { [] }
+    func deleteSkill(_ name: String) async {}
 
     func limitsToday() async -> LimitsToday? { nil }
     func setDayLimit(usd: Double) {}

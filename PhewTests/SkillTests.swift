@@ -83,6 +83,17 @@ final class SkillTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(started), 1)
     }
 
+    /// The app may sit behind a link (as /var is on a Mac): the box still starts, on Node's real path.
+    func testNodeBehindALinkStillRuns() async throws {
+        let link = FileManager.default.temporaryDirectory.appending(path: "phew-node-link-\(UUID().uuidString)")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: try XCTUnwrap(SkillBox.bundledNode))
+        defer { try? FileManager.default.removeItem(at: link) }
+        var box = SkillBox.shared
+        box.node = link
+        let end = await box.run(code: sum, input: "1,2")
+        XCTAssertEqual(end, .done("3"))
+    }
+
     func testTooMuchOutputIsCutAndTooMuchInputIsRefused() async {
         let end = await SkillBox.shared.run(code: "function run() { return 'x'.repeat(50000); }", input: "")
         guard case .done(let text) = end else { return XCTFail("\(end)") }

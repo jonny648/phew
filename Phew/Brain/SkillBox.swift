@@ -60,7 +60,11 @@ struct SkillBox: Sendable {
 
     /// Runs `code` (JavaScript that defines `run(input)`) on `input`. `stop` is asked ten times a second.
     func run(code: String, input: String, stop: @escaping @Sendable () -> Bool = { false }) async -> SkillEnd {
-        guard let node, let engine, FileManager.default.isExecutableFile(atPath: sandbox.path) else { return .noBox }
+        guard let link = node, let engine, FileManager.default.isExecutableFile(atPath: sandbox.path) else { return .noBox }
+        // The sandbox compares real paths: a link on the way to the app (as /var is on a Mac) would refuse Node itself.
+        guard let real = realpath(link.path, nil) else { return .noBox }
+        let node = URL(filePath: String(cString: real))
+        free(real)
         guard input.count <= Self.inputLimit else { return .failed("The input is longer than \(Self.inputLimit) characters.") }
         let request: [String: Any] = ["code": code, "input": input, "ms": Int(seconds * 1000) - 500]
         guard let body = try? JSONSerialization.data(withJSONObject: request) else { return .failed("The request could not be written.") }

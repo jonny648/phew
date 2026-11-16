@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.1, 17 November 2026
+
+Phase N3, voice. Tested offline with the Mac's own voices; not yet with the model or a real voice.
+
+- A misheard name is replaced by the known name it sounds like, on the Mac. Small gain: 5 of 12 test names right, 3 before.
+- Spoken sentences are sent at once. He shows what he heard first only when he was unsure and is about to act, remember or start a task.
+- A word you fix there is kept as "also heard as" on that name in your memory.
+- "Remind me to call…" makes a reminder.
+
 ## 0.2.0, 17 November 2026
 
 Phase N2, acting and agents second pass. Tested with stand-ins for the apps and for the model; not yet run live.

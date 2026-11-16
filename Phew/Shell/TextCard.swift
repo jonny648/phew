@@ -51,6 +51,9 @@ final class TextCard: EditPanel {
     /// P6.3: a spoken question where neither hearing made sense. The card has closed; this gets the best hearing and
     /// the turn's capture, to show them in the ask panel, ready to fix. Nothing was answered and nothing acted.
     var onUnclear: ((String, ContextPacket?) -> Void)?
+    /// N3.7: a spoken sentence heard unsure and routed to something that changes things. The card has closed; this
+    /// gets the best hearing, the words to mark and the turn's capture, for the ask panel. Nothing was done.
+    var onUnsure: ((String, [String], ContextPacket?) -> Void)?
     var lookPending: Bool { waitTask != nil || lookTask != nil }
     /// True while an answer streams in.
     var answering: Bool { task != nil }
@@ -144,6 +147,15 @@ final class TextCard: EditPanel {
                     var acts = false
                     for try await event in brain.answer(question, packet: packet, state: state, spoken: spoken) {
                         self?.model.apply(event)
+                        if case .route(let route) = event, let self,
+                           let doubtful = SendOrShow.held(route, acting: state.acting, spoken: spoken) {
+                            // Nothing acted, stored or started: the card goes and the ask panel shows the heard text.
+                            shellLog("card: route \(route) held, the hearing was unsure, \(doubtful.count) doubtful words")
+                            let unsure = onUnsure
+                            dismiss()
+                            unsure?(question, doubtful, packet)
+                            return false
+                        }
                         if case .route(.unclear) = event, let self {
                             // Nothing answered, nothing acts: the card goes and the ask panel shows what was heard.
                             let unclear = onUnclear

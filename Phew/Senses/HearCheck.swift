@@ -114,8 +114,8 @@ enum HearCheck {
         var count = 0, rightLanguage = 0, exactOwn = 0, exactTop = 0, wordErrors = 0
         var rightByConfidence = 0, rightByGuess = 0
         /// N3.5, with context only: after the sound match (N3.1), its own language exact; names right of the
-        /// sentences with names; shown first (N3.3); sent at once though the best hearing was not exact.
-        var exactMatched = 0, named = 0, namesRight = 0, shownFirst = 0, wrongSent = 0
+        /// sentences with names; unsure before routing (N3.3; since N3.7 held only on act, remember or a task); sent at once though the best hearing was not exact.
+        var exactMatched = 0, named = 0, namesRight = 0, unsureBeforeRouting = 0, wrongSent = 0
         var seconds: [Double] = []
         var kinds: [String: Int] = [:]
     }
@@ -256,7 +256,7 @@ enum HearCheck {
                         s.exactMatched += ownMatched == expected ? 1 : 0
                         s.named += sample.kind == .names ? 1 : 0
                         s.namesRight += sample.kind == .names && namesRight ? 1 : 0
-                        s.shownFirst += shown ? 1 : 0
+                        s.unsureBeforeRouting += shown ? 1 : 0
                         s.wrongSent += !shown && SpokenSamples.words(matched.first?.text ?? "") != expected ? 1 : 0
                     }
                     s.wordErrors += errors
@@ -265,12 +265,12 @@ enum HearCheck {
                     scores[key] = s
                 }
                 let confidences = heard.hearings.map { "\($0.language) \(String(format: "%.2f", $0.confidence))" }.joined(separator: " ")
-                shellLog("hear check: \(pass) #\(i) \(sample.language) \(sample.kind.rawValue): first right \(heard.hearings.first?.language == sample.language), exact \(own == expected)\(withContext ? ", after sound match exact \(ownMatched == expected), shown first \(shown)" : ""), word errors \(errors), kinds \(kinds.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: " ")), confidences [\(confidences)], start \(startMS) ms, final \(Int(finalSeconds * 1000)) ms")
+                shellLog("hear check: \(pass) #\(i) \(sample.language) \(sample.kind.rawValue): first right \(heard.hearings.first?.language == sample.language), exact \(own == expected)\(withContext ? ", after sound match exact \(ownMatched == expected), unsure before routing \(shown)" : ""), word errors \(errors), kinds \(kinds.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: " ")), confidences [\(confidences)], start \(startMS) ms, final \(Int(finalSeconds * 1000)) ms")
             }
             for key in scores.keys.sorted() {
                 let s = scores[key]!
                 let median = s.seconds.sorted()[s.seconds.count / 2]
-                shellLog("hear check summary \(pass) context, \(key): right language \(s.rightLanguage)/\(s.count) (by confidence alone \(s.rightByConfidence), by language guess alone \(s.rightByGuess)), exact own language \(s.exactOwn)/\(s.count), exact first hearing \(s.exactTop)/\(s.count), word errors \(s.wordErrors), median final \(String(format: "%.2f", median)) s, missed words by kind \(s.kinds.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: " "))\(withContext ? ", after sound match exact \(s.exactMatched)/\(s.count), names right \(s.namesRight)/\(s.named), shown first \(s.shownFirst), wrong sent at once \(s.wrongSent)" : "")")
+                shellLog("hear check summary \(pass) context, \(key): right language \(s.rightLanguage)/\(s.count) (by confidence alone \(s.rightByConfidence), by language guess alone \(s.rightByGuess)), exact own language \(s.exactOwn)/\(s.count), exact first hearing \(s.exactTop)/\(s.count), word errors \(s.wordErrors), median final \(String(format: "%.2f", median)) s, missed words by kind \(s.kinds.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: " "))\(withContext ? ", after sound match exact \(s.exactMatched)/\(s.count), names right \(s.namesRight)/\(s.named), unsure before routing \(s.unsureBeforeRouting), wrong sent at once \(s.wrongSent)" : "")")
             }
         }
     }

@@ -73,7 +73,7 @@ enum NameMatch {
                     continue
                 }
                 // shortcut: a pair of two common words can still match ("bright moss" is how Brightmoss is heard, so it
-                // must); a wrong pair match is shown first, never sent at once. Upgrade if real use shows wrong swaps.
+                // must); a wrong pair match is unsure, so held before it acts, remembers or starts a task (N3.7). Upgrade if real use shows wrong swaps.
                 if first == last, common(heard) { continue }
                 guard key(heard).count >= shortestKey - 1 else { continue }
                 let parts = (first...last).map { String(text[words[$0]]) }
@@ -203,14 +203,15 @@ enum NameMatch {
     }
 }
 
-/// N3.3: a spoken sentence is sent at once, or shown first in the ask panel for the user to fix and send. Decided by
-/// code, per sentence, from the best hearing: sent at once when the recogniser is sure and no name was doubtful.
+/// N3.3, N3.7: is the hearing of a spoken sentence sure? Decided by code, per sentence, from the best hearing: sure
+/// when the recogniser is sure and no name was doubtful. A spoken sentence is always sent; an unsure one is held only
+/// once the Conductor routed it to something that changes things (`held`).
 enum SendOrShow: Equatable {
     case send
     /// `doubtful`: the words to mark, as they stand in the shown text; empty when only the confidence was low.
     case show(doubtful: [String])
 
-    /// The recogniser's confidence below which a sentence is shown first. 0 means the engine gave none: then only
+    /// The recogniser's confidence below which a hearing is unsure. 0 means the engine gave none: then only
     /// the names decide.
     static let sure = 0.9
 
@@ -219,5 +220,14 @@ enum SendOrShow: Equatable {
         let doubtful = hearing.swaps.filter(NameMatch.doubtful).map { $0.replaced ? $0.name : $0.heard }
         let unsure = hearing.confidence > 0 && hearing.confidence < sure
         return doubtful.isEmpty && !unsure ? .send : .show(doubtful: doubtful)
+    }
+
+    /// N3.7, the one rule after routing: an unsure hearing on a route that changes something (a job while acting is on,
+    /// remember, a task) is held: nothing is done and the heard text goes to the ask panel. Returns the words to mark;
+    /// nil goes on as if the hearing were sure. A typed question (`spoken` empty) is never held.
+    static func held(_ route: Route, acting: Bool, spoken: [Hearing]) -> [String]? {
+        guard route == .remember || route == .task || (route == .act && acting),
+              case .show(let doubtful) = decide(spoken.first) else { return nil }
+        return doubtful
     }
 }

@@ -205,6 +205,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setup.askMicrophone = { Task { _ = await ListenPermissions.askMicrophone() } }
         card.onTask = { [unowned self] in tasks.start($0, packet: $1, spoken: $2) }
         card.onUnclear = { [unowned self] in unclear($0, packet: $1) }
+        card.onUnsure = { [unowned self] heard, doubtful, packet in showFirst(heard, doubtful: doubtful, capture: Task { packet }) }
         importUndo.watchMenus()
         #if DEBUG
         runDebugChecks()
@@ -391,7 +392,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ask(question, spoken: spoken)
         }
         talk.heardAs = { [brain] in await brain.heardAs() }
-        talk.showFirst = { [unowned self] heard, doubtful, _, capture in showFirst(heard, doubtful: doubtful, capture: capture) }
         talk.missing = { [unowned self] in setup.showVoice() }
         talk.permissions = { [unowned self] in setup.voicePermissions() }
         return talk
@@ -418,8 +418,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     static let notCaught = "I did not catch that. Fix it and press Return."
 
-    /// N3.3: the recogniser was unsure or a name doubtful. The ask panel holds the heard text, the doubtful words
-    /// named on its grey line, the capture kept as for `unclear`. Sent as typed once the user presses Return; a
+    /// N3.3, N3.7: the recogniser was unsure or a name doubtful, and the Conductor routed the sentence to something
+    /// that changes things (`SendOrShow.held`). The ask panel holds the heard text, the doubtful words named on its grey
+    /// line, the capture kept as for `unclear`. Sent as typed once the user presses Return, so never held again; a
     /// changed name is learnt (N3.2).
     private func showFirst(_ heard: String, doubtful: [String], capture: Task<ContextPacket?, Never>?) {
         self.capture = capture

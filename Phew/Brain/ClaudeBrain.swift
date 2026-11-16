@@ -122,6 +122,8 @@ struct ClaudeBrain: Brain {
         }
         emit(.route(route))
         if route == .unclear { return }  // P6.3: nothing answered, nothing acts; the Shell shows what was heard
+        // N3.7: unsure hearing on a route that changes something: nothing stored here; the Shell shows the heard text.
+        if SendOrShow.held(route, acting: state.acting, spoken: spoken) != nil { return }
         if route == .remember { return try await remember(question, packet: packet, emit: emit) }
         if route == .task { return }  // PA.2: the Shell starts the task through `runTask`
         // PH.4: the Shell runs an act job through `nextAction`. With acting off it is shown as a guide.

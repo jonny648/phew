@@ -2,7 +2,8 @@ import Speech
 import XCTest
 @testable import Phew
 
-/// Phase N3: names matched by sound (N3.1), send at once or show first (N3.3), "remind me to call" (N3.4), and what
+/// Phase N3: names matched by sound (N3.1), sure or unsure hearing (N3.3), held after routing only when it would
+/// change something (N3.7), "remind me to call" (N3.4), and what
 /// he learns from a correction (N3.2). Made-up names and sentences; no microphone, no model, no network, no window.
 final class NameMatchTests: XCTestCase {
     private typealias FakeProvider = BrainAgentsTests.FakeProvider
@@ -100,7 +101,9 @@ final class NameMatchTests: XCTestCase {
     ]
 
     struct Measure: Equatable {
-        var exact = 0, exactMatched = 0, named = 0, namesBefore = 0, namesAfter = 0, shown = 0, wrongSent = 0
+        /// `unsureBeforeRouting`: `SendOrShow.decide` says unsure on the best hearing. Since N3.7 that alone holds nothing:
+        /// only those the Conductor then routes to act, remember or a task are shown in the ask panel.
+        var exact = 0, exactMatched = 0, named = 0, namesBefore = 0, namesAfter = 0, unsureBeforeRouting = 0, wrongSent = 0
     }
 
     /// N3.5 offline, on the recorded hearings: the sound match with the words the recogniser had (`SpokenSamples.context`).
@@ -118,9 +121,9 @@ final class NameMatchTests: XCTestCase {
                 m.namesBefore += sample.names.allSatisfy { BrainVoiceCheck.holds(own(heard.hearings), $0) } ? 1 : 0
                 m.namesAfter += sample.names.allSatisfy { BrainVoiceCheck.holds(own(matched), $0) } ? 1 : 0
             }
-            let shown = SendOrShow.decide(matched.first) != .send
-            m.shown += shown ? 1 : 0
-            m.wrongSent += !shown && SpokenSamples.words(matched.first?.text ?? "") != expected ? 1 : 0
+            let unsure = SendOrShow.decide(matched.first) != .send
+            m.unsureBeforeRouting += unsure ? 1 : 0
+            m.wrongSent += !unsure && SpokenSamples.words(matched.first?.text ?? "") != expected ? 1 : 0
         }
         return m
     }
@@ -129,14 +132,14 @@ final class NameMatchTests: XCTestCase {
     /// names right 3 before the sound match, 5 after. Under the roadmap's bar of 10: of the 7 still wrong, a common
     /// word took the name's place in 4 ("bride" twice and "bright" for Brightmoss, "Alice" for Odalys Venn), which
     /// the rule never replaces; one name was not heard at all; "quilt and" (two common words) is 0.71 from Quillfen;
-    /// "il Fena" is 0.67 from Quillfen, under the threshold, and is shown first with the words marked.
+    /// "il Fena" is 0.67 from Quillfen, under the threshold, and is unsure with the words marked.
     /// Pinned to the exact numbers, so a change to the match shows here. The word lists are the system's: a new macOS
     /// may move them.
     func testTheRecordedHearingsMeasured() {
         XCTAssertEqual(Self.measure(context: true),
-                       Measure(exact: 27, exactMatched: 28, named: 12, namesBefore: 3, namesAfter: 5, shown: 20, wrongSent: 0))
+                       Measure(exact: 27, exactMatched: 28, named: 12, namesBefore: 3, namesAfter: 5, unsureBeforeRouting: 20, wrongSent: 0))
         XCTAssertEqual(Self.measure(context: false),
-                       Measure(exact: 24, exactMatched: 25, named: 12, namesBefore: 0, namesAfter: 2, shown: 24, wrongSent: 0))
+                       Measure(exact: 24, exactMatched: 25, named: 12, namesBefore: 0, namesAfter: 2, unsureBeforeRouting: 24, wrongSent: 0))
     }
 
     func testNoRightSentenceIsMadeWrong() {
@@ -256,24 +259,175 @@ final class NameMatchTests: XCTestCase {
         XCTAssertEqual(AppDelegate.checkLine([]), "Is this what you said? Fix it and press Return.")
     }
 
+    /// N3.7: a doubtful name is no longer shown first: the sentence goes at once with its hearings, which carry the doubt
+    /// for the card to hold after routing.
     @MainActor
-    func testADoubtfulNameIsShownFirstNotSent() async {
+    func testADoubtfulNameIsSentAtOnce() async {
         let listener = VoiceTests.FakeListener(heard: Heard(hearings: [hearing("send the draft to Oda van", confidence: 0.95)]))
         let talk = Talk()
-        var sent = 0
-        var shown: (String, [String])?
+        var sent: (String, [Hearing])?
         talk.listener = listener
         talk.names = { ["Odalys Venn"] }
         talk.capture = { nil }
-        talk.send = { _, _, _ in sent += 1 }
-        talk.showFirst = { text, doubtful, _, _ in shown = (text, doubtful) }
+        talk.send = { question, spoken, _ in sent = (question, spoken) }
         talk.holdStart()
         try? await Task.sleep(for: .milliseconds(50))
         talk.holdEnd()
-        for _ in 0..<400 where shown == nil { try? await Task.sleep(for: .milliseconds(5)) }
-        XCTAssertEqual(sent, 0)
-        XCTAssertEqual(shown?.0, "send the draft to Odalys Venn", "the name put right in the shown text")
-        XCTAssertEqual(shown?.1, ["Odalys Venn"], "and marked: the match was close to the threshold")
+        for _ in 0..<400 where sent == nil { try? await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(sent?.0, "send the draft to Odalys Venn", "the name put right, sent at once")
+        XCTAssertEqual(SendOrShow.decide(sent?.1.first), .show(doubtful: ["Odalys Venn"]), "the doubt goes along: the match was close to the threshold")
+    }
+
+    // MARK: N3.7 Sent at once; held after routing only when it would change something
+
+    /// A doubtful name: "Odalys Venn" put in place of the heard words right at the threshold.
+    private func unsure() -> [Hearing] {
+        var h = hearing("send the draft to Odalys Venn")
+        h.swaps = [NameMatch.Swap(heard: "Oda van", name: "Odalys Venn", closeness: NameMatch.threshold, replaced: true, tied: false)]
+        return [h, hearing("sent the raft to other van", "it", confidence: 0.2)]
+    }
+
+    /// The card with a Brain that gives one route. It is never put on screen; a job could not act: its app is this
+    /// test's own process, which the card never acts in.
+    final class RouteBrain: Brain, @unchecked Sendable {
+        let route: Route
+        private let lock = NSLock()
+        private var asked = 0
+        var actions: Int { lock.withLock { asked } }
+        init(_ route: Route) { self.route = route }
+        func answer(_ question: String, packet: ContextPacket?) -> AsyncThrowingStream<BrainEvent, Error> {
+            let route = route
+            return AsyncThrowingStream {
+                $0.yield(.route(route))
+                if route == .explain { $0.yield(.text("Made-up answer.")) }
+                $0.yield(.done)
+                $0.finish()
+            }
+        }
+        func progress(steps: [GuideStep], current: Int, packet: ContextPacket?) async throws -> GuideProgress { GuideProgress(current: current) }
+        func nextAction(_ request: String, packet: ContextPacket?, done: [String]) async throws -> NextAction {
+            lock.withLock { asked += 1 }
+            return .stuck("")
+        }
+    }
+
+    private struct Played {
+        var held: (String, [String])?
+        var tasks = 0
+        var text = ""
+        var visible = false
+        var log: [String] = []
+    }
+
+    @MainActor
+    private func play(_ route: Route, spoken: [Hearing], brain: RouteBrain? = nil) async -> Played {
+        let defaults = UserDefaults(suiteName: "phew-n37-test")!
+        defaults.removePersistentDomain(forName: "phew-n37-test")  // acting on, as when never set
+        TextCard.testWindow = (pid: getpid(), look: { _ in nil })
+        let lines = ListenerTests.Lines()
+        shellLogTap = { lines.add($0) }
+        defer {
+            TextCard.testWindow = nil
+            shellLogTap = nil
+            defaults.removePersistentDomain(forName: "phew-n37-test")
+        }
+        let card = TextCard()
+        var played = Played()
+        card.brain = brain ?? RouteBrain(route)
+        card.consent = ActConsent(defaults: defaults)
+        card.onUnsure = { heard, doubtful, _ in played.held = (heard, doubtful) }
+        card.onTask = { _, _, _ in played.tasks += 1; return "" }
+        card.onUnclear = { _, _ in XCTFail("not unclear") }
+        card.answer(spoken.first?.text ?? "add a made-up note", spoken: spoken, capture: nil)
+        for _ in 0..<400 where card.answering { try? await Task.sleep(for: .milliseconds(5)) }
+        played.text = card.model.text
+        played.visible = card.isVisible
+        played.log = lines.all
+        return played
+    }
+
+    @MainActor
+    func testUnsureHearingOnExplainIsAnsweredAsIfSure() async throws {
+        let played = await play(.explain, spoken: unsure())
+        XCTAssertNil(played.held, "the panel is not shown")
+        XCTAssertEqual(played.text, "Made-up answer.")
+        // The Brain answers too: the Guide is asked.
+        let fake = FakeProvider(rounds: ["conductor": [.init(pieces: [#"{"route":"explain","about_phew":false}"#])],
+                                         "guide": [.init(pieces: [#"{"explanation":"Made-up answer.","steps":[]}"#])]])
+        var events: [BrainEvent] = []
+        for try await event in ClaudeBrain(provider: fake).answer(unsure()[0].text, packet: nil, state: ShellState(acting: true), spoken: unsure()) {
+            events.append(event)
+        }
+        XCTAssertEqual(events.first, .route(.explain))
+        XCTAssertTrue(events.contains(.text("Made-up answer.")))
+        XCTAssertNil(SendOrShow.held(.guide, acting: true, spoken: unsure()))
+        XCTAssertNil(SendOrShow.held(.unclear, acting: true, spoken: unsure()))
+    }
+
+    @MainActor
+    func testUnsureHearingOnActActsNothingAndShowsTheHeardText() async {
+        let brain = RouteBrain(.act)
+        let played = await play(.act, spoken: unsure(), brain: brain)
+        XCTAssertEqual(played.held?.0, "send the draft to Odalys Venn", "the heard text, the name put right")
+        XCTAssertEqual(played.held?.1, ["Odalys Venn"], "the doubtful words, to mark")
+        XCTAssertEqual(brain.actions, 0, "nothing acted")
+        XCTAssertFalse(played.visible)
+        XCTAssertTrue(played.log.contains("card: route act held, the hearing was unsure, 1 doubtful words"))
+        for line in played.log { XCTAssertFalse(line.contains("Odalys") || line.contains("draft"), "no heard word in a log line") }
+        XCTAssertNil(SendOrShow.held(.act, acting: false, spoken: unsure()), "acting off: a guide, which changes nothing")
+    }
+
+    @MainActor
+    func testUnsureHearingOnRememberWritesNothing() async throws {
+        let played = await play(.remember, spoken: unsure())
+        XCTAssertEqual(played.held?.1, ["Odalys Venn"], "the panel is shown")
+        // The Brain stops after the route: no Librarian, nothing in the Map.
+        let store = try MapStore()
+        try await store.add(MapNode(mapClass: .person, kind: "made up", name: "Odalys Venn", origin: .told))
+        let before = await store.counts()
+        let fake = FakeProvider(["conductor": [#"{"route":"remember","about_phew":false}"#], "observer": ["text"],
+                                 "librarian": [#"{"facts":[]}"#]])
+        let brain = ClaudeBrain(provider: fake, map: BrainMap(open: { store }, maintenance: false))
+        var events: [BrainEvent] = []
+        for try await event in brain.answer(unsure()[0].text, packet: nil, state: ShellState(acting: true), spoken: unsure()) {
+            events.append(event)
+        }
+        XCTAssertEqual(events, [.route(.remember), .done], "nothing answered or stored")
+        XCTAssertFalse(fake.requests.contains { $0.agent == "librarian" })
+        let after = await store.counts()
+        XCTAssertEqual(after.facts, before.facts)
+        XCTAssertEqual(after.projects, before.projects)
+    }
+
+    @MainActor
+    func testUnsureHearingOnTaskStartsNoTask() async {
+        let played = await play(.task, spoken: unsure())
+        XCTAssertEqual(played.tasks, 0, "no task started")
+        XCTAssertEqual(played.held?.0, "send the draft to Odalys Venn")
+    }
+
+    @MainActor
+    func testSureHearingOnActGoesOnAsToday() async throws {
+        var sure = unsure()
+        sure[0].swaps = []
+        let played = await play(.act, spoken: sure)
+        XCTAssertNil(played.held, "not held: the card goes on to the job")
+        XCTAssertFalse(played.log.contains { $0.contains("held") })
+        let fake = FakeProvider(["conductor": [#"{"route":"act","about_phew":false}"#], "observer": ["text"]])
+        var events: [BrainEvent] = []
+        for try await event in ClaudeBrain(provider: fake).answer(sure[0].text, packet: nil, state: ShellState(acting: true), spoken: sure) {
+            events.append(event)
+        }
+        XCTAssertEqual(events, [.route(.act), .done], "the Shell starts the job, as before")
+    }
+
+    /// The panel's Return sends the text as typed (`AppDelegate.showFirst` calls `ask` with no hearings).
+    @MainActor
+    func testTextSentFromTheShownPanelIsNotHeldAgain() async {
+        let played = await play(.task, spoken: [])
+        XCTAssertNil(played.held)
+        XCTAssertEqual(played.tasks, 1, "the task starts")
+        for route in Route.allCases { XCTAssertNil(SendOrShow.held(route, acting: true, spoken: []), "\(route)") }
     }
 
     // MARK: N3.4 "Remind me to call…" makes a reminder
@@ -335,7 +489,7 @@ final class NameMatchTests: XCTestCase {
         XCTAssertFalse(lost, "a forgotten name learns nothing")
     }
 
-    /// One hold through `Talk` with a fake listener; the question sent at once, nil when shown first.
+    /// One hold through `Talk` with a fake listener; the question, sent at once.
     @MainActor
     private func hold(_ listener: VoiceTests.FakeListener, heardAs: [String: String]) async -> String? {
         let talk = Talk()
@@ -344,7 +498,6 @@ final class NameMatchTests: XCTestCase {
         talk.heardAs = { heardAs }
         talk.capture = { nil }
         talk.send = { q, _, _ in question = q; done = true }
-        talk.showFirst = { _, _, _, _ in done = true }
         talk.holdStart()
         try? await Task.sleep(for: .milliseconds(50))
         talk.holdEnd()

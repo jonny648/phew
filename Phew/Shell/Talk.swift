@@ -56,8 +56,6 @@ final class Talk {
     /// The ask path: the best hearing as the question (empty: explain what is under the cursor), every hearing, and
     /// the capture.
     var send: (String, [Hearing], Task<ContextPacket?, Never>?) -> Void = { _, _, _ in }
-    /// N3.3: a sentence shown first: the heard text (names put right), the words to mark, every hearing, the capture.
-    var showFirst: (String, [String], [Hearing], Task<ContextPacket?, Never>?) -> Void = { _, _, _, _ in }
     /// A permission is missing: first run's two voice rows.
     var missing: () -> Void = {}
     /// How long the line of a failed hold stays after the release.
@@ -122,8 +120,8 @@ final class Talk {
         }
     }
 
-    /// The release: names matched by sound (N3.1), then the words go at once, or are shown first when the
-    /// recogniser was unsure or a name doubtful (N3.3).
+    /// The release: names matched by sound (N3.1), then the words go at once, always (N3.7). An unsure hearing is held
+    /// only after routing, on the card (`SendOrShow.held`).
     func holdEnd() {
         guard let hold, let started = hold.started else { return }
         self.hold = nil
@@ -137,10 +135,6 @@ final class Talk {
                 shellLog("talk: nothing heard, explaining what is under the cursor")
             } else {
                 shellLog("talk: heard \(hearings.count) hearings, languages \(hearings.map { Spoken.code($0.language) }), confidences \(hearings.map { ($0.confidence * 100).rounded() / 100 }), best \(hearings[0].text.count) characters")
-            }
-            if case .show(let doubtful) = SendOrShow.decide(hearings.first) {
-                shellLog("talk: shown first, \(doubtful.count) doubtful words")
-                return showFirst(hearings[0].text, doubtful, hearings, capture)
             }
             send(hearings.first?.text ?? "", hearings, capture)
         }

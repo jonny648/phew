@@ -8,3 +8,6 @@ DerivedData/
 
 # The owner's real exported memory: personal data, never in the repository
 Claude Memory/
+
+# The Node program shipped inside the app: fetched by Tools/fetch-node.sh, over 100 MB.
+Vendor/

@@ -97,17 +97,60 @@ li.is-done .when{display:none}
 </section>
 <section class="phase" id="N3">
 <h2>N3 Voice that hears names</h2>
-<p class="sub">Order 3.</p>
+<p class="sub">Order 3. Started 17 November 2026. The idea: fix names by code on the Mac, before the model and without a new engine.</p>
 <ul class="tasks">
 <li><label><b>Aim</b></label><span class="when">Another on-device engine measured against Apple's on the same sentences. Learning from your corrections. Your real names taken from your memory. A decision between "send at once" and "show first", made on real numbers.</span></li>
 <li><label><b>It ends when</b></label><span class="when">9 spoken sentences in 10 are understood right, with your own voice and your own names, with the Mac offline.</span></li>
 <li><label><b>Comes from</b></label><span class="when">P6.3, which missed its bar (30 of 40). L7 (his name as a wake word) stays later.</span></li>
 <li><label><b>Who</b></label><span class="when">senses, brain.</span></li>
 </ul>
+<h3>Tasks</h3>
+<ul class="tasks">
+<li data-id="N3.1" data-done=""><label><input type="checkbox" disabled> <b>N3.1</b> Names matched by sound, in code: after the recogniser, each heard word or pair of words is compared by sound (Italian and English) with the names on screen and in your memory; one clear match replaces it; two close matches change nothing</label><span class="when">Done when: Unit tests on made-up names: of the 12 names of the P6.3 set, with their recorded mishearings, at least 10 right; no replacement when two names are equally close</span></li>
+<li data-id="N3.2" data-done=""><label><input type="checkbox" disabled> <b>N3.2</b> He learns from your corrections: when what he heard is shown and you fix a word, the pair (heard, meant) is kept in your memory as an "also heard as" of that name and used at the next hearing. In the Map, encrypted, forgettable like any fact</label><span class="when">Done when: Tests: a correction is stored once, used at the next hearing, and gone after Forget</span></li>
+<li data-id="N3.3" data-done=""><label><input type="checkbox" disabled> <b>N3.3</b> "Send at once" or "show first" decided per sentence by numbers: sent at once when the recogniser is sure and no name was doubtful; shown first, with the doubtful word marked, when not</label><span class="when">Done when: Tests on the rule; on the 40 sentences the count shown first is written down, and no wrong sentence is sent at once in the test set</span></li>
+<li data-id="N3.4" data-done=""><label><input type="checkbox" disabled> <b>N3.4</b> The routing fault: "remind me to call…" was taken as "remember"; it makes a reminder</label><span class="when">Done when: A test with the scripted provider, Italian and English phrasings</span></li>
+<li data-id="N3.5" data-done=""><label><input type="checkbox" disabled> <b>N3.5</b> The measure, automatic part: the 40 sentences spoken by the Mac's own voices into files (no microphone, no sound, no cost) give the first two numbers again and a new one, after the sound match</label><span class="when">Done when: Three numbers written in the log; the new one is higher than 27</span></li>
+<li data-id="N3.L1" data-done=""><label><input type="checkbox" disabled> <b>N3.L1</b> The measure, paid part, at your word: the number after the model reads the hearings. About 10 to 20 cents, made-up sentences</label><span class="when">Done when: The number is written; the bar is 36 of 40</span></li>
+<li data-id="N3.L2" data-done=""><label><input type="checkbox" disabled> <b>N3.L2</b> Yours: 20 sentences with your own voice and your real names, Mac offline</label><span class="when">Done when: You say how many were right; the phase ends at 9 in 10</span></li>
+<li data-id="N3.6" data-done=""><label><input type="checkbox" disabled> <b>N3.6</b> A second engine, only if N3.L1 misses the bar. It needs a download of an outside speech model, which the permission system refused; closed unless you allow it yourself</label><span class="when">Done when: Open decision 43 in docs/07-decisions.md; nothing built</span></li>
+</ul>
+<h3>Added during build</h3>
+<ul class="tasks added"></ul>
+</section>
+<section class="phase" id="NA">
+<h2>NA Limits review</h2>
+<p class="sub">Order 4. From your note of 17 November. Research, no code.</p>
+<ul class="tasks">
+<li><label><b>Aim</b></label><span class="when">One document, <code>docs/17-limits.md</code>: every limit Phew has, sorted into three kinds. Given by macOS, the apps or the model (cannot be removed, only worked around). Ours and right (protects you or your data). Ours and wrong or too tight (costs capability, protects little). For each: what it costs, what it protects, what replaces it if removed, a recommendation. Every group of rules is in scope, the safety core too (your choice).</span></li>
+<li><label><b>It ends when</b></label><span class="when">You have answered each proposed removal and <code>CLAUDE.md</code> is rewritten to the result.</span></li>
+<li><label><b>Comes from</b></label><span class="when">Your note: "a limit removal and research phase". Decision 34 (three wishes that touch privacy rules), decision 42.</span></li>
+<li><label><b>Who</b></label><span class="when">Lead, research. You decide.</span></li>
+</ul>
+</section>
+<section class="phase" id="NB">
+<h2>NB Capabilities: he acts through real doors</h2>
+<p class="sub">Order 5. From your note of 17 November. The old N8 Connections, widened and moved up.</p>
+<ul class="tasks">
+<li><label><b>Aim</b></label><span class="when">The screen is for understanding. Acting and getting data go through real doors, in this order: connections (MCP) to Figma, Notion, Drive, calendar, mail, GitHub; files and folders you chose; the apps' own scripting and Apple Shortcuts; the web; the screen (press, type, click) as the last resort. One list of tools the model picks from, each with its guard; the one acting function stays the gate. Also: your own AI subscription as a second provider; ChatGPT and Gemini memory exports.</span></li>
+<li><label><b>It ends when</b></label><span class="when">Five jobs you really ask for, which today need the screen or cannot be done, are done through a door.</span></li>
+<li><label><b>Comes from</b></label><span class="when">Your note: "the observation interface should be employed solely for comprehension". L9 (connections), L5 (files), PB.4.</span></li>
+<li><label><b>Who</b></label><span class="when">brain, senses, map, checker.</span></li>
+</ul>
+</section>
+<section class="phase" id="NC">
+<h2>NC Self-shaping: he makes the function he lacks</h2>
+<p class="sub">Order 6. From your note of 17 November. After NA and NB.</p>
+<ul class="tasks">
+<li><label><b>Aim</b></label><span class="when">When a job needs something he cannot do, he researches, writes the smallest program that does it, runs it, and keeps it as a named skill for next time. Real code with your access to the Mac, no closed box (your choice of 17 November, against the lead's advice). Kept around it: each skill is a file in one folder, listed in the menu, deletable; its first run is listed on the card; web text stays data, so a page cannot hand him a program to run as it is; the Never list still applies; Stop ends a skill within one second; a log line with the skill's name and how it ended.</span></li>
+<li><label><b>It ends when</b></label><span class="when">Three skills he made himself are reused on a later day without being rewritten.</span></li>
+<li><label><b>Risk, named</b></label><span class="when">With no box, a program written from a misleading page could delete or send your files before you see it. Accepted for your own Mac. Decided again before anyone else installs Phew (N5), decision 44.</span></li>
+<li><label><b>Who</b></label><span class="when">brain, senses, shell, checker.</span></li>
+</ul>
 </section>
 <section class="phase" id="N4">
 <h2>N4 Cost down</h2>
-<p class="sub">Order 4.</p>
+<p class="sub">Order 7.</p>
 <ul class="tasks">
 <li><label><b>Aim</b></label><span class="when">The plan of <code>docs/costs.html</code>, built step by step, each step measured before and after: send less, ask less often, the small model where it is enough, work done on the Mac for free, longer caching.</span></li>
 <li><label><b>It ends when</b></label><span class="when">The target cost per month in <code>docs/costs.html</code> is reached, and the live checks that exist today still pass with the same scores.</span></li>
@@ -117,7 +160,7 @@ li.is-done .when{display:none}
 </section>
 <section class="phase" id="N5">
 <h2>N5 Ten people</h2>
-<p class="sub">Order 5.</p>
+<p class="sub">Order 8.</p>
 <ul class="tasks">
 <li><label><b>Aim</b></label><span class="when">An app anyone can install: Apple Developer Program, signed and notarised, updates. A way to use it without creating an API key. Counts of use, with consent, and nothing else. A short first-run that explains him. Uninstall that leaves nothing behind.</span></li>
 <li><label><b>It ends when</b></label><span class="when">Ten people like you installed it. Five still use it weekly after a month.</span></li>
@@ -127,7 +170,7 @@ li.is-done .when{display:none}
 </section>
 <section class="phase" id="N6">
 <h2>N6 First money</h2>
-<p class="sub">Order 6.</p>
+<p class="sub">Order 9.</p>
 <ul class="tasks">
 <li><label><b>Aim</b></label><span class="when">One first group of users chosen. A price and a way to pay. A waiting list and one channel tried. Terms and a privacy page.</span></li>
 <li><label><b>It ends when</b></label><span class="when">Twenty people pay, or the honest answer that they will not, with the reasons they gave.</span></li>
@@ -137,7 +180,7 @@ li.is-done .when{display:none}
 </section>
 <section class="phase" id="N7">
 <h2>N7 Character and home</h2>
-<p class="sub">Order 7.</p>
+<p class="sub">Order 10.</p>
 <ul class="tasks">
 <li><label><b>Aim</b></label><span class="when">His look: a character, states and motion; the notch as his home, not only for listening; a brand sheet. The parts of the design left out of the MVP.</span></li>
 <li><label><b>It ends when</b></label><span class="when">A design you approve in Figma, built, with Reduce Motion and Increase Contrast.</span></li>
@@ -145,19 +188,9 @@ li.is-done .when{display:none}
 <li><label><b>Who</b></label><span class="when">lead for design, shell.</span></li>
 </ul>
 </section>
-<section class="phase" id="N8">
-<h2>N8 Connections</h2>
-<p class="sub">Order 8.</p>
-<ul class="tasks">
-<li><label><b>Aim</b></label><span class="when">Figma, Notion and other tools through their own doors (MCP), so he reads and acts there without clicking. Your own AI subscription as a second provider. ChatGPT and Gemini memory exports.</span></li>
-<li><label><b>It ends when</b></label><span class="when">Two connections used in your real work for a week.</span></li>
-<li><label><b>Comes from</b></label><span class="when">L9 (connections), PB.4 for the other exports.</span></li>
-<li><label><b>Who</b></label><span class="when">brain, map.</span></li>
-</ul>
-</section>
 <section class="phase" id="N9">
 <h2>N9 Venture readiness</h2>
-<p class="sub">Order 9.</p>
+<p class="sub">Order 11.</p>
 <ul class="tasks">
 <li><label><b>Aim</b></label><span class="when">Everything an investor reviews, written and tested: problem and customer, market, product and why now, competition and edge, business model, go-to-market, traction, team, plan and budget. A deck, a memo, a demo video, a data room.</span></li>
 <li><label><b>It ends when</b></label><span class="when">Ready to show, with the numbers of N5 and N6 in it.</span></li>

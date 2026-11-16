@@ -6,7 +6,7 @@ Phew is a macOS companion for people who create projects. When called, he works 
 There is no fixed deadline. Since 15 November the MVP phases are lean: they build what is useful. Detail work is kept to what keeps the product safe and working, and no new detail work is added without your say.
 
 ## Roadmap protocol. Follow it in every session.
-1. At the start, read `roadmap.html`. State the current phase: the first phase with an unticked task. The MVP is complete since 16 November 2026: the phases after it are in `roadmap-next.html`, and none starts until the user names it. Since 16 November 2026 the phase being built is N2 there; steps 3 to 7 below apply to `roadmap-next.html` in the same way. N1 (real use) is the user's own and runs beside it.
+1. At the start, read `roadmap.html`. State the current phase: the first phase with an unticked task. The MVP is complete since 16 November 2026: the phases after it are in `roadmap-next.html`, and none starts until the user names it. The phase being built is N3 there (N2's live checks stay open until the user says); the order after it is NA, NB, NC, then N4 on; steps 3 to 7 below apply to `roadmap-next.html` in the same way. N1 (real use) is the user's own and runs beside it.
 2. Work only on that phase unless the user names another.
 3. A task is ticked only after its "done when" has been verified by building and running, by the checker subagent.
 4. To tick a task, edit its line in `roadmap.html`: change `<input type="checkbox" disabled>` to `<input type="checkbox" disabled checked>` and set `data-done` to today's date as YYYY-MM-DD. Change nothing else on the line.
@@ -62,6 +62,7 @@ These rules are direction, not strict rules (your choice of 14 November). Follow
 | PM | `docs/06-sprint.md` 6.3 |
 | PG | `docs/github-guide.html` sections 5 to 7. Ask before any push |
 | N2 | `roadmap-next.html` N2, `docs/13-hand.md`, `docs/apps/`, `docs/16-control.md` 6, `docs/10-research-agents.md` 10.2. Live checks only when the user says so |
+| N3 | `roadmap-next.html` N3, `docs/03-experience.md` 3.3, the P6 rows of the log in `docs/07-decisions.md` 7.4. No outside speech model is downloaded |
 
 ## Subagents
 shell, senses, brain, map, checker. Defined in `.claude/agents/`. The main session is the lead: it plans, delegates and reports. Builders run on Opus, the checker on Sonnet.

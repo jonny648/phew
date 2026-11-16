@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.2, 17 November 2026
+
+The serious findings of the developer review, fixed. Tested offline; the changed prompts and the real Notes, Reminders and Calendar scripts are not yet run live.
+
+- A title or text can no longer be read as an option by the Mac's script runner (a note title starting with "-e" could have run a command).
+- The whole-display picture and the screen watch leave out apps on the Never-read list, password managers and terminals.
+- The secrets filter checks a field's name and value together, and catches secrets written with underscores.
+- Undo checks before it says it failed, refuses when you changed the item after the job, and says what it could not bring back.
+- A stopped call is logged at what it cost; a research task cannot ask for more than its money allows.
+- Screen text is data, never instructions, for every agent.
+- Links on the card open only web addresses and show where they go.
+- The shortcut fires only with exactly its two keys; a hold ends by itself after 60 seconds.
+- The disk image is built without the debugger door.
+
 ## 0.2.1, 17 November 2026
 
 Phase N3, voice. Tested offline with the Mac's own voices; not yet with the model or a real voice.

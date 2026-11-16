@@ -1,7 +1,7 @@
 import Foundation
 
-/// The Brain the Shell constructs: the Conductor on the small model beside the Map read by code,
-/// then the Guide, then the Librarian in the background.
+/// The Brain the Shell constructs: the Conductor on the small model beside the Map read by code (and, for a typed
+/// question, the Guide's plain explanation, R57), then the Guide, then the Librarian in the background.
 struct ClaudeBrain: Brain {
     var provider: any ModelProvider = ClaudeProvider()
     /// The Guide's tools. Nil: `search_map` on the Map when it is open, else none. Never the Follower's.
@@ -15,6 +15,10 @@ struct ClaudeBrain: Brain {
     /// The ceilings on what the key spends, checked before each new request from the user. Nil: none (unit tests,
     /// so they never read the real calls.log or settings); the app passes `Limits()`.
     var limits: Limits? = nil
+    /// R57: a typed question starts its explanation beside the Conductor, held back until the route says explain, not
+    /// about Phew; on any other route it is cancelled unseen (its cost logged as cancelled). Off by default, so unit
+    /// tests stay deterministic; the app turns it on.
+    var answerEarly = false
 
     /// Only when the Map cannot be opened.
     static let cannotRemember = "My memory isn't available right now, so nothing was stored."
@@ -108,9 +112,22 @@ struct ClaudeBrain: Brain {
         let mapNames = spoken.isEmpty ? [] : await map.spokenNames()
         let names = spoken.isEmpty ? [] : packet?.spokenContext(extra: mapNames) ?? mapNames
         async let routing = Conductor.understand(question, packet: packet, spoken: spoken, names: names, provider: provider)
-        // R47: no Observer call. It was meant to be off (PS.12), yet the secrets filter can make a packet longer than
-        // its cap and wake it, costing 1 to 3 s before the Guide.
-        async let recalled = recall(question, packet: packet)
+        // R47: there is no Observer: the Guide reads the packet's text as it is.
+        let recalled = Task { await recall(question, packet: packet) }
+        let earlier = memory.turns
+        // R57: a typed question's plain explanation starts now; its words wait in `early` until the route is known.
+        let (early, out) = AsyncThrowingStream<BrainEvent, Error>.makeStream()
+        let starting = answerEarly && spoken.isEmpty && !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let explaining = !starting ? nil : Task {
+            do {
+                let (store, lines) = await recalled.value
+                let project = await projectMemoryBlock(question, packet: packet, store: store)
+                try await Guide.answer(question, packet: packet, route: .explain, earlier: earlier, recall: lines, aboutPhew: false,
+                                       projectMemory: project, tools: tools ?? store.map(MapSearch.init), provider: provider) { out.yield($0) }
+                out.finish()
+            } catch { out.finish(throwing: error) }
+        }
+        defer { explaining?.cancel() }  // any route but a plain explanation: cancelled, never shown
         var route: Route
         var aboutPhew = true  // A1: unsure, the text about himself goes along
         do {
@@ -130,18 +147,26 @@ struct ClaudeBrain: Brain {
         // PH.4: the Shell runs an act job through `nextAction`. With acting off it is shown as a guide.
         if route == .act && state.acting { return }
         if route == .act { route = .guide }
-        let earlier = memory.turns
-        let (store, lines) = await recalled
-        shellLog("brain: route \(route), text \(packet?.visibleText.count ?? 0) chars,\(earlier.count) earlier turns, map \(store == nil ? "off" : "on") with \(lines.isEmpty ? 0 : lines.split(separator: "\n").count) lines, ready in \(Int(Date().timeIntervalSince(start) * 1000)) ms")
-        let held = await store?.counts()
-        let about = SelfKnowledge.live(state, turn: earlier.count + 1, projects: held?.projects, facts: held?.facts)
-        let project = route == .explain ? await projectMemoryBlock(question, packet: packet, store: store) : nil
+        let (store, lines) = await recalled.value
+        let fromEarly = explaining != nil && route == .explain && !aboutPhew
+        shellLog("brain: route \(route), text \(packet?.visibleText.count ?? 0) chars,\(earlier.count) earlier turns, map \(store == nil ? "off" : "on") with \(lines.isEmpty ? 0 : lines.split(separator: "\n").count) lines, ready in \(Int(Date().timeIntervalSince(start) * 1000)) ms\(explaining == nil ? "" : fromEarly ? ", early answer kept" : ", early answer cancelled")")
         var explanation = "", steps: [GuideStep] = []
-        try await Guide.answer(question, packet: packet, route: route, earlier: earlier, recall: lines, about: about,
-                               aboutPhew: aboutPhew, projectMemory: project, spoken: spoken, tools: tools ?? store.map(MapSearch.init), provider: provider) { event in
+        func take(_ event: BrainEvent) {
             if case .text(let piece) = event { explanation += piece }
             if case .steps(let given) = event { steps = given }
             emit(event)
+        }
+        if fromEarly {
+            for try await event in early { take(event) }
+            try Task.checkCancellation()  // a stopped stream ends quietly: a cut answer is never kept or learned from
+        } else {
+            explaining?.cancel()
+            let held = await store?.counts()
+            let about = SelfKnowledge.live(state, turn: earlier.count + 1, projects: held?.projects, facts: held?.facts)
+            let project = route == .explain ? await projectMemoryBlock(question, packet: packet, store: store) : nil
+            try await Guide.answer(question, packet: packet, route: route, earlier: earlier, recall: lines, about: about,
+                                   aboutPhew: aboutPhew, projectMemory: project, spoken: spoken, tools: tools ?? store.map(MapSearch.init),
+                                   provider: provider, emit: take)
         }
         // Only a finished answer is kept, and only as text. The Librarian learns from the same text.
         let turn = Guide.turn(question, explanation: explanation, steps: steps)

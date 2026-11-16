@@ -320,7 +320,7 @@ extension Importer {
 
     /// One line from Phew's code about the file's place, never from its words. A project's name is its folder's name.
     static func hint(_ file: ClaudeExport.File) -> String {
-        let start = file.project.map { "This file of the user's Claude memory export is about their project \"\($0)\"." }
+        let start = file.project.map { "This file of the user's Claude memory export is about their project \"\(hintName($0))\"." }
             ?? "This is one file of the user's Claude memory export."
         switch file.role {
         case .aboutYou:

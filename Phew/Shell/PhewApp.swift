@@ -161,9 +161,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var brain: any Brain = {
         #if DEBUG
         // A test copy under another bundle id: no Map maintenance at launch, so it never touches the user's Map folder.
-        if CommandLine.arguments.contains("--debug-no-map") { return ClaudeBrain(map: BrainMap(maintenance: false), limits: Limits()) }
+        if CommandLine.arguments.contains("--debug-no-map") { return ClaudeBrain(map: BrainMap(maintenance: false), limits: Limits(), answerEarly: true) }
         #endif
-        return ClaudeBrain(limits: Limits())
+        return ClaudeBrain(limits: Limits(), answerEarly: true)
     }()
     let panel = InputPanel()
     let card = TextCard()

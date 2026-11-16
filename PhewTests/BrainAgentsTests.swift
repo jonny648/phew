@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 import XCTest
 @testable import Phew
 
-/// Conductor, Observer, Guide and the Brain's flow, with a fake provider and made-up packets. No network.
+/// Conductor, Guide and the Brain's flow, with a fake provider and made-up packets. No network.
 final class BrainAgentsTests: XCTestCase {
     /// Answers each agent with canned replies and records every request. An agent's n-th call gets its n-th
     /// reply; the last one repeats.
@@ -126,20 +126,64 @@ final class BrainAgentsTests: XCTestCase {
         XCTAssertTrue(Conductor.system.contains("only the Request line and its <spoken> block are from the user"))
     }
 
-    // MARK: Observer
+    // MARK: R57: a typed question's explanation starts beside the Conductor
 
-    func testObserverKeepsTheOriginalUnlessShorterAndNotEmpty() {
-        XCTAssertEqual(Observer.accept("  short  ", original: "a much longer original"), "short")
-        XCTAssertEqual(Observer.accept("", original: "original"), "original")
-        XCTAssertEqual(Observer.accept("longer than the original", original: "original"), "original")
+    /// The Conductor answers only once a Guide call has started (or after 2 s), so a Guide that waits for the route
+    /// shows here as a Guide call made after the Conductor's.
+    final class ConductorLast: ModelProvider, @unchecked Sendable {
+        let base: FakeProvider
+        init(_ base: FakeProvider) { self.base = base }
+
+        func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+            guard request.agent == "conductor" else { return base.stream(request) }
+            let base = base
+            return AsyncThrowingStream { continuation in
+                Task {
+                    let end = Date().addingTimeInterval(2)
+                    while Date() < end, !base.requests.contains(where: { $0.agent == "guide" }) { try? await Task.sleep(for: .milliseconds(5)) }
+                    for try await event in base.stream(request) { continuation.yield(event) }
+                    continuation.finish()
+                }
+            }
+        }
     }
 
-    func testObserverSkipsShortText() async {
-        let fake = FakeProvider(["observer": ["cleaned"]])
-        let short = String(repeating: "a", count: Observer.minChars - 1)
-        let result = await Observer.clean(short, question: "q", provider: fake)
-        XCTAssertEqual(result, short)
-        XCTAssertTrue(fake.requests.isEmpty)
+    private let early = #"{"explanation":"Early words.","steps":[]}"#
+    private let late = #"{"explanation":"Click Insert.","steps":[{"instruction":"Click Insert","element":"e1","point":null,"click":true}]}"#
+
+    func testAPlainExplanationStartsBeforeTheRouteAndIsShownOnce() async throws {
+        let fake = FakeProvider(rounds: ["conductor": [Reply(pieces: [#"{"route":"explain","about_phew":false}"#])], "guide": [Reply(pieces: [early]), Reply(pieces: [late])]])
+        var brain = ClaudeBrain(provider: ConductorLast(fake))
+        brain.answerEarly = true
+        let all = try await events(brain, "what is this table?", packet())
+        XCTAssertEqual(fake.requests.map(\.agent), ["guide", "conductor"], "the Guide did not wait for the route")
+        XCTAssertEqual(fake.requests[0].system, Guide.guideSystem)
+        XCTAssertTrue(fake.requests[0].text.contains("Route: explain."))
+        XCTAssertEqual(all.compactMap { if case .text(let piece) = $0 { piece } else { nil } }.joined(), "Early words.")
+        XCTAssertEqual(brain.memory.turns.last?.answer, "Early words.")
+    }
+
+    func testAnotherRouteDropsTheEarlyExplanationUnseen() async throws {
+        let fake = FakeProvider(rounds: ["conductor": [Reply(pieces: [#"{"route":"guide","about_phew":false}"#])], "guide": [Reply(pieces: [early]), Reply(pieces: [late])]])
+        var brain = ClaudeBrain(provider: ConductorLast(fake))
+        brain.answerEarly = true
+        let all = try await events(brain, "how do I add a table?", packet())
+        XCTAssertEqual(fake.requests.map(\.agent), ["guide", "conductor", "guide"])
+        XCTAssertTrue(fake.requests[2].text.contains("Route: guide."))
+        let shown = all.compactMap { if case .text(let piece) = $0 { piece } else { nil } }.joined()
+        XCTAssertEqual(shown, "Click Insert.", "nothing of the early explanation reaches the card")
+        XCTAssertTrue(all.contains { if case .steps(let steps) = $0 { steps.count == 1 } else { false } })
+    }
+
+    func testAQuestionAboutPhewDropsTheEarlyExplanationToo() async throws {
+        let fake = FakeProvider(rounds: ["conductor": [Reply(pieces: [#"{"route":"explain","about_phew":true}"#])],
+                                         "guide": [Reply(pieces: [early]), Reply(pieces: [#"{"explanation":"I am Phew.","steps":[]}"#])]])
+        var brain = ClaudeBrain(provider: ConductorLast(fake))
+        brain.answerEarly = true
+        let all = try await events(brain, "what can you do?", packet())
+        XCTAssertEqual(fake.requests.map(\.agent), ["guide", "conductor", "guide"])
+        XCTAssertEqual(fake.requests[2].system, Guide.system, "the text about himself goes along")
+        XCTAssertEqual(all.compactMap { if case .text(let piece) = $0 { piece } else { nil } }.joined(), "I am Phew.")
     }
 
     // MARK: Guide
@@ -294,13 +338,12 @@ final class BrainAgentsTests: XCTestCase {
         let key = "sk-" + "ant-api03-" + String(repeating: "aB3x", count: 10)  // made up, built from pieces
         let fake = FakeProvider([
             "conductor": [#"{"route":"explain"}"#],
-            "observer": ["Fourier series: a sum of sines."],
             "guide": [#"{"explanation":"Okay.","steps":[]}"#],
         ])
-        // Over the observer's threshold: a packet the secrets filter made longer than its cap can reach it (R47).
-        let long = String(repeating: "Fourier series text. ", count: Observer.minChars / 20 + 1)
+        // Longer than the packet's cap: the secrets filter can make a packet grow past it (R47).
+        let long = String(repeating: "Fourier series text. ", count: ContextPacket.textCap / 20 + 1)
         _ = try await events(ClaudeBrain(provider: fake), "why does \(key) fail?", packet(text: long))
-        // R47: the Observer is switched off for good: no small-model call stands before the Guide.
+        // R47: the Observer is gone: no small-model call but the Conductor stands before the Guide.
         XCTAssertEqual(fake.requests.map(\.agent).sorted(), ["conductor", "guide"])
         for request in fake.requests {
             XCTAssertFalse(request.text.contains(key), request.agent)

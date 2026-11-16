@@ -108,12 +108,13 @@ enum BrainSpeedCheck {
     ]
 
     /// Questions one after another, as when the user asks again soon after an answer: the card closes in between,
-    /// nobody waits for the Librarian. Logs, per question, the wait before the Guide starts, the first word, the
-    /// Observer and the cost of that question's calls.
+    /// nobody waits for the Librarian. Logs, per question, the wait before the Guide starts, the first word and the
+    /// cost of that question's calls.
     static func speed(_ count: Int) async {
         let clock = Clock(ClaudeProvider())
         guard let store = try? await BrainSelfCheck.monthOfWork() else { return shellLog("speed check: made-up map failed") }
-        let brain = BrainSelfCheck.brain(clock, store)
+        var brain = BrainSelfCheck.brain(clock, store)
+        brain.answerEarly = true  // as in the app (R57)
         var firsts: [Int] = [], readies: [Int] = [], totals: [Int] = [], spent = 0.0
         for n in 0..<count {
             let t0 = Date(), before = clock.calls.count
@@ -128,10 +129,9 @@ enum BrainSpeedCheck {
             let mine = clock.calls[before...]
             let guide = mine.first { $0.agent == "guide" }
             let ready = guide.map { Int($0.start.timeIntervalSince(t0) * 1000) } ?? -1
-            let observer = mine.first { $0.agent == "observer" }
             let rounds = mine.filter { $0.agent == "guide" }.count
             firsts.append(first ?? -1); readies.append(ready); totals.append(total)
-            shellLog("speed check question \(n + 1): guide starts after \(ready) ms, first word \(first ?? -1) ms, answer done \(total) ms, observer \(observer.map { "\($0.ms) ms" } ?? "skipped"), guide rounds \(rounds), guide in \(guide?.usage.input ?? 0) cached \(guide?.usage.cacheRead ?? 0) written \(guide?.usage.cacheWrite ?? 0) tokens")
+            shellLog("speed check question \(n + 1): guide starts after \(ready) ms, first word \(first ?? -1) ms, answer done \(total) ms, guide rounds \(rounds), guide in \(guide?.usage.input ?? 0) cached \(guide?.usage.cacheRead ?? 0) written \(guide?.usage.cacheWrite ?? 0) tokens")
         }
         _ = await brain.map.ready()  // the last Librarian, so its cost is counted
         spent = clock.calls.reduce(0) { $0 + $1.usd }

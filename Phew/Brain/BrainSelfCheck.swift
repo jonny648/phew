@@ -58,16 +58,6 @@ enum BrainSelfCheck {
                 } catch { report("stream \(tier)", false, failure(error)) }
             }
 
-            // (b) Observer: shorter, and the words that carry the meaning are still there.
-            do {
-                let t0 = Date(), usd0 = CallLog.spentUSD
-                let page = webPage.visibleText
-                let cleaned = Observer.accept(try await provider.complete(Observer.request(page, question: "What does this formula mean?")), original: page)
-                let kept = ["Fourier", "period", "coefficient"].filter { cleaned.localizedCaseInsensitiveContains($0) }
-                report("observer", cleaned.count < page.count && kept.count == 3,
-                       "\(page.count) to \(cleaned.count) chars, \(kept.count)/3 key words kept, total \(ms(t0)) ms, $\(CallLog.spentUSD - usd0)")
-            } catch { report("observer", false, failure(error)) }
-
             // (b) The Guide on 6 made-up cases, then 2 on recall rules (P5.11) with a lower token cap.
             for item in guideCases {
                 let (ok, detail) = await guideCase(item, provider: provider)

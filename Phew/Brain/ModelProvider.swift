@@ -2,7 +2,7 @@ import Foundation
 
 /// Agents ask for a tier, never for a model by name.
 enum Tier: String, Sendable {
-    /// Conductor, Observer, Librarian.
+    /// Conductor, Librarian.
     case small
     /// Guide, Follower, Runner.
     case main
@@ -52,7 +52,7 @@ struct Usage: Sendable, Equatable {
 /// followed by the tool rounds so far. Optional schema for the answer, optional tools.
 /// Messages go out in this order: `earlier`, the current turn, `after`.
 struct ModelRequest: Sendable {
-    /// conductor, observer, guide: names the call in the cost log.
+    /// conductor, guide, runner: names the call in the cost log.
     var agent: String
     var tier: Tier
     var system: String

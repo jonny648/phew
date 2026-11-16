@@ -139,6 +139,14 @@ enum Importer {
         var facts: [Fact]
     }
 
+    /// R33: a folder's name as it goes into a hint, outside the data block: no quotes, brackets or line breaks, and
+    /// short, so it can only be a name, never a sentence that reads as a rule.
+    static func hintName(_ name: String) -> String {
+        let banned = CharacterSet.newlines.union(.controlCharacters).union(CharacterSet(charactersIn: "\"“”«»<>`"))
+        let kept = String(String.UnicodeScalarView(name.unicodeScalars.filter { !banned.contains($0) }))
+        return String(kept.prefix(40)).trimmingCharacters(in: .whitespaces)
+    }
+
     /// One call. The text is filtered here, again, and cannot close its block early. `hint`: one line from Phew's code
     /// about where the text came from (the source, a memory file's type).
     static func request(_ piece: String, hint: String) -> ModelRequest {
@@ -245,9 +253,10 @@ enum Importer {
             let (parts, leftOut) = pieces(SecretsFilter.clean(file.text))
             sort.leftOut += leftOut
             let type = file.isClaudeMD ? "CLAUDE.md" : file.type
+            let name = hintName(memory.projectName)
             let hint = file.isClaudeMD
-                ? "This is the CLAUDE.md of the project folder \"\(memory.projectName)\": rules written for a coding agent."
-                : "This is a Claude Code memory file of the project \"\(memory.projectName)\"" + (type.isEmpty ? "." : ", of type \(type).")
+                ? "This is the CLAUDE.md of the project folder \"\(name)\": rules written for a coding agent."
+                : "This is a Claude Code memory file of the project \"\(name)\"" + (type.isEmpty ? "." : ", of type \(type).")
             for part in parts {
                 var found = try await candidates(part, hint: hint, source: .claudeCode, first: sort.candidates.count, provider: provider)
                 for index in found.indices { shape(&found[index], type: type, projectName: memory.projectName, modified: file.modified) }
@@ -386,11 +395,13 @@ enum ProjectMemoryReader {
     /// The `type:` line of a memory file's header (between the first two `---` lines), or "".
     // shortcut: the header form is not documented as fixed and was not read on this Mac (no real file is opened);
     // "type: user" inside a leading "---" block is assumed. Without it a file is sorted like pasted text.
+    /// R33: only the four known types; any other text there is the file's words and never reaches the hint.
     static func memoryType(_ text: String) -> String {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
         guard lines.first == "---", let end = lines.dropFirst().firstIndex(of: "---") else { return "" }
         for line in lines[1..<end] where line.lowercased().hasPrefix("type:") {
-            return line.dropFirst(5).trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "\"'")).lowercased()
+            let type = line.dropFirst(5).trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "\"'")).lowercased()
+            return ["user", "feedback", "project", "reference"].contains(type) ? type : ""
         }
         return ""
     }

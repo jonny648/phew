@@ -43,15 +43,18 @@ You see skills in the menu under **Memory, Skills…**: the name, what it does, 
 - Time: about 0.1 second to start the helper for each run.
 - Money: a skill run costs nothing. Writing one costs the model's words for the code, inside the task's own limit.
 
-## 21.5 What is not built
+## 21.5 In a job you watch
 
-- Skills in a job you watch (the Doer). Only the research agent has them (NC.9).
+Since 0.3.1 the acting agent has skills too. In a job, "write a skill" and "run a skill" are two steps like the others, shown on the card ("Wrote the skill sum-list", "Ran the skill sum-list"). They are not actions on the Mac: they never go through the Hand. The result comes back as data for the next step, for example a note with the total. Stop ends a running skill. Three failed skill steps end the job. Limits of this form: only the last result is carried to the next steps, and a skill written in a job can be about 8,000 characters at most.
+
+## 21.6 What is not built
+
 - A skill that reads a file, reaches the web or acts. Each is a door in the box.
 - Asynchronous skills, and skills that call other skills.
 - Intel Macs: the Node inside the app is for Apple silicon only.
-- A real model writing a real skill has not been run (NC.L, at your word).
+- A real model writing a real skill has not been run, in a task or in a job (NC.L, at your word). The acting agent's prompt changed for this and has not been re-checked live.
 
-## 21.6 Known weak points
+## 21.7 Known weak points
 
 - A skill that got out of the helper's fence could still learn whether a path on your Mac exists: macOS answers "refused" for a path that is there and "not there" for one that is not. It can read nothing either way.
 - Found by the second check, left as they are: a skill out of the fence could read the Mac's own system files, among them device and boot identifiers under `/System/Volumes` (not your files); it could learn your user name and the name of your home folder; and it can see that the folders on the way to Node exist.

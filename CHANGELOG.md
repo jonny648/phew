@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1, 16 November 2026
+
+Skills in a job you watch, and the last leftovers of the review. Tested offline; not yet with the model.
+
+- In a job you watch he can write a skill, run it and use the result in the next step. The card lists each skill step. Stop ends a running skill.
+- A project folder is remembered only while its project is in your memory.
+- Memory waits a moment when it is busy instead of failing; fewer reads for each answer and each keep.
+
 ## 0.3.0, 16 November 2026
 
 Phase NC, first form: skills. Tested offline with the real helper in the real box; not yet with the model.

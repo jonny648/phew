@@ -22,8 +22,10 @@ protocol Listening: AnyObject, Sendable {
     /// seconds) while `context` is awaited and the recognisers prepare with it; then the kept sound goes to them in
     /// order, and the live sound after it. Returns once the recognisers read. `context`: words that matter now
     /// (control names, app name, names from memory). `partial` is called on the main actor with what is heard so
-    /// far, best hearing only.
-    func start(context: @escaping @Sendable () async -> [String], partial: @escaping @MainActor (String) -> Void) async throws
+    /// far, best hearing only. `level`, when given, is called on the main actor with how loud the sound is, 0...1, at
+    /// most every `AppleListener.levelEvery` seconds of sound. A number only: never logged, never kept.
+    func start(context: @escaping @Sendable () async -> [String], partial: @escaping @MainActor (String) -> Void,
+               level: (@MainActor (Double) -> Void)?) async throws
     /// Stops, returns the final hearings, drops the sound.
     func stop() async -> Heard
     /// Stops and returns nothing; drops the sound.
@@ -31,9 +33,14 @@ protocol Listening: AnyObject, Sendable {
 }
 
 extension Listening {
+    /// Without the loudness.
+    func start(context: @escaping @Sendable () async -> [String], partial: @escaping @MainActor (String) -> Void) async throws {
+        try await start(context: context, partial: partial, level: nil)
+    }
+
     /// Context words known already (the hear check, the tests).
     func start(context words: [String], partial: @escaping @MainActor (String) -> Void) async throws {
-        try await start(context: { words }, partial: partial)
+        try await start(context: { words }, partial: partial, level: nil)
     }
 }
 
@@ -71,6 +78,12 @@ final class AppleListener: Listening, @unchecked Sendable {
     private var preparing = false
     /// Each start's number: a start overtaken by a newer one leaves the listener alone.
     private var session = 0
+    /// Where the loudness goes, and the squared samples since it was last told.
+    private var level: (@MainActor (Double) -> Void)?
+    private var squares = 0.0
+    private var squaredFrames = 0
+    /// Seconds of sound per loudness reading: at most 20 a second.
+    static let levelEvery = 0.05
     /// Seconds of sound kept while the recognisers prepare; later pieces are dropped until they read.
     static let keptCap = 10.0
 
@@ -100,13 +113,15 @@ final class AppleListener: Listening, @unchecked Sendable {
         self.microphone = microphone
     }
 
-    func start(context: @escaping @Sendable () async -> [String], partial: @escaping @MainActor (String) -> Void) async throws {
+    func start(context: @escaping @Sendable () async -> [String], partial: @escaping @MainActor (String) -> Void,
+               level: (@MainActor (Double) -> Void)?) async throws {
         await cancel()
         guard !engines.isEmpty else { throw ListenProblem.failed }
         let mine = lock.withLock { () -> Int in
             session += 1
             preparing = true
             kept = []; keptSeconds = 0; seconds = 0; latest = [:]
+            self.level = level; squares = 0; squaredFrames = 0
             return session
         }
         var words: [String] = [], early = 0.0
@@ -173,6 +188,7 @@ final class AppleListener: Listening, @unchecked Sendable {
     func hear(_ buffer: AVAudioPCMBuffer) {
         lock.withLock {
             guard buffer.format.sampleRate > 0 else { return }
+            measure(buffer)
             let piece = Double(buffer.frameLength) / buffer.format.sampleRate
             if preparing {
                 guard keptSeconds + piece <= Self.keptCap + 0.001, let copy = Self.copy(buffer) else { return }
@@ -185,6 +201,25 @@ final class AppleListener: Listening, @unchecked Sendable {
             seconds += piece
             pass(buffer)
         }
+    }
+
+    /// The loudness, from the first channel's float samples (the microphone's own format), told once
+    /// `levelEvery` seconds of sound have come. The lock is held.
+    private func measure(_ buffer: AVAudioPCMBuffer) {
+        // shortcut: float sound only (the microphone's tap); integer sound shows no level, add it if a source needs it.
+        guard let level, let samples = buffer.floatChannelData?[0] else { return }
+        for i in 0..<Int(buffer.frameLength) { squares += Double(samples[i] * samples[i]) }
+        squaredFrames += Int(buffer.frameLength)
+        guard squaredFrames > 0, Double(squaredFrames) / buffer.format.sampleRate >= Self.levelEvery - 0.0001 else { return }
+        let value = Self.loudness(rms: (squares / Double(squaredFrames)).squareRoot())
+        squares = 0; squaredFrames = 0
+        Task { @MainActor in level(value) }
+    }
+
+    /// 0...1 from the sound's root mean square: -50 dB (a quiet room) is 0, -10 dB (speaking close) is 1.
+    static func loudness(rms: Double) -> Double {
+        guard rms > 0 else { return 0 }
+        return min(max((20 * log10(rms) + 50) / 40, 0), 1)
     }
 
     /// One piece to every recogniser. The lock is held.
@@ -209,6 +244,7 @@ final class AppleListener: Listening, @unchecked Sendable {
             feeds = []
             latest = [:]
             kept = []; keptSeconds = 0; preparing = false
+            level = nil
             opened.forEach { $0.continuation.finish() }
             return (opened, seconds)
         }

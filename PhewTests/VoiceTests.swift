@@ -141,21 +141,25 @@ final class VoiceTests: XCTestCase {
         private var counts = (start: 0, stop: 0, cancel: 0)
         let heard: Heard
         let problem: ListenProblem?
-        init(heard: Heard = Heard(hearings: []), problem: ListenProblem? = nil) {
+        let levels: [Double]
+        init(heard: Heard = Heard(hearings: []), problem: ListenProblem? = nil, levels: [Double] = []) {
             self.heard = heard
             self.problem = problem
+            self.levels = levels
         }
         var context: [String] { lock.withLock { given } }
         var starts: Int { lock.withLock { counts.start } }
         var stops: Int { lock.withLock { counts.stop } }
         var cancels: Int { lock.withLock { counts.cancel } }
 
-        func start(context: @escaping @Sendable () async -> [String], partial: @escaping @MainActor (String) -> Void) async throws {
+        func start(context: @escaping @Sendable () async -> [String], partial: @escaping @MainActor (String) -> Void,
+                   level: (@MainActor (Double) -> Void)?) async throws {
             lock.withLock { counts.start += 1 }
             let words = await context()
             lock.withLock { given = words }
             if let problem { throw problem }
             await partial(heard.hearings.first?.text ?? "")
+            for value in levels { await level?(value) }
         }
         func stop() async -> Heard { lock.withLock { counts.stop += 1 }; return heard }
         func cancel() async { lock.withLock { counts.cancel += 1 } }
@@ -233,6 +237,7 @@ final class VoiceTests: XCTestCase {
         XCTAssertEqual(listener.context, ["Pages", "Orbit Bakery", "Quillan", "Made", "menu", "Bold", "Italic"])
         talk.holdEnd()
         await fulfillment(of: [sent], timeout: 2)
+        XCTAssertEqual(screen.looks.last, .sending, "the notch closes at the release")
         XCTAssertEqual(screen.sent.first?.question, Self.italian, "the best hearing is the question on the card")
         XCTAssertEqual(screen.sent.first?.spoken, hearings)
         XCTAssertEqual(listener.stops, 1)
@@ -247,7 +252,7 @@ final class VoiceTests: XCTestCase {
         await until { listener.starts == 1 }
         talk.holdCancel()
         XCTAssertFalse(talk.holdsCapture)
-        XCTAssertEqual(screen.looks.last, .closed)
+        XCTAssertEqual(screen.looks.last, .cancelled)
         talk.holdEnd()  // the release after Escape
         await until { listener.cancels == 1 }
         await settle()
@@ -298,6 +303,25 @@ final class VoiceTests: XCTestCase {
         talk.holdEnd()
         await until { screen.looks.last == .closed }
         XCTAssertTrue(screen.sent.isEmpty)
+        XCTAssertFalse(screen.looks.contains(.sending), "the line stays its 3 s; nothing pulses as sent")
+    }
+
+    @MainActor
+    func testTheVoicesLevelReachesTheNotchOnlyDuringTheHold() async {
+        let listener = FakeListener(heard: Heard(hearings: hearings), levels: [0.2, 0.9])
+        let (talk, screen) = makeTalk(listener)
+        talk.holdStart()
+        await until { screen.looks.contains(.level(0.9)) }
+        XCTAssertEqual(screen.looks.filter { if case .level = $0 { true } else { false } }, [.level(0.2), .level(0.9)])
+        talk.holdCancel()
+        // A hold that ended hears nothing more: a late reading is dropped.
+        let late = FakeListener(levels: [0.5])
+        let (ended, endedScreen) = makeTalk(late)
+        ended.holdStart()
+        ended.holdCancel()
+        await until { late.starts == 1 }
+        await settle()
+        XCTAssertFalse(endedScreen.looks.contains(.level(0.5)))
     }
 
     // MARK: First run's two voice rows
@@ -536,7 +560,7 @@ final class VoiceTests: XCTestCase {
         let logged = Logged()
         shellLogTap = { logged.add($0) }
         let sent = expectation(description: "sent")
-        let listener = FakeListener(heard: Heard(hearings: hearings))
+        let listener = FakeListener(heard: Heard(hearings: hearings), levels: [0.25, 0.75])
         let (talk, _) = makeTalk(listener, sent: sent)
         talk.holdStart()
         await settle()

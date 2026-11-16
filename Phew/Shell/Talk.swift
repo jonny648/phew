@@ -20,19 +20,25 @@ struct VoicePermissions: Equatable {
 }
 
 /// Hold the shortcut to talk (P6.1 to P6.3, the owner's choices of 15 November). The hold takes the same single
-/// capture as the shortcut and shows the ask panel listening; the release sends the words at once, with every
+/// capture as the shortcut and shows him listening at the notch (`NotchListening`); the release sends the words at once, with every
 /// hearing; nothing said explains what is under the cursor (P6.2); Escape drops the capture and sends nothing.
 /// What it does on screen goes through closures: the app delegate's real ones, fakes in tests.
 /// Logs counts, languages, confidences and fixed words only: never a heard word.
 @MainActor
 final class Talk {
-    /// What the ask panel shows during a hold.
+    /// What the notch shows during a hold.
     enum Look: Equatable {
         case listening
-        /// The words so far, greyed in the field.
+        /// The words so far, greyed.
         case partial(String)
+        /// How loud the voice is now, 0...1.
+        case level(Double)
         /// One plain line in place of listening: the hold failed.
         case line(String)
+        /// Released: the words are on their way.
+        case sending
+        /// Escape: nothing is sent.
+        case cancelled
         case closed
     }
 
@@ -86,10 +92,13 @@ final class Talk {
         }
         hold.started = Task {
             do {
-                try await listener.start(context: context) { [weak self, weak hold] words in
+                try await listener.start(context: context, partial: { [weak self, weak hold] words in
                     guard let self, let hold, self.hold === hold else { return }
                     show(.partial(words))
-                }
+                }, level: { [weak self, weak hold] level in
+                    guard let self, let hold, self.hold === hold else { return }
+                    show(.level(level))
+                })
                 return true
             } catch {
                 guard self.hold === hold else { return false }  // Escape came first
@@ -107,6 +116,7 @@ final class Talk {
         hold.capture = nil
         Task {
             guard await started.value, let listener else { return closeLine() }
+            show(.sending)  // the notch closes now; the words follow when the recognisers finish
             let heard = await listener.stop()
             let hearings = heard.hearings
             if hearings.isEmpty {
@@ -123,7 +133,7 @@ final class Talk {
         guard let hold else { return }
         self.hold = nil
         hold.capture = nil
-        show(.closed)
+        show(.cancelled)
         shellLog("talk: cancelled, capture dropped")
         let started = hold.started, listener = listener
         Task {

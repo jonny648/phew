@@ -455,10 +455,10 @@ final class HandTests: XCTestCase {
         let hand = self.hand()
         let job = hand.begin(watchUser: false)
         let planted = "Planted Reminder Title 4242"
-        XCTAssertEqual(hand.act(script(.reminder(title: planted, due: DateComponents(year: 2026, month: 11, day: 16, hour: 10, minute: 0))), in: job).end, .done)
+        XCTAssertEqual(hand.act(script(.reminder(title: planted, due: DateComponents(year: 2031, month: 3, day: 9, hour: 10, minute: 0))), in: job).end, .done)
         ActionLog.flush()
         let text = try String(contentsOf: log, encoding: .utf8)
-        XCTAssertFalse(text.contains("Planted") || text.contains("4242") || text.contains("2026-11-16"))
+        XCTAssertFalse(text.contains("Planted") || text.contains("4242") || text.contains("2031-03-09"))
         XCTAssertTrue(text.contains(#""kind":"script""#) && text.contains(#""role":"other""#) && text.contains(#""chars":\#(planted.count)"#), text)
     }
 

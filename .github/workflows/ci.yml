@@ -1,0 +1,19 @@
+name: Build and test
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use the newest Xcode on the runner
+        run: |
+          newest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          sudo xcode-select -s "$newest"
+          xcodebuild -version
+      - name: Build
+        run: xcodebuild -project Phew.xcodeproj -scheme Phew -configuration Debug build CODE_SIGNING_ALLOWED=NO
+      - name: Test
+        run: xcodebuild -project Phew.xcodeproj -scheme Phew test CODE_SIGNING_ALLOWED=NO

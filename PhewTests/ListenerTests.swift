@@ -77,6 +77,42 @@ final class ListenerTests: XCTestCase {
 
     private func listener(_ engines: [FakeEngine]) -> AppleListener { AppleListener(engines: engines, microphone: false) }
 
+    // MARK: The voice's level
+
+    final class Levels: @unchecked Sendable {
+        private let lock = NSLock()
+        private var items: [Double] = []
+        var all: [Double] { lock.withLock { items } }
+        func add(_ value: Double) { lock.withLock { items.append(value) } }
+    }
+
+    /// `frames` of a made-up tone at 48 kHz, amplitude 0.2: a root mean square of about 0.141, -17 dB.
+    private func tone(frames: Int) -> AVAudioPCMBuffer {
+        let buffer = AVAudioPCMBuffer(pcmFormat: AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 1)!,
+                                      frameCapacity: AVAudioFrameCount(frames))!
+        buffer.frameLength = AVAudioFrameCount(frames)
+        for i in 0..<frames { buffer.floatChannelData![0][i] = Float(sin(Double(i) * 0.05) * 0.2) }
+        return buffer
+    }
+
+    func testTheLevelComesAtMostTwentyTimesASecondOfSound() async throws {
+        let levels = Levels()
+        let got = expectation(description: "levels")
+        got.expectedFulfillmentCount = 2
+        let ear = listener([FakeEngine("it", "")])
+        try await ear.start(context: { [] }, partial: { _ in }, level: { levels.add($0); got.fulfill() })
+        for _ in 0..<10 { ear.hear(tone(frames: 480)) }  // ten pieces of 0.01 s: 0.1 s of sound
+        await fulfillment(of: [got], timeout: 2)
+        _ = await ear.stop()
+        ear.hear(tone(frames: 4800))  // after the hold: no reading
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(levels.all.count, 2, "one reading per 0.05 s of sound")
+        for value in levels.all { XCTAssertEqual(value, AppleListener.loudness(rms: 0.2 / 2.squareRoot()), accuracy: 0.01) }
+        XCTAssertEqual(AppleListener.loudness(rms: 0), 0)
+        XCTAssertEqual(AppleListener.loudness(rms: 0.001), 0, "a quiet room rests at 0")
+        XCTAssertEqual(AppleListener.loudness(rms: 1), 1, "loud is capped at 1")
+    }
+
     // MARK: Ordering
 
     func testHearingsBestFirstByTheEnginesConfidence() async throws {

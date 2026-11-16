@@ -1,29 +1,47 @@
 # Phew!
 
-A shy macOS companion that knows your projects. He explains what is on screen, guides you by pointing, and researches a task by himself.
+A macOS companion for people who create projects. You call him with a shortcut and he works with you: he does the jobs you ask for in your apps, explains what is on screen, guides you step by step by pointing, remembers your projects, and researches a task alone.
 
-Start here: `docs/00-now.md`. All docs: `docs/README.md`. How to run the build: `docs/09-claude-code.md`.
-Progress: `roadmap.html`.
+Version 0.1.0, the MVP. Private repository.
+
+## Install
+
+Download `Phew-0.1.0.dmg` from the Releases page, open it and drag Phew to Applications. The app is signed with a development certificate, not notarised by Apple: on a Mac other than the owner's, macOS refuses to open it unless you right-click it and choose Open.
+
+At first launch Phew asks for three things, once: a Claude API key (kept only in the Keychain), Accessibility, and Screen Recording. The microphone is asked the first time you hold the shortcut to talk.
+
+## Use
+
+- **Right Option + Right Command**, pressed: the ask panel. Type a question, or nothing to have him explain what is under the pointer.
+- **Held**: speak, release. He hears on the Mac, in Italian or English.
+- "Make the title bold": he does it. "How do I make it bold?": he shows you. "Research X and report": he works alone and the result waits in the menu bar.
+- The menu bar icon holds the rest: Let Phew act, Never read this app, Memory (import, undo, recently deleted, export), Reports, API Key.
+
+## Build
+
+Needs Xcode 27 on macOS 26 or later.
+
+```
+xcodebuild -project Phew.xcodeproj -scheme Phew build
+xcodebuild -project Phew.xcodeproj -scheme Phew test
+```
+
+Some tests open a window on screen; they run only with `TEST_RUNNER_PHEW_LIVE=1`.
+
+## Where things are
 
 | Path | Content |
 |---|---|
-| `CLAUDE.md` | Rules for every Claude Code session |
-| `roadmap.html` | The checklist. Ticked by Claude Code after verification |
-| `.claude/agents/` | Roles: shell, senses, brain, map, checker |
-| `Phew.xcodeproj` | The Xcode project. Double-click to open |
-| `Phew/` | The app: `Shell`, `Senses`, `Brain`, `Map` |
+| `Phew/` | The app: `Shell` (what you see), `Senses` (reading, hearing, acting), `Brain` (the agents), `Map` (the memory) |
 | `PhewTests/` | Unit tests |
-| `docs/01-foundation.md` | Problem, user, market, who pays |
-| `docs/02-vision.md` | Vision, mission, values, who Phew is |
-| `docs/03-experience.md` | Surfaces, states, ways to call him, MVP and later |
-| `docs/04-architecture.md` | MVP architecture and full target |
-| `docs/05-map.md` | The Map: semantic and ontology layer |
-| `docs/05-map-storage.md` | The Map: storage, encryption, export |
-| `docs/06-sprint.md` | Phases of the MVP, and after |
-| `docs/07-decisions.md` | Decisions, parking list, log |
-| `docs/08-b2b-targets.md` | Who could pay |
-| `docs/09-claude-code.md` | How to start and run the build |
-| `docs/10-research-*.md` | Research of 13 and 14 November, one file per part: market, agents, memory, speed, map, locking |
-| `docs/11-direction.md` | Direction research: one specific job for Phew (phase PD) |
-| `docs/github-guide.html` | What GitHub is, how projects are structured and shipped |
-| `docs/archive/review.html` | Your review of phase PV, answered. Kept as a record |
+| `Tools/` | The practice app used by acting tests, the icon script, the DMG script |
+| `roadmap.html` | The checklist of the build |
+| `docs/00-now.md` | Where Phew is now, on one page |
+| `docs/README.md` | Index of all docs |
+| `docs/07-decisions.md` | Decisions and the log of every step |
+| `CLAUDE.md` | Rules for every Claude Code session |
+| `CHANGELOG.md` | What each version brought |
+
+## Privacy, in short
+
+He reads the screen only when called. What he reads lives in memory and is dropped when the answer ends. The memory (the Map) is encrypted and stays on the Mac. Speech is turned into words on the Mac. Your questions, the screen read with them and the few facts an answer needs go to the Claude API, after a filter that removes secrets. No log holds your words.

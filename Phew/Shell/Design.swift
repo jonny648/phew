@@ -120,6 +120,13 @@ enum Design {
         static let tick: TimeInterval = 0.12
         /// The shortcut held this long is a hold to talk (P6.1); released before, it is a press.
         static let hold: TimeInterval = 0.3
+        /// The notch growing while he listens (P6), as the system grows its own: a spring, response 0.38, damping
+        /// 0.8; back into it the same way, or quicker on Escape (response 0.25, damping 0.9). The content follows the
+        /// shape by `notchDelay`. Sent: the dot swells and settles, `pulse` each way, before the shape goes back.
+        static let notch = Animation.spring(response: 0.38, dampingFraction: 0.8)
+        static let notchQuick = Animation.spring(response: 0.25, dampingFraction: 0.9)
+        static let notchDelay: TimeInterval = 0.08
+        static let pulse: TimeInterval = 0.1
     }
 }
 
@@ -296,11 +303,12 @@ struct PanelList<Rows: View>: View {
 /// Phew, as an 8-point dot in his colour: still when he is done, breathing while he thinks.
 struct PresenceDot: View {
     var breathing = false
+    var color = Design.Ink.accent
     @State private var dim = false
 
     var body: some View {
         Circle()
-            .fill(Design.Ink.accent)
+            .fill(color)
             .frame(width: Design.Size.dot, height: Design.Size.dot)
             .opacity(breathing && dim ? 0.4 : 1)
             // Opacity only, so the same with Reduce Motion.

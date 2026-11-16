@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import SwiftUI
 
 /// Self-checks for the checker, who cannot press keys or click. Each runs only with its launch flag.
 extension AppDelegate {
@@ -8,6 +9,7 @@ extension AppDelegate {
         // Every motion takes its Reduce Motion form, without touching the system setting.
         if arguments.contains("--debug-reduce-motion") { Design.Motion.forceReduce = true }
         if arguments.contains("--debug-open-panel") { Task { await checkPanel() } }
+        if arguments.contains("--debug-notch") { Task { await checkNotch() } }
         // Senses: captures the front app, with a screenshot, into the debug files.
         // An optional bundle id after the flag reads that running app instead, without bringing it forward.
         if let flag = arguments.firstIndex(of: "--debug-capture") {
@@ -1000,6 +1002,101 @@ enum MadeUpMap {
         try await link(gone, .about, carla)
         try await store.forget([carla])
         return store
+    }
+}
+
+// MARK: - The notch while listening (P6)
+
+/// A made-up listener: no microphone, no model. Made-up words come in pieces and a made-up loudness rises and falls,
+/// about 20 readings a second, until the hold ends.
+final class MadeUpListener: Listening, @unchecked Sendable {
+    static let words = ["Make", "the", "title", "of", "the", "made-up", "poster", "bold", "and", "a", "little", "bigger"]
+    private let problem: ListenProblem?
+    private var feed: Task<Void, Never>?
+
+    init(problem: ListenProblem? = nil) { self.problem = problem }
+
+    func start(context: @escaping @Sendable () async -> [String], partial: @escaping @MainActor (String) -> Void,
+               level: (@MainActor (Double) -> Void)?) async throws {
+        _ = await context()
+        if let problem { throw problem }
+        feed = Task { @MainActor in
+            for tick in 0..<400 where !Task.isCancelled {
+                let t = Double(tick) * AppleListener.levelEvery
+                // Silent for half a second, then syllables: a fast wobble under a slow swell, with short pauses.
+                let voice = t < 0.5 || Int(t / 0.9) % 3 == 2 && t.truncatingRemainder(dividingBy: 0.9) < 0.25 ? 0 :
+                    0.45 + 0.35 * abs(sin(t * 9)) * (0.6 + 0.4 * sin(t * 1.7))
+                level?(voice)
+                if tick >= 10, tick % 4 == 0 { partial(Self.words.prefix(min((tick - 10) / 4 + 1, Self.words.count)).joined(separator: " ")) }
+                try? await Task.sleep(for: .seconds(AppleListener.levelEvery))
+            }
+        }
+    }
+
+    func stop() async -> Heard {
+        feed?.cancel()
+        return Heard(hearings: [Hearing(language: "en", text: Self.words.joined(separator: " "), confidence: 0.9)])
+    }
+
+    func cancel() async { feed?.cancel() }
+}
+
+extension AppDelegate {
+    /// `--debug-notch`: the hold to talk at the notch with a made-up listener, on the real screen for about 16 seconds:
+    /// sent, then Escape, then a missing speech model, then as on a screen without a notch. First, the grown shapes
+    /// drawn into images (light and dark menu bars are the same: the shape is black). No screen read, no shortcut, no
+    /// model call. Logs counts only.
+    func checkNotch() async {
+        notchImages()
+        let talk = Talk()
+        talk.capture = { nil }  // no screen read
+        talk.show = { [unowned self] in notch.show($0) }
+        talk.send = { question, spoken, _ in shellLog("notch check: sent \(question.count) characters, \(spoken.count) hearings") }
+        try? await Task.sleep(for: .seconds(1))
+        for (name, listener, held, cancel) in [("sent", MadeUpListener(), 3.0, false), ("cancelled", MadeUpListener(), 1.5, true),
+                                               ("model missing", MadeUpListener(problem: .modelMissing("it")), 1.5, false),
+                                               ("no notch", MadeUpListener(), 3.0, false)] {
+            notch.noNotch = name == "no notch"
+            talk.listener = listener
+            shellLog("notch check: \(name)")
+            talk.holdStart()
+            try? await Task.sleep(for: .seconds(held))
+            if cancel { talk.holdCancel() } else { talk.holdEnd() }
+            try? await Task.sleep(for: .seconds(name == "model missing" ? 4 : 1.2))
+        }
+        shellLog("notch check: done")
+        exit(0)
+    }
+
+    /// The content drawn off screen at its grown sizes, on a made-up 14-inch screen with a notch and on a made-up
+    /// external display: listening with words, silent, the problem line, and the pill.
+    private func notchImages() {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("phew-notch-check")
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let laptop = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let notched = NotchGeometry(frame: laptop, visible: laptop.insetBy(dx: 0, dy: 16).offsetBy(dx: 0, dy: -16),
+                                    notch: NotchGeometry.notch(frame: laptop, safeTop: 32, left: CGRect(x: 0, y: 950, width: 664, height: 32),
+                                                               right: CGRect(x: 848, y: 950, width: 664, height: 32)))
+        let display = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        let pill = NotchGeometry(frame: display, visible: CGRect(x: 0, y: 0, width: 1920, height: 1055), notch: nil)
+        let cases: [(String, NotchGeometry, (NotchModel) -> Void)] = [
+            ("notch-words", notched, { $0.hear(MadeUpListener.words.joined(separator: " ")); [0.7, 0.9, 0.8].forEach($0.take) }),
+            ("notch-silent", notched, { _ in }),
+            ("notch-line", notched, { $0.say(Talk.modelMissing("it")) }),
+            ("pill-words", pill, { $0.hear(MadeUpListener.words.prefix(5).joined(separator: " ")); [0.6, 0.8].forEach($0.take) }),
+            ("pill-line", pill, { $0.say(Talk.modelMissing("it")) }),
+        ]
+        for (name, geometry, fill) in cases {
+            let model = NotchModel()
+            model.grow()
+            fill(model)
+            let renderer = ImageRenderer(content: NotchView(model: model, geometry: geometry, reduce: false).background(Color.gray))
+            renderer.scale = 2
+            guard let image = renderer.nsImage, let tiff = image.tiffRepresentation,
+                  let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { continue }
+            try? png.write(to: folder.appendingPathComponent("\(name).png"))
+        }
+        shellLog("notch check: images in \(folder.path)")
     }
 }
 #endif

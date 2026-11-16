@@ -160,13 +160,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var listener: (any Listening)? = AppleListener()
     /// Hold the shortcut to talk (P6).
     lazy var talk = makeTalk()
+    /// What a hold shows, at the notch.
+    let notch = NotchListening()
     private lazy var hotKey = makeHotKey()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         ClaudeExportReader.sweep()
-        hotKey.install()
-        // Re-install once Accessibility is granted, so the shortcut works without a relaunch.
-        setup.onAccessibilityGranted = { [unowned self] in hotKey.install() }
+        #if DEBUG
+        // The notch check runs beside the user's own Phew, which owns the shortcut.
+        let ownsShortcut = !CommandLine.arguments.contains("--debug-notch")
+        #else
+        let ownsShortcut = true
+        #endif
+        if ownsShortcut {
+            hotKey.install()
+            // Re-install once Accessibility is granted, so the shortcut works without a relaunch.
+            setup.onAccessibilityGranted = { [unowned self] in hotKey.install() }
+        }
         setup.voicePermissions = { VoicePermissions.now }
         setup.askMicrophone = { Task { _ = await ListenPermissions.askMicrophone() } }
         card.onTask = { [unowned self] in tasks.start($0, packet: $1, spoken: $2) }
@@ -175,7 +185,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
         runDebugChecks()
         // Made-up states only: no look at the Keychain or the permissions, and no first-run panel taking the keyboard.
-        if ["--debug-first-run", "--debug-report", "--debug-menu", "--debug-import"].contains(where: CommandLine.arguments.contains) { return }
+        if ["--debug-first-run", "--debug-report", "--debug-menu", "--debug-import", "--debug-notch"].contains(where: CommandLine.arguments.contains) { return }
         #endif
         setup.showAtLaunch()
     }
@@ -333,19 +343,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         talk.names = { [brain] in await brain.spokenNames() }
         talk.capture = { [unowned self] in
             card.dismiss()  // off screen first, so the capture reads the user's app and not the card
-            return Senses.capture()  // before the panel: it opens under the cursor
+            anchor = NSEvent.mouseLocation  // the card opens where the ask panel would have
+            return Senses.capture()
         }
-        talk.show = { [unowned self] look in
-            switch look {
-            case .listening: panel.listen()
-            case .partial(let words): panel.heard(words)
-            case .line(let line): panel.listenProblem(line)
-            case .closed: panel.endListening()
-            }
-        }
+        talk.show = { [unowned self] in notch.show($0) }
         talk.send = { [unowned self] question, spoken, capture in
-            anchor = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)  // 15.5 A: the card takes the panel's place
-            panel.endListening(fade: false)
             self.capture = capture
             ask(question, spoken: spoken)
         }

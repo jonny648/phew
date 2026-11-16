@@ -193,6 +193,7 @@ Your 33 answers of 14 November are in 7.1. Two decisions wait for later, and fou
 | 15 Nov 2026 | P6 | Phase P6 Voice started. Your choices: the heard words are sent at once on release, with no confirm; the language is guessed each time. You asked for the method of Wispr Flow. Research: its accuracy comes from a cloud speech model, a language model that rewrites the transcript into what you meant, and context and history; it has no door for other apps and sends your voice to its servers, so it cannot be used inside Phew without breaking "speech to text runs on the device". Decision, approved by you: Apple's on-device recognition, plus that method on top (P6.3 added): context words to the recogniser, both hearings to the model, and "neither makes sense" means show, not act. Learning from your corrections over time is left for L18. Sources are in the plan of this day. |
 | 15 Nov 2026 | P6 | Built and joined, not yet wired or ticked. Hold-to-talk: a short press opens the ask panel, a hold of 0.3 s listens, release sends at once with both hearings, Esc cancels, silence explains what is under the cursor; one rule in every agent about spoken words; "I did not catch that" when neither hearing makes sense. Key presses are watched only while the shortcut is held, to catch Esc. The listener: Apple's on-device dictation recogniser, Italian and English at once, context words given to it, sound in memory only. Measured on 40 made-up sentences spoken by the Mac's voices, no microphone: the right language 40 of 40; exact words without context 24 of 40, with context 27 of 40 (Italian 14 of 20, English 13 of 20). Plain sentences 14 of 14. Almost every miss is a made-up name ("Odalys Venn" heard as "Dallas van"). The same numbers with the network closed to Phew; Apple's recognition service opened no connection in 5 minutes of sampling. No Speech Recognition prompt was needed for files. The third number, after the model reads both hearings, is next. |
 | 15 Nov 2026 | P6 | Voice wired, not ticked. A hold now really listens. Only the Microphone is asked: Apple states that its on-device analyzer does not need the Speech Recognition permission, and the check ran without it. The microphone opens at once and up to 10 s of sound is kept in memory while the recognisers prepare, so the first words are not lost. The model now returns what it understood, and the card shows that as your question. **The third number is 30 of 40; the bar was 36, so P6.3 is not met and not ticked.** Recogniser alone 24, with context words 27, after the model 28, after also giving the model the names that could have been said 30. Plain sentences 14 of 14, interface words 12 of 14, made-up names 4 of 12. Of the 10 misses: 3 Italian sentences with a name were called unclear though close enough; "remind me to call…" was taken as "remember" in both languages; 3 had the right route but the wrong name; 2 were the Doer's. Typed questions are not slowed by the change (median 1.19 s against 1.27 s). Cost $0.09. 405 tests pass, 3 skipped by the flag. Next, as planned: another on-device engine is measured on the same 40 files before anything else. |
+| 16 Nov 2026 | P6 | Your word: use the notch for the speech feedback; then complete and tick everything, you test it all yourself; commit, push to GitHub, build a disk image, and remove the app from your Mac. P6.4 built and seen on the real screen with a made-up listener: the black shape grows from the notch with the dot, level bars and the heard words, and springs back. Rule bent, named: the notch was in Later (L1). Ticked on your word, the lines say what was not run: P6.1, P6.2, PM.1, PM.2, PM.3; P6.3 ticked though its bar was not met (30 of 40 against 36). Rules bent, named: protocol rules 3 and 5. The retro (PM.4) is in 7.6. An app icon, a new README, a changelog, version 0.1.0. A test that failed only on 16 November, because it planted that day's date, is fixed. 415 tests pass, 3 skipped by the flag. The engine comparison for voice was not run: it needs outside code and models downloaded, which the permission system refused. |
 
 ## 7.5 Your review of 12 November. Input to phase PR
 
@@ -207,3 +208,32 @@ In your words, shortened:
 7. **From student to general.** Not small tasks on projects, but understanding what the user is doing, why, and how to do what they ask. A professional tool, partly reached in the MVP.
 
 Answered on 13 November 2026 in phase PR: product line and hard rules changed (7.1), research written (now the `10-research-*.md` files), phases rewritten in `06-sprint.md`.
+
+## 7.6 Retro of the MVP (PM.4), 16 November 2026
+
+Written at the end of the build, before the test on real work. It is what the build itself showed, not what use showed.
+
+**What exists.** A menu bar companion that explains and guides by pointing, acts in your apps from your words, remembers your projects in an encrypted memory, imports what Claude already knows about you, researches a task alone with a PDF report, and listens when you hold a key. 415 automatic tests. Built in a week of sessions.
+
+**What went well.**
+- Deciding by code what he never touches, and one single function that can act. Every later feature inherited those guards without new work.
+- Measuring before trusting: the search limits that never tripped, the clicks that never landed, the blank answers. Each was found by a number, not by reading code.
+- Made-up data for every test. The two times real screen content went to the model were both in tests that skipped that rule, and both were caught the same day.
+
+**What went badly.**
+- Privacy was bent three times in live tests (a Notes window, a browser page, text under the mouse). The fault behind the third was in the product, not only the tests.
+- Too much was ticked without a run in the last two days, on the owner's word. The roadmap lines say which. Those ticks mean "built", not "proven".
+- Testing on the owner's Mac while he worked was a constant conflict: windows popping up, his typing stopping the tests.
+
+**What is known to be weak.**
+- Acting in Dia, Figma and Fusion was never tried. Changing, sending and deleting are not built.
+- Voice: names are misheard (4 of 12 on made-up names; the pipeline 30 of 40 against a bar of 36). No real voice was measured.
+- The research limits were never reached in a live run.
+- Nobody but the owner has used it. Every claim about demand is desk research.
+
+**Order of what comes after**, as a proposal:
+1. Use it for two weeks on real work. Write down each failure as it happens.
+2. L18, acting and agents second pass, driven by that list.
+3. L8, a signed and notarised app, so that ten people can install it (`14-company.md` 14.3, step 2).
+4. L17, venture readiness, only with those ten people's use in hand.
+

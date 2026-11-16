@@ -19,17 +19,12 @@ final class InputPanel: EditPanel {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
     }
 
-    /// Set while the shortcut is held to talk (P6.1): the panel shows what is heard and never takes the keyboard,
-    /// since the user is holding modifier keys over their app.
-    private(set) var listening: ListenModel?
-
-    // Borderless windows refuse key status by default; typing needs it. Never while listening.
-    override var canBecomeKey: Bool { listening == nil }
+    // Borderless windows refuse key status by default; typing needs it.
+    override var canBecomeKey: Bool { true }
 
     /// `text`: what the field holds at first, the cursor after it. `line`: one grey line under the field, such as
     /// "I did not catch that." `point`: the top-left corner; nil, the cursor.
     func open(text: String = "", line: String? = nil, at point: NSPoint? = nil, onClose: @escaping (String?) -> Void) {
-        endListening(fade: false)
         self.onClose = onClose
         // A fresh view each time: empty text, focus on the field.
         contentView = NSHostingView(rootView: InputField(text: text, line: line, onSubmit: { [weak self] text in
@@ -57,53 +52,8 @@ final class InputPanel: EditPanel {
         shellLog("panel opened, phew front \(phewIsFront), prefilled \(!text.isEmpty), line \(line != nil)")
     }
 
-    /// The listening state at the cursor: the dot breathing, the words as they come, greyed. Shown, never key.
-    func listen() {
-        guard !isOpen else { return }
-        let model = ListenModel()
-        listening = model
-        contentView = NSHostingView(rootView: ListeningField(model: model))
-        setFrame(topLeft: NSEvent.mouseLocation, size: NSSize(width: Design.Size.width, height: Design.Size.ask))
-        alphaValue = 0
-        orderFrontRegardless()  // not key: the keys stay with the user's app
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = Design.Motion.appear
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            animator().alphaValue = 1
-        }
-        shellLog("panel listening, key \(isKeyWindow), phew front \(phewIsFront)")
-    }
-
-    /// The words heard so far, or one plain line when listening failed.
-    func heard(_ words: String) { listening?.partial = words }
-    func listenProblem(_ line: String) {
-        listening?.line = line
-        listening?.active = false
-        // Next turn of the run loop, once SwiftUI has laid out the line.
-        DispatchQueue.main.async { [weak self] in
-            guard let self, listening != nil else { return }
-            setFrame(topLeft: NSPoint(x: frame.minX, y: frame.maxY), size: NSSize(width: Design.Size.width, height: fittedHeight))
-        }
-    }
-
     /// The field's height, more when a line wraps under it.
     private var fittedHeight: CGFloat { max(Design.Size.ask, contentView?.fittingSize.height ?? 0) }
-
-    /// Ends the listening state: at once when the card takes the panel's place, else with `leave`. Nothing when the
-    /// panel is not listening, so a typing panel is never closed by it.
-    func endListening(fade: Bool = true) {
-        guard listening != nil else { return }
-        listening = nil
-        guard fade else { return orderOut(nil) }
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = Design.Motion.leave
-            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            animator().alphaValue = 0
-        }, completionHandler: { [weak self] in
-            guard let self, !isOpen, listening == nil else { return }  // opened again during the fade
-            orderOut(nil)
-        })
-    }
 
     /// With a question the panel goes at once, as the card appears in its place. Without one it fades (`leave`).
     func dismiss(_ question: String? = nil) {
@@ -134,14 +84,6 @@ final class InputPanel: EditPanel {
         super.resignKey()
         dismiss()
     }
-}
-
-/// What the listening panel shows; the app delegate fills it as words come.
-final class ListenModel: ObservableObject {
-    @Published var partial = ""
-    @Published var line: String?
-    /// False once listening failed: the dot stops breathing.
-    @Published var active = true
 }
 
 private struct InputField: View {
@@ -175,37 +117,6 @@ private struct InputField: View {
         .surface()
         // The scale half of `appear`; the window fades. Opacity only with Reduce Motion.
         .scaleEffect(shown || Design.Motion.reduce ? 1 : Design.Motion.appearScale)
-        .onAppear { withAnimation(.easeOut(duration: Design.Motion.appear)) { shown = true } }
-    }
-}
-
-/// The ask panel while the shortcut is held (P6.1): the dot breathing in the accent (dimmed and still with Reduce
-/// Motion), the words heard so far in `ask`, greyed, in place of the placeholder.
-private struct ListeningField: View {
-    @ObservedObject var model: ListenModel
-    @State private var shown = false
-
-    var body: some View {
-        let reduce = Design.Motion.reduce
-        VStack(spacing: 0) {
-            HStack(spacing: Design.Space.s12) {
-                PresenceDot(breathing: model.active && !reduce)
-                    .opacity(model.active && reduce ? 0.4 : 1)
-                    .accessibilityLabel(model.active ? "Listening" : "Phew")
-                Text(verbatim: model.partial.isEmpty ? "Ask Phew" : model.partial)
-                    .font(Design.Text.ask)
-                    .foregroundStyle(model.partial.isEmpty ? Design.Ink.tertiary : Design.Ink.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.head)  // the newest words stay in view
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(height: Design.Size.ask)
-            if let line = model.line { LineRow(text: line) }
-        }
-        .padding(.horizontal, Design.Space.s16)
-        .frame(width: Design.Size.width)
-        .surface()
-        .scaleEffect(shown || reduce ? 1 : Design.Motion.appearScale)
         .onAppear { withAnimation(.easeOut(duration: Design.Motion.appear)) { shown = true } }
     }
 }

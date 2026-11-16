@@ -60,7 +60,7 @@ Personal data in the tracked files (search for email, phone, home path, names, l
 | Home paths | only `/Users/someone/...`, `/Users/made-up/...`, `/Users/student/...` in tests and one self-check (`Phew/Map/LibrarianSelfCheck.swift:127,129`) | Fine. None holds your user name |
 | Real names of people | none found. Made-up names only | Fine |
 
-In the history (not in the files): all 98 commits carry the author name and a Mac address. 66 use `gianlucatroietto@gmail.com`, 15 use `gianlucatroietto@Mac-di-Giann.local`, 17 use `gianlucatroietto@192.168.1.4`. `07-decisions.md:197` already says so for the Gmail one. **Should go before the repository is made public**: either rewrite the history with a neutral author, or publish a fresh repository with only the code (the plan already allows this, L8). Not a problem while it stays private. No key was found in the files (`sk-ant` appears only as a made-up value in tests); the history scan at PG.2 said the same.
+In the history (not in the files): all 98 commits carry the author name and a Mac address. 66 use a personal mail address, 15 use an address with this Mac's name, 17 use an address with a home-network number. `07-decisions.md:197` already says so for the Gmail one. **Should go before the repository is made public**: either rewrite the history with a neutral author, or publish a fresh repository with only the code (the plan already allows this, L8). Not a problem while it stays private. No key was found in the files (`sk-ant` appears only as a made-up value in tests); the history scan at PG.2 said the same.
 
 ## 3. Docs
 

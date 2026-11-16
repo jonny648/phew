@@ -41,3 +41,5 @@ Start with `00-now.md`.
 | `docs/17-limits.md` | Phase NA. Every limit Phew has, sorted, with a recommendation and the decisions for you | current |
 | `docs/18-capabilities.md` | Phase NB. How he acts through real doors: connections (MCP), the other doors, agents that start agents. The design in short, then the research notes with sources | current |
 | `docs/connections.html` | The same in plain words with drawings | current |
+| `docs/19-review.md` | The developer review of all the code, 17 November 2026: 56 findings in plain words, with where, a case, the fix, and what three checkers said of each | current |
+| `docs/20-language.md` | Swift or TypeScript for the thinking part: the recommendation, four shapes compared, a measured trial, the research with sources | current |

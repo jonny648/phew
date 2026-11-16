@@ -26,6 +26,33 @@ final class BrainMapTests: XCTestCase {
         return all
     }
 
+    /// R28: one failed open does not turn memory off for good; the menu is told while it is off.
+    func testAFailedOpenIsTriedAgainAndTheMenuIsTold() async throws {
+        let store = try MapStore()
+        final class Tries: @unchecked Sendable { var count = 0 }
+        let tries = Tries()
+        let opening: @Sendable () throws -> MapStore = {
+            tries.count += 1
+            if tries.count == 1 { throw MapError.keyMissingForExistingFile }
+            return store
+        }
+        let waiting = BrainMap(open: opening, maintenance: false)
+        let first = await waiting.now()
+        XCTAssertNil(first)
+        let off = await ClaudeBrain(provider: FakeProvider([:]), map: waiting).memoryOff()
+        XCTAssertTrue(off, "the menu's line shows")
+        XCTAssertEqual(tries.count, 1, "not tried again before the wait is over")
+
+        tries.count = 0
+        let retrying = BrainMap(open: opening, maintenance: false, retryAfter: 0)
+        let failed = await retrying.now()
+        let again = await retrying.now()
+        XCTAssertNil(failed)
+        XCTAssertNotNil(again, "tried again, and memory is back")
+        let back = await ClaudeBrain(provider: FakeProvider([:]), map: retrying).memoryOff()
+        XCTAssertFalse(back)
+    }
+
     private func me(_ store: MapStore) async throws -> Int64 {
         let nodes = await store.visibleNodes()
         return try XCTUnwrap(nodes.first { $0.mapClass == .me }).id

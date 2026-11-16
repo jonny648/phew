@@ -303,7 +303,7 @@ extension MapStore {
               valid_from = ?7, updated = ?8 WHERE id = ?9
             """, [.text(row.name), .text(row.kind), .text(MapStore.json(row.aliases)), .text(row.properties), .text(stronger.rawValue),
                   .real(confidence), .text(row.validFrom), .text(s.stamp), .int(node.id)])
-        for doubt in doubts { try unconfirmed(doubt, about: [node.id], origin: origin, validFrom: validFrom, sensitive: node.sensitive, s, &out) }
+        for doubt in doubts { try unconfirmed(doubt, about: [node.id], origin: origin, validFrom: validFrom, sensitive: sensitive || node.sensitive, s, &out) }
         if sensitive, !node.sensitive { try moveSensitive(node.id, true) }
     }
 

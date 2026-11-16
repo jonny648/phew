@@ -498,20 +498,21 @@ extension MapStore {
     static let spokenClasses: [MapClass] = [.project, .person, .tool, .organization]
 
     /// N3.2: the other names of the current things the recogniser is given, other name to name; nothing sensitive.
-    /// A word heard for a name and corrected by the user is kept there ("also heard as", `addHeardAs`).
+    /// A word heard for a name and corrected by the user is added ("also heard as", `addHeardAs`).
     func heardAs() throws -> [String: String] {
         var out: [String: String] = [:]
         for mapClass in Self.spokenClasses {
             for node in try currentNodes(mapClass) where !node.sensitive && !node.name.isEmpty {
-                for alias in node.aliases where out[alias] == nil { out[alias] = node.name }
+                for alias in node.aliases + Self.heard(node.properties) where out[alias] == nil { out[alias] = node.name }
             }
         }
         return out
     }
 
-    /// N3.2: `heard` kept once as an other name ("also heard as") of the current, not sensitive thing named `name`
+    /// N3.2: `heard` kept once as a word "also heard as" the name of the current, not sensitive thing named `name`
     /// in a spoken class, the most recently seen first. Filtered like every write. False when there is no such
     /// thing, it already holds `heard`, or `heard` looks secret. Encrypted with the rest; Forget takes it with the thing.
+    /// Kept apart from the other names (R27): a heard word only helps the recogniser, never project detection or matching.
     @discardableResult
     func addHeardAs(_ heard: String, name: String) throws -> Bool {
         let heard = Self.cleaned(heard, 200)
@@ -519,15 +520,22 @@ extension MapStore {
         // Never when `heard` is itself a name in the Map: "Marta" must not become another way to say "Marco".
         for mapClass in Self.spokenClasses where try currentNodes(mapClass).contains(where: { Self.sameName($0, heard) }) { return false }
         for mapClass in Self.spokenClasses {
-            guard var node = try currentNodes(mapClass).first(where: { !$0.sensitive && Self.folded($0.name) == Self.folded(name) })
+            guard let node = try currentNodes(mapClass).first(where: { !$0.sensitive && Self.folded($0.name) == Self.folded(name) })
             else { continue }
-            guard !Self.sameName(node, heard) else { return false }
-            node.aliases.append(heard)
-            try db.query("UPDATE main.nodes SET aliases = ?1, updated = ?2 WHERE id = ?3",
-                         [.text(Self.json(node.aliases)), .text(Self.now()), .int(node.id)])
+            let kept = Self.heard(node.properties)
+            guard !Self.sameName(node, heard), !kept.contains(where: { Self.folded($0) == Self.folded(heard) }) else { return false }
+            var object = (try? JSONSerialization.jsonObject(with: Data(node.properties.utf8))) as? [String: Any] ?? [:]
+            object["heard"] = kept + [heard]
+            try db.query("UPDATE main.nodes SET properties = ?1, updated = ?2 WHERE id = ?3",
+                         [.text(Self.properties(object)), .text(Self.now()), .int(node.id)])
             return true
         }
         return false
+    }
+
+    /// The words heard for a thing's name and corrected by the user (`addHeardAs`), kept outside its other names.
+    static func heard(_ properties: String) -> [String] {
+        ((try? JSONSerialization.jsonObject(with: Data(properties.utf8))) as? [String: Any])?["heard"] as? [String] ?? []
     }
 
     /// The current Document whose path or address is `label`, the most recently seen first.

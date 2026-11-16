@@ -114,7 +114,9 @@ enum Report {
                 let base = intent.contains(.code) ? NSFont.monospacedSystemFont(ofSize: size - 1, weight: .regular) : NSFont.systemFont(ofSize: size)
                 let font = NSFont(descriptor: base.fontDescriptor.withSymbolicTraits(traits), size: base.pointSize) ?? base
                 out.append(NSAttributedString(string: piece, attributes: [.font: font, .paragraphStyle: style]))
-                if let link = run.link?.absoluteString, link != piece {
+                // Web addresses only, as on the card (CardMarkdown): any other scheme keeps its words and no address.
+                if let url = run.link, ["http", "https"].contains(url.scheme?.lowercased() ?? ""), !(url.host() ?? "").isEmpty,
+                   case let link = url.absoluteString, link != piece {
                     out.append(NSAttributedString(string: " (\(link))", attributes: [
                         .font: NSFont.systemFont(ofSize: size - 2), .paragraphStyle: style,
                         NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(gray: 0.4, alpha: 1),

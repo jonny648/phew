@@ -25,6 +25,8 @@ final class HotKey {
     /// Key presses are watched only while the chord is down, to cancel on any of them. Never otherwise; the key
     /// itself is never kept.
     private var keyMonitors: [Any] = []
+    /// Sleep, screen sleep, a switch of user and the screen lock: each ends a hold or a press under way.
+    private var sleepObservers: [Any] = []
     private var isDown = false
     /// Another key or modifier came with the two: nothing until both are up again.
     private var spoiled = false
@@ -53,6 +55,15 @@ final class HotKey {
         if let local = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged, handler: { self.flags($0.modifierFlags.rawValue); return $0 }) {
             monitors.append(local)
         }
+        guard sleepObservers.isEmpty else { return }
+        // The Mac sleeps or the screen locks: the release may never be seen (R35).
+        let interrupt: @Sendable (Notification) -> Void = { [weak self] _ in MainActor.assumeIsolated { self?.interrupt() } }
+        let workspace = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification, NSWorkspace.sessionDidResignActiveNotification] {
+            sleepObservers.append(workspace.addObserver(forName: name, object: nil, queue: .main, using: interrupt))
+        }
+        sleepObservers.append(DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("com.apple.screenIsLocked"), object: nil, queue: .main, using: interrupt))
     }
 
     /// Device-dependent bits: 0x40 right Option (NX_DEVICERALTKEYMASK), 0x10 right Command (NX_DEVICERCMDKEYMASK).
@@ -78,7 +89,7 @@ final class HotKey {
         keyMonitors.forEach(NSEvent.removeMonitor)
         keyMonitors = []
         guard on else { return }
-        let key: (NSEvent) -> Void = { [weak self] event in self?.keyDown(event.keyCode) }
+        let key: (NSEvent) -> Void = { [weak self] event in self?.keyDown(event.keyCode, isRepeat: event.isARepeat) }
         if let global = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: key) { keyMonitors.append(global) }
         if let local = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { key($0); return $0 }) { keyMonitors.append(local) }
     }
@@ -105,8 +116,15 @@ final class HotKey {
     }
 
     /// Any key pressed while the chord is down, Escape among them: ends a hold without sending, and is not a press
-    /// either before the hold. The key code is not kept.
-    func keyDown(_ code: UInt16) {
+    /// either before the hold. The key code is not kept. A repeat is a key already held before the shortcut, not a
+    /// new press: it blocks nothing.
+    func keyDown(_ code: UInt16, isRepeat: Bool = false) {
+        guard isDown, !isRepeat else { return }
+        spoil()
+    }
+
+    /// The Mac sleeps or the screen locks (R35): a hold ends unsent, as on any other key, and a press does not fire.
+    func interrupt() {
         guard isDown else { return }
         spoil()
     }

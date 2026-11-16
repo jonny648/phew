@@ -379,14 +379,37 @@ final class ImportTests: XCTestCase {
         XCTAssertNil(none)
         let inside = ContextPacket(appName: "Xcode", bundleID: "", windowTitle: "x", visibleText: "", cursor: nil,
                                    documentPath: project.appending(path: "Sources/main.swift").path)
-        let byPath = await brain.projectMemoryBlock("", packet: inside, store: nil)
+        let byPath = await brain.projectMemoryBlock("", packet: inside, store: store)
         XCTAssertNotNil(byPath, "a file inside the folder names the project")
         let runner = Runner.request("Research teal filaments", packet: nil, number: 1, projectMemory: byPath)
         XCTAssertTrue(runner.text.contains("<project_memory>"))
+        let noMap = await brain.projectMemoryBlock("", packet: inside, store: nil)
+        XCTAssertNil(noMap, "no Map, no Project: nothing read")
 
         let noFolder = ClaudeBrain(provider: fake, map: BrainMap(open: { store }, maintenance: false))
         let nothing = await noFolder.projectMemoryBlock("Orbit Lamp", packet: inside, store: store)
         XCTAssertNil(nothing, "under tests no folder is ever remembered by default")
+
+        // R34: Undo last import takes the Project, and with it the reading of the folder's files.
+        _ = await brain.undoLastImport()
+        let afterUndo = await brain.projectMemoryBlock("", packet: inside, store: store)
+        XCTAssertNil(afterUndo, "the folder is still remembered, but its Project is gone: nothing read")
+    }
+
+    /// R34: a folder picked and then cancelled, before anything is kept, is never read for an answer.
+    func testAFolderPickedButNotKeptIsNeverRead() async throws {
+        let (project, home) = try madeUpProject()
+        let suite = "PhewImportTest-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let folders = ProjectFolders(defaults: defaults, claudeHome: home)
+        let store = try MapStore()
+        let brain = brain(FakeProvider([:]), store, folders: folders)
+        _ = brain.projectMemory(folder: project)
+        let inside = ContextPacket(appName: "Xcode", bundleID: "", windowTitle: "x", visibleText: "", cursor: nil,
+                                   documentPath: project.appending(path: "Sources/main.swift").path)
+        let block = await brain.projectMemoryBlock("", packet: inside, store: store)
+        XCTAssertNil(block)
     }
 
     // MARK: PB.3 Undo last import

@@ -80,6 +80,19 @@ final class MapForgetTests: XCTestCase {
         XCTAssertTrue(edges.contains { $0.from == new && $0.to == task && $0.validTo == nil }, "the new Note is about what the old one was about")
     }
 
+    /// R26: a doubt written in the same reply that first marks its thing sensitive goes to the sensitive file too.
+    func testADoubtAboutAThingJustMarkedSensitiveIsSensitive() async throws {
+        let store = try MapStore()
+        _ = try await Made.learn(store, Made.reply(things: [Made.thing("t1", "Task", "Pay the made-up invoice", due: "2026-11-20", origin: "told")]),
+                                 question: "Remember to pay the invoice by the 20th", route: .remember)
+        let (seen, _) = try await Made.learn(store, Made.reply(
+            things: [Made.thing("t1", "Task", "Pay the made-up invoice", due: "2026-11-25", origin: "observed", sensitive: true)]))
+        let doubtID = try XCTUnwrap(seen.unconfirmed.first)
+        let files = try await store.fileCounts("nodes", doubtID)
+        XCTAssertEqual(files.main, 0, "the doubt names the thing: never in the normal file")
+        XCTAssertEqual(files.sensitive, 1)
+    }
+
     func testAWeakerSourceNeverReplacesAStrongerOne() async throws {
         let store = try MapStore()
         let task = try await Made.learn(store, Made.reply(things: [Made.thing("t1", "Task", "Poster brief", due: "2026-11-20", origin: "told")]),

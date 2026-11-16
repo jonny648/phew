@@ -245,7 +245,14 @@ final class ImportUndo: ObservableObject {
         return "Undo last import (\(last.source), \(last.count == 1 ? "1 fact" : "\(last.count) facts"))"
     }
 
-    func refresh() async { last = await brain.lastImport() }
+    /// The Map could not be opened: the menu says so in one fixed line (R28).
+    @Published private(set) var memoryOff = false
+    static let memoryOffLine = "Memory is off: Phew could not open it"
+
+    func refresh() async {
+        last = await brain.lastImport()
+        memoryOff = await brain.memoryOff()
+    }
 
     /// Reads the last import again each time a menu opens, so the entry is right when the user sees it.
     func watchMenus() {

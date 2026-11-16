@@ -34,6 +34,22 @@ final class MapRecallTests: XCTestCase {
 
     // MARK: - P5.9 the eight defined terms
 
+    /// R27: a corrected heard word helps the recogniser only; it is never an other name for detection or matching.
+    func testAHeardWordIsNotAnOtherName() async throws {
+        let store = try MapStore()
+        let id = try await store.add(MapNode(mapClass: .project, kind: "made up", name: "Phew", origin: .told))
+        let learned = try await store.addHeardAs("few", name: "Phew")
+        XCTAssertTrue(learned)
+        let node = try await store.node(id)
+        XCTAssertEqual(node?.aliases, [])
+        let heard = try await store.heardAs()
+        XCTAssertEqual(heard, ["few": "Phew"])
+        let detected = await store.detectProject(appName: "Notes", windowTitle: "few made-up notes", documentPath: nil)
+        XCTAssertNil(detected, "a heard word never detects the Project")
+        let read = try XCTUnwrap(node)
+        XCTAssertFalse(MapStore.sameName(read, "few"), "never matched as the same thing")
+    }
+
     func testCurrentAndOpen() async throws {
         let store = try MapStore()
         let open = try await add(store, .task, "Poster brief")

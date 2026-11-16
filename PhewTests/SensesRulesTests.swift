@@ -2,6 +2,18 @@ import XCTest
 @testable import Phew
 
 final class SensesRulesTests: XCTestCase {
+    /// R44: at launch without the dump flag, an earlier run's debug files are deleted; with it they stay.
+    func testDebugFilesAreDeletedAtLaunchWithoutTheFlag() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "phew-debug-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("made-up".utf8).write(to: folder.appending(path: "packet-com.example.made-up.json"))
+        ContextPacket.sweepDebugFiles(arguments: ["Phew", "--debug-dump"], folder: folder)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path), "kept while the test runs")
+        ContextPacket.sweepDebugFiles(arguments: ["Phew"], folder: folder)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
+    }
+
     func testPictureIsTheWindowOnlyWhenTheMouseIsInsideIt() {
         let window = CGRect(x: 100, y: 50, width: 800, height: 600)
         XCTAssertTrue(ScreenCapture.picksWindow(mouse: CGPoint(x: 400, y: 300), windowFrame: window))

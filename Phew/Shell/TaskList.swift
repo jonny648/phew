@@ -32,6 +32,9 @@ final class TaskList: ObservableObject {
         /// An action that cannot be undone or leaves the Mac, waiting for the user's one confirm in the menu (N2.4).
         /// At most one per task, memory only.
         var waits: HandScript?
+        /// The job of a change the user confirmed, holding what it replaced, so the menu can undo it until the
+        /// result is opened (R29). Memory only.
+        var undo: HandJob?
 
         /// The task's first words, for the menu.
         var title: String {
@@ -46,6 +49,8 @@ final class TaskList: ObservableObject {
     var waiting: [Item] { items.filter { !$0.opened && $0.state != .running && $0.state != .stopped } }
     /// Tasks with an action waiting for a confirm: one row each in the menu.
     var confirms: [Item] { items.filter { $0.waits != nil } }
+    /// Tasks with a confirmed change that can still be put back: one Undo row each.
+    var undos: [Item] { items.filter { $0.undo != nil } }
 
     private let brain: any Brain
     private let hand: Hand
@@ -111,7 +116,7 @@ final class TaskList: ObservableObject {
 
     /// The user opens a waiting result: it leaves the Ready list.
     func open(_ number: Int) -> Item? {
-        update(number) { $0.opened = true }
+        update(number) { $0.opened = true; $0.undo = nil }
         return items.first { $0.id == number }
     }
 
@@ -155,7 +160,7 @@ final class TaskList: ObservableObject {
         case .append, .workbook, .changeCells, .restore: return AddItemTool.refused
         }
         guard tasks[number] != nil else { return HandEnd.stopped.rawValue }
-        let end = await run(scripts, agent: true, task: number)
+        let end = await run(scripts, agent: true, task: number).end
         // One waits at a time: a second is refused, never queued unseen. The Hand did nothing either way.
         let refused = end == .needsConfirm && items.first(where: { $0.id == number })?.waits != nil
         if end == .needsConfirm, !refused { update(number) { $0.waits = script } }
@@ -169,9 +174,23 @@ final class TaskList: ObservableObject {
     func confirm(_ number: Int) async -> HandEnd {
         guard let script = items.first(where: { $0.id == number })?.waits else { return .stopped }
         update(number) { $0.waits = nil }
-        let end = await run([script], agent: false, task: number)
+        let (end, job) = await run([script], agent: false, task: number)
+        if !job.kept.isEmpty { update(number) { $0.undo = job } }
         shellLog("task \(number): confirmed item \(end.rawValue)")
         return end
+    }
+
+    /// The menu's Undo of a confirmed change (R29): what it replaced, put back through the Hand. What was not put
+    /// back stays for another Undo, as on the card (R6).
+    @discardableResult
+    func undo(_ number: Int) async -> HandUndo? {
+        guard let job = items.first(where: { $0.id == number })?.undo else { return nil }
+        update(number) { $0.undo = nil }
+        let hand = hand
+        let undo = await Task.detached { hand.restore(job) }.value
+        if !job.kept.isEmpty { update(number) { $0.undo = job } }
+        shellLog("task \(number): undo of the confirmed item \(undo.end.rawValue)")
+        return undo
     }
 
     /// The confirm row: what happens once confirmed, with what a change writes (R29): the new text's first line, the
@@ -205,7 +224,7 @@ final class TaskList: ObservableObject {
         shellLog("task \(number): waiting item dismissed")
     }
 
-    private func run(_ scripts: [HandScript], agent: Bool, task number: Int) async -> HandEnd {
+    private func run(_ scripts: [HandScript], agent: Bool, task number: Int) async -> (end: HandEnd, job: HandJob) {
         let hand = hand, job = hand.begin(watchUser: false, agent: agent)
         jobs[number] = job
         var end = HandEnd.done
@@ -216,7 +235,7 @@ final class TaskList: ObservableObject {
         }
         hand.close(job)
         jobs[number] = nil
-        return end
+        return (end, job)
     }
 }
 

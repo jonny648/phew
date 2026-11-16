@@ -128,6 +128,17 @@ struct Pointable: Codable, Equatable {
     var frame: CGRect
 }
 
+extension ContextPacket {
+    /// Where a Debug build launched with `--debug-dump` writes its evidence.
+    static let debugFolder = URL.applicationSupportDirectory.appending(path: "Phew/debug")
+
+    /// R44, in every build: at launch without the dump flag, what an earlier test run dumped is deleted.
+    static func sweepDebugFiles(arguments: [String] = CommandLine.arguments, folder: URL = debugFolder) {
+        guard !arguments.contains(where: { $0 == "--debug-dump" || $0 == "--debug-capture" }) else { return }
+        try? FileManager.default.removeItem(at: folder)
+    }
+}
+
 #if DEBUG
 extension ContextPacket {
     /// `--debug-dump`, or `--debug-capture` which implies it. Without it no capture touches the disk (hard rule).
@@ -143,7 +154,7 @@ extension ContextPacket {
     /// Debug evidence only, with `debugDump`: the latest packet per app in ~/Library/Application Support/Phew/debug.
     /// Never shown.
     func writeDebugFiles() {
-        let dir = URL.applicationSupportDirectory.appending(path: "Phew/debug")
+        let dir = Self.debugFolder
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]

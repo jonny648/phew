@@ -6,14 +6,17 @@ import Foundation
 actor BrainMap {
     private let open: @Sendable () throws -> MapStore
     private var store: MapStore?
-    private var unavailable = false
+    /// When the last open failed. The open is tried again `retryAfter` seconds later, never latched off (R28).
+    private var failedAt: Date?
+    private let retryAfter: TimeInterval
     private var learning: Task<Void, Never>?
 
     /// `maintenance`: the real delete of what was forgotten over 30 days ago, now and then once a day (5.5). Off
     /// under tests, so a test never opens the real Map.
     init(open: @escaping @Sendable () throws -> MapStore = { try MapStore.openOnMac() },
-         maintenance: Bool = NSClassFromString("XCTestCase") == nil) {
+         maintenance: Bool = NSClassFromString("XCTestCase") == nil, retryAfter: TimeInterval = 30) {
         self.open = open
+        self.retryAfter = retryAfter
         guard maintenance else { return }
         // Lives as long as the app: the Brain is made once, at launch.
         Task {
@@ -39,16 +42,20 @@ actor BrainMap {
     func now() -> MapStore? { opened() }
 
     private func opened() -> MapStore? {
-        if store == nil, !unavailable {
+        if store == nil, failedAt.map({ Date.now.timeIntervalSince($0) >= retryAfter }) ?? true {
             do {
                 store = try open()
+                failedAt = nil
             } catch {
-                unavailable = true
+                failedAt = .now
                 shellLog("map: not available, answering without memory")
             }
         }
         return store
     }
+
+    /// True while the Map cannot be opened; asking tries again once the wait is over.
+    func off() -> Bool { opened() == nil }
 
     /// After an answer: the Librarian in the background, after any run still going. The card does not wait for it.
     /// It gets the labels of the packet only, so the capture is not kept past the answer. A failure writes nothing
@@ -105,6 +112,10 @@ actor BrainMap {
         packet.map { ContextPacket(appName: $0.appName, bundleID: "", windowTitle: $0.windowTitle, visibleText: "", cursor: nil,
                                    documentPath: $0.documentPath) }
     }
+}
+
+extension ClaudeBrain {
+    func memoryOff() async -> Bool { await map.off() }
 }
 
 /// `search_map` for the Guide, run on the Map by `MapStore.searchMap`. Logs nothing.

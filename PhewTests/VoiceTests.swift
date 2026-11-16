@@ -195,6 +195,47 @@ final class VoiceTests: XCTestCase {
         XCTAssertNil(clock.fire)
     }
 
+    /// R35: the Mac going to sleep or the screen locking ends a hold unsent, and a press under way does not fire.
+    @MainActor
+    func testSleepOrLockEndsAHoldUnsent() {
+        let clock = Clock()
+        var events: [String] = []
+        let key = hotKey(clock) { events.append($0) }
+        key.install()
+        key.flags(0x50)
+        clock.fire?()
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.willSleepNotification, object: nil)
+        RunLoop.current.run(until: Date() + 0.2)
+        XCTAssertEqual(events, ["start", "cancel"])
+        XCTAssertFalse(key.holding)
+        key.flags(0)  // seen after all: nothing more
+        key.flags(0x50)
+        key.interrupt()  // the screen locks before the hold
+        key.flags(0)
+        XCTAssertEqual(events, ["start", "cancel"], "no press either")
+        key.flags(0x50)
+        key.flags(0)
+        XCTAssertEqual(events, ["start", "cancel", "press"], "the shortcut works again")
+    }
+
+    /// NR.60: a key already held before the shortcut sends repeats; they block nothing. A new key still cancels.
+    @MainActor
+    func testAKeyHeldBeforeTheShortcutDoesNotBlockIt() {
+        let clock = Clock()
+        var events: [String] = []
+        let key = hotKey(clock) { events.append($0) }
+        key.flags(0x50)
+        key.keyDown(0, isRepeat: true)  // "a", held since before
+        key.flags(0)
+        XCTAssertEqual(events, ["press"])
+        key.flags(0x50)
+        clock.fire?()
+        key.keyDown(0, isRepeat: true)
+        XCTAssertTrue(key.holding)
+        key.keyDown(1)
+        XCTAssertEqual(events, ["press", "start", "cancel"])
+    }
+
     @MainActor
     func testAtTheCeilingSilenceSendsNothingAndWordsGo() async {
         let silent = FakeListener()

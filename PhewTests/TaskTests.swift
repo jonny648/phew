@@ -299,6 +299,42 @@ final class TaskTests: XCTestCase {
         XCTAssertEqual(again, .stopped, "once")
     }
 
+    /// NR.60: in the PDF a link's address follows its words only for a web address, as on the card.
+    func testThePDFShowsOnlyWebAddressesAfterLinks() {
+        let text = Report.styled("[Made-up source](https://example.com/page) and [open me](file:///etc/made-up) and [run](javascript:alert(1))").string
+        XCTAssertTrue(text.contains("Made-up source (https://example.com/page)"), text)
+        XCTAssertTrue(text.contains("open me and run"), text)
+        XCTAssertFalse(text.contains("file:"), text)
+        XCTAssertFalse(text.contains("javascript:"), text)
+    }
+
+    /// R29: a change the user confirmed for an agent can be put back from the menu, until the task's result is opened.
+    func testAConfirmedChangeCanBeUndoneUntilTheResultIsOpened() async throws {
+        fake.apps.add("Made-up plan", ["A made-up line"])
+        let script = Script([call(#"{"kind":"note","title":"Made-up plan","action":"delete"}"#), .init(text: report)])
+        let list = list(script)
+        _ = list.start("Research a made-up topic and tidy my notes", packet: nil)
+        let item = try await finished(list)
+        XCTAssertTrue(list.undos.isEmpty, "nothing to put back before the confirm")
+        await list.confirm(item.id)
+        XCTAssertTrue(fake.apps.notes.isEmpty)
+        XCTAssertEqual(list.undos.map(\.id), [item.id], "one Undo row")
+        let undo = await list.undo(item.id)
+        XCTAssertEqual(undo?.end, .done)
+        XCTAssertEqual(fake.apps.notes.count, 1, "put back through the Hand")
+        XCTAssertTrue(list.undos.isEmpty, "once")
+
+        // Opened: the Undo row goes with it.
+        let second = Script([call(#"{"kind":"note","title":"Made-up plan","action":"delete"}"#), .init(text: report)])
+        let other = self.list(second)
+        _ = other.start("Research a made-up topic and tidy my notes again", packet: nil)
+        let next = try await finished(other)
+        await other.confirm(next.id)
+        XCTAssertEqual(other.undos.map(\.id), [next.id])
+        _ = other.open(next.id)
+        XCTAssertTrue(other.undos.isEmpty)
+    }
+
     /// R29: the confirm row says what the change writes, not only which item it touches.
     func testTheConfirmRowShowsWhatTheChangeWrites() {
         XCTAssertEqual(TaskList.asks(.noteBody(title: "Made-up ideas", body: "\n  Made-up first line  \nA second line")),

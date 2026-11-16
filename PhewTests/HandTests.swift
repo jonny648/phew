@@ -501,6 +501,25 @@ final class HandTests: XCTestCase {
         XCTAssertEqual(stopped.end, .stopped)
     }
 
+    /// R30: a slow script never makes `begin` on the main thread wait: a second job starts at once.
+    func testASlowScriptDoesNotHoldBeginOnTheMainThread() {
+        let hand = self.hand()
+        let job = hand.begin(watchUser: false)
+        let running = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0), ended = DispatchSemaphore(value: 0)
+        fake.during = { running.signal(); release.wait() }
+        // A backstop, so the test ends even if `begin` waits.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 2) { release.signal() }
+        let step = script(.workbook)
+        DispatchQueue.global().async { _ = hand.act(step, in: job); ended.signal() }
+        running.wait()
+        let start = Date()
+        _ = hand.begin(watchUser: false)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 0.5, "begin did not wait for the script")
+        release.signal()
+        ended.wait()
+        fake.during = nil
+    }
+
     func testScriptsCountTowardsTheCeilings() {
         var time = Date(timeIntervalSince1970: 1_000_000)
         let hand = self.hand(now: { time })

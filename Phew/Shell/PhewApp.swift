@@ -22,6 +22,7 @@ struct PhewApp: App {
             Toggle("Let Phew act", isOn: $allowed)
             NeverReadEntry(front: delegate.front) { delegate.neverReadFrontApp() }
             Divider()
+            MemoryOffEntry(undo: delegate.importUndo)
             Menu("Memory") {
                 Button("Import Claude memory…") { delegate.importClaudeMemory() }
                 Button("Paste a memory list…") { delegate.importMemory() }
@@ -75,7 +76,11 @@ private struct TaskEntries: View {
                 Button("Dismiss") { tasks.dismiss(item.id) }
             }
         }
-        if !tasks.running.isEmpty || !tasks.waiting.isEmpty || !tasks.confirms.isEmpty { Divider() }
+        // R29: a change the user confirmed can be put back until the task's result is opened.
+        ForEach(tasks.undos) { item in
+            Button("Undo the change confirmed for “\(item.title)”") { Task { await tasks.undo(item.id) } }
+        }
+        if !tasks.running.isEmpty || !tasks.waiting.isEmpty || !tasks.confirms.isEmpty || !tasks.undos.isEmpty { Divider() }
     }
 }
 
@@ -111,6 +116,15 @@ private struct UndoImportEntry: View {
 
     var body: some View {
         Button(undo.title, action: action).disabled(undo.last == nil)
+    }
+}
+
+/// One fixed line while the Map cannot be opened (R28): answers go on without memory.
+private struct MemoryOffEntry: View {
+    @ObservedObject var undo: ImportUndo
+
+    var body: some View {
+        if undo.memoryOff { Text(ImportUndo.memoryOffLine) }
     }
 }
 
@@ -195,6 +209,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         ClaudeExportReader.sweep()
+        ContextPacket.sweepDebugFiles()
         #if DEBUG
         // The notch check runs beside the user's own Phew, which owns the shortcut.
         let ownsShortcut = !CommandLine.arguments.contains("--debug-notch")

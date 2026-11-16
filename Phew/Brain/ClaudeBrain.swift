@@ -198,7 +198,10 @@ struct ClaudeBrain: Brain {
                                                    documentPath: packet?.documentPath, question: question) {
             chosen = folders.first { MapStore.sameName(project, $0.lastPathComponent) }
         }
-        guard let chosen, let block = ProjectMemoryReader.excerpt(folder: chosen, claudeHome: projectFolders.claudeHome) else { return nil }
+        // R34: only while the Map holds that folder's Project, so a cancelled import, Undo last import or Forget stops it.
+        guard let chosen, let store,
+              ((try? await store.currentNodes(.project)) ?? []).contains(where: { MapStore.sameName($0, chosen.lastPathComponent) }),
+              let block = ProjectMemoryReader.excerpt(folder: chosen, claudeHome: projectFolders.claudeHome) else { return nil }
         shellLog("brain: project memory added, \(block.count) chars")
         return block
     }

@@ -492,8 +492,8 @@ final class NameMatchTests: XCTestCase {
         let again = await brain.learnHeard("send the draft to Dallas van", meant: "send the draft to Odalys Venn")
         XCTAssertTrue(first)
         XCTAssertFalse(again, "stored once")
-        let aliases = try await store.node(id)?.aliases
-        XCTAssertEqual(aliases, ["Dallas van"])
+        let kept = try await store.node(id).map { MapStore.heard($0.properties) }
+        XCTAssertEqual(kept, ["Dallas van"])
         let rewritten = await brain.learnHeard("send the draft to Dallas van", meant: "open the made-up list in Notes please")
         let noName = await brain.learnHeard("make it blue", meant: "make it red")
         XCTAssertFalse(rewritten || noName, "no name, or a rewritten sentence: nothing kept")

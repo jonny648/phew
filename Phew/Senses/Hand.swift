@@ -436,8 +436,12 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     private let list: NeverReadList
     private let ownPID: pid_t
     private let now: () -> Date
+    /// Only the job counter and `ranHere`: never held while an app or a script works, so `begin` on the main thread
+    /// never waits for an action (R30).
     private let lock = NSLock()
-    private var recent: [Date] = []
+    /// One action at a time, held for the whole action (a script up to `scriptTimeout`). Never taken on the main thread.
+    private let acting = NSLock()
+    private var recent: [Date] = []  // under `acting`
     private var jobs = 0
     #if DEBUG
     /// Every script run in this process, how it ended and what it made: for the live tests' report and clean-up
@@ -505,7 +509,7 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         let start = Date()
         var role = step.role
         var marked = false, final = false, left = false
-        let end = lock.withLock { () -> HandEnd in
+        let end = acting.withLock { () -> HandEnd in
             job.steps += 1
             let end = check(step, job: job, role: &role, marked: &marked, final: &final, left: &left)
             if end != .done { job.finish(end) }
@@ -518,7 +522,7 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         return HandResult(end: end, marked: marked, final: final, left: left)
     }
 
-    /// Under `lock`. Every guard, then the action.
+    /// Under `acting`. Every guard, then the action.
     private func check(_ step: HandStep, job: HandJob, role: inout String, marked: inout Bool, final: inout Bool,
                        left: inout Bool) -> HandEnd {
         guard allowed else { return .off }
@@ -563,13 +567,13 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         return .done
     }
 
-    /// Under `lock`. The ceilings.
+    /// Under `acting`. The ceilings.
     private func brake(_ job: HandJob, _ time: Date) -> HandEnd? {
         recent.removeAll { time.timeIntervalSince($0) >= 60 }
         return Self.ceiling(actedInJob: job.acted, recent: recent, now: time)
     }
 
-    /// Under `lock`. A script: the Never list for the app it acts in (it is not the front app, and no control is
+    /// Under `acting`. A script: the Never list for the app it acts in (it is not the front app, and no control is
     /// involved), the ceilings, the "cannot be undone" class (an agent's waits for a confirm), then the script, read
     /// back by the surface. Nothing on screen is compared.
     /// A put-back of Undo: no ceiling holds it, as none holds `back`, since it only undoes what Phew did (R6); an item
@@ -604,7 +608,7 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         job.script(false)
         if let made { job.made.append(made) }
         #if DEBUG
-        ranHere.append((script, end, made))
+        lock.withLock { ranHere.append((script, end, made)) }
         #endif
         return end
     }
@@ -638,7 +642,7 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         return result
     }
 
-    /// Under `lock`. Another app to the front, the one focus exception (CLAUDE.md): the Never list for that app before
+    /// Under `acting`. Another app to the front, the one focus exception (CLAUDE.md): the Never list for that app before
     /// anything of it is read, the ceilings, the job's own app still in front (a change he did not make stops the
     /// job), then the switch. The app brought becomes the job's app. Phew itself never becomes the active app.
     private func front(_ app: String, job: HandJob) -> HandEnd {
@@ -668,7 +672,7 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         let (home, app) = (job.start, job.app)
         guard home != 0, app != home, job.end != .userInput, surface.frontPID() == app else { return nil }
         let begun = Date()
-        let end = lock.withLock { () -> HandEnd in
+        let end = acting.withLock { () -> HandEnd in
             job.steps += 1
             guard allowed else { return .off }
             if home == ownPID { return .ownApp }

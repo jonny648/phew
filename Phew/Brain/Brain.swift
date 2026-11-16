@@ -93,6 +93,8 @@ protocol Brain: Sendable {
     func lastImport() async -> ImportInfo?
     /// "Undo last import": the card's one line, or nil when there was nothing to undo. Restore is `restore(_:)`.
     func undoLastImport() async -> String?
+    /// True while the Map cannot be opened, for the menu's one fixed line (R28). Asking tries the open again.
+    func memoryOff() async -> Bool
 
     // MARK: Limits
 
@@ -273,6 +275,7 @@ extension Brain {
     func keepImport(_ candidates: [ImportCandidate]) async throws -> ImportKept { ImportKept() }
     func lastImport() async -> ImportInfo? { nil }
     func undoLastImport() async -> String? { nil }
+    func memoryOff() async -> Bool { false }
 
     func limitsToday() async -> LimitsToday? { nil }
     func setDayLimit(usd: Double) {}

@@ -17,8 +17,10 @@ codesign --verify --deep --strict "$app"
 built=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")
 [[ $built == "$version" ]] || fail "the app is version $built, not $version"
 # The debugger door must be shut: get-task-allow lets any program of the user read Phew's memory (R14).
-if codesign -d --entitlements - "$app" 2>/dev/null | grep -q get-task-allow; then fail "the app carries get-task-allow"; fi
-codesign -d --verbose "$app" 2>&1 | grep -q 'flags=.*runtime' || fail "the hardened runtime is off"
+# Read into variables first: with pipefail, a grep -q that stops early would fail the pipe and flip the answer.
+ents=$(codesign -d --entitlements - "$app" 2>/dev/null); sig=$(codesign -d --verbose "$app" 2>&1)
+[[ $ents != *get-task-allow* ]] || fail "the app carries get-task-allow"
+[[ $sig == *flags=*runtime* ]] || fail "the hardened runtime is off"
 stage="$work/stage"; mkdir -p "$stage/.background"
 cp -R "$app" "$stage/"; ln -s /Applications "$stage/Applications"
 swift "$root/Tools/make-dmg-background.swift" "$stage/.background"

@@ -41,9 +41,15 @@ Proven live on made-up data: acting in a practice window, clicking on a canvas, 
 
 Under Memory in the menu: paste a memory list from Claude, ChatGPT or Gemini and tick what he keeps; import from a project folder (only its `CLAUDE.md` and its Claude Code memory files); undo last import. Verified by the checker on made-up data. Not seen on a real screen yet: the folder window and the panel in use.
 
-## Current phase: P6 Voice
+## The MVP is built: version 0.1.0, 16 November 2026
 
-Hold a key, speak, release. The words are written on the device and appear in the ask panel. Then PM, the MVP test on your real work, and PG, GitHub.
+Online, private: https://github.com/jonny648/phew. The installer is `Phew-0.1.0.dmg`, on the release page and in `~/Downloads/Phew-release/`.
+
+Voice is in: hold the shortcut and speak, on the Mac, with feedback at the notch. Every MVP task in the roadmap is ticked; several were ticked on your word before a run, and their lines say so.
+
+## Next
+
+Use it on real work and note each failure. Then L18 (acting and agents, second pass, and misheard names), then a notarised app for ten people. The retro is in `07-decisions.md` 7.6.
 
 ## Decisions waiting for you
 

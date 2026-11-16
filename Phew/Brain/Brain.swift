@@ -19,6 +19,13 @@ protocol Brain: Sendable {
     /// changed first, at most 30. Names only, never a fact; nothing sensitive. Empty without a Map.
     func spokenNames() async -> [String]
 
+    /// N3.2: words heard before for those names and corrected by the user, heard words to name. Empty without a Map.
+    func heardAs() async -> [String: String]
+    /// N3.2: the user changed a heard text shown first (`heard`) into `meant` before sending. When the change is one
+    /// word or a pair and the new words are a name in the Map, the old words are kept as "also heard as" of that name.
+    /// True when something was kept. Never logged.
+    func learnHeard(_ heard: String, meant: String) async -> Bool
+
     /// During a guide, after the user acts: looks at a fresh `packet` and says which of `steps` the user is on
     /// now, starting from `current` (0-based), so the guide moves on by itself. A runaway or bad answer is tried
     /// once more (PS.5). A refusal or a second bad answer does not end the guide: it returns `current` with no
@@ -104,6 +111,8 @@ extension Brain {
         answer(question, packet: packet, state: state)
     }
     func spokenNames() async -> [String] { [] }
+    func heardAs() async -> [String: String] { [:] }
+    func learnHeard(_ heard: String, meant: String) async -> Bool { false }
     func forgetTurns() {}
     func nextAction(_ request: String, packet: ContextPacket?, done: [String]) async throws -> NextAction { .stuck("") }
     func nextAction(_ request: String, packet: ContextPacket?, done: [String], spoken: [Hearing]) async throws -> NextAction {

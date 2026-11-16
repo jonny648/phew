@@ -11,6 +11,8 @@ struct Hearing: Sendable, Equatable {
     var language: String   // "it" or "en"
     var text: String
     var confidence: Double  // 0...1, 0 when the engine gives none
+    /// N3.1: the names matched by sound in this hearing, replaced or doubtful. Memory only, never logged.
+    var swaps: [NameMatch.Swap] = []
 }
 
 /// Both languages' hearings, best first; empty when nothing was said.

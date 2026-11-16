@@ -48,20 +48,28 @@ final class Talk {
     var permissions: () -> VoicePermissions = { .granted }
     /// Names from the Map for the recogniser (`Brain.spokenNames`).
     var names: () async -> [String] = { [] }
+    /// Words heard before for those names, heard words to name (`Brain.heardAs`, N3.2).
+    var heardAs: () async -> [String: String] = { [:] }
     /// The shortcut's single capture, taken with the card off screen.
     var capture: () -> Task<ContextPacket?, Never>? = { nil }
     var show: (Look) -> Void = { _ in }
     /// The ask path: the best hearing as the question (empty: explain what is under the cursor), every hearing, and
     /// the capture.
     var send: (String, [Hearing], Task<ContextPacket?, Never>?) -> Void = { _, _, _ in }
+    /// N3.3: a sentence shown first: the heard text (names put right), the words to mark, every hearing, the capture.
+    var showFirst: (String, [String], [Hearing], Task<ContextPacket?, Never>?) -> Void = { _, _, _, _ in }
     /// A permission is missing: first run's two voice rows.
     var missing: () -> Void = {}
     /// How long the line of a failed hold stays after the release.
     var lineStays: Duration = .seconds(3)
 
     /// One hold. The capture lives here until it is sent or dropped.
-    private final class Hold {
+    private final class Hold: @unchecked Sendable {
         var capture: Task<ContextPacket?, Never>?
+        /// The words the recogniser was given and the words heard before for names, for the sound match (N3.1).
+        /// Set once by the context, read after the listener started.
+        var words: [String] = []
+        var heardAs: [String: String] = [:]
         /// True when the listener started; false when it failed and the hold showed its line or the rows.
         var started: Task<Bool, Never>?
     }
@@ -82,13 +90,19 @@ final class Talk {
         hold.capture = capture
         show(.listening)
         shellLog("talk: listening")
-        let names = names
+        let names = names, heardAs = heardAs
         // The microphone opens at once; the words on screen and the Map's names follow when the capture is read.
-        let context: @Sendable () async -> [String] = {
+        let context: @Sendable () async -> [String] = { [hold] in
             async let named = names()
+            async let before = heardAs()
             let packet = await capture?.value
-            let extra = await named
-            return packet?.spokenContext(extra: extra) ?? extra
+            let known = await before
+            // The words heard before go to the recogniser too (N3.2), after the names.
+            let extra = await named + known.keys.sorted()
+            let words = packet?.spokenContext(extra: extra) ?? ContextPacket.spokenWords(extra)
+            hold.words = words
+            hold.heardAs = known
+            return words
         }
         hold.started = Task {
             do {
@@ -108,7 +122,8 @@ final class Talk {
         }
     }
 
-    /// The release: the words go at once, no confirm.
+    /// The release: names matched by sound (N3.1), then the words go at once, or are shown first when the
+    /// recogniser was unsure or a name doubtful (N3.3).
     func holdEnd() {
         guard let hold, let started = hold.started else { return }
         self.hold = nil
@@ -117,12 +132,15 @@ final class Talk {
         Task {
             guard await started.value, let listener else { return closeLine() }
             show(.sending)  // the notch closes now; the words follow when the recognisers finish
-            let heard = await listener.stop()
-            let hearings = heard.hearings
+            let hearings = NameMatch.apply(await listener.stop(), names: hold.words, heardAs: hold.heardAs).hearings
             if hearings.isEmpty {
                 shellLog("talk: nothing heard, explaining what is under the cursor")
             } else {
                 shellLog("talk: heard \(hearings.count) hearings, languages \(hearings.map { Spoken.code($0.language) }), confidences \(hearings.map { ($0.confidence * 100).rounded() / 100 }), best \(hearings[0].text.count) characters")
+            }
+            if case .show(let doubtful) = SendOrShow.decide(hearings.first) {
+                shellLog("talk: shown first, \(doubtful.count) doubtful words")
+                return showFirst(hearings[0].text, doubtful, hearings, capture)
             }
             send(hearings.first?.text ?? "", hearings, capture)
         }

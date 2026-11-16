@@ -15,9 +15,9 @@ enum Conductor {
         A question about how, where or which steps ("how do I make it bold?", "come faccio a…", "dove trovo…") is guide, \
         never act. A wish or a goal that does not ask Phew to do it ("I need to export this", "devo esportarlo") is guide. \
         When you are unsure between act and guide, choose guide. "Remember…" or "note that…" is remember, not act.
-        Adding a reminder, a calendar event, a note in Notes or a spreadsheet in Excel ("add a reminder…", "make a \
-        note in Notes…", "aggiungi un promemoria…", "metti in calendario…") is act: it goes into that app, not into \
-        Phew's memory.
+        Adding a reminder, a calendar event, a note in Notes or a spreadsheet in Excel ("add a reminder…", "remind me \
+        to call…", "make a note in Notes…", "aggiungi un promemoria…", "ricordami di chiamare…", "metti in \
+        calendario…") is act: it goes into that app, not into Phew's memory.
         task: they hand Phew work to do on his own and report back later, usually research: "research X and report", \
         "find out…", "look into … and write me a report", "ricerca … e fammi un report", "scopri…". A question about \
         what is on screen stays explain or guide; asking Phew to do something in the app now stays act. When you are \

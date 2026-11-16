@@ -494,6 +494,42 @@ extension MapStore {
                      [.text(mapClass.rawValue)]).compactMap(Self.node)
     }
 
+    /// The classes whose names the recogniser is given (P6.3) and the sound match learns (N3.2).
+    static let spokenClasses: [MapClass] = [.project, .person, .tool, .organization]
+
+    /// N3.2: the other names of the current things the recogniser is given, other name to name; nothing sensitive.
+    /// A word heard for a name and corrected by the user is kept there ("also heard as", `addHeardAs`).
+    func heardAs() throws -> [String: String] {
+        var out: [String: String] = [:]
+        for mapClass in Self.spokenClasses {
+            for node in try currentNodes(mapClass) where !node.sensitive && !node.name.isEmpty {
+                for alias in node.aliases where out[alias] == nil { out[alias] = node.name }
+            }
+        }
+        return out
+    }
+
+    /// N3.2: `heard` kept once as an other name ("also heard as") of the current, not sensitive thing named `name`
+    /// in a spoken class, the most recently seen first. Filtered like every write. False when there is no such
+    /// thing, it already holds `heard`, or `heard` looks secret. Encrypted with the rest; Forget takes it with the thing.
+    @discardableResult
+    func addHeardAs(_ heard: String, name: String) throws -> Bool {
+        let heard = Self.cleaned(heard, 200)
+        guard !heard.isEmpty, !Librarian.looksSecret(heard) else { return false }
+        // Never when `heard` is itself a name in the Map: "Marta" must not become another way to say "Marco".
+        for mapClass in Self.spokenClasses where try currentNodes(mapClass).contains(where: { Self.sameName($0, heard) }) { return false }
+        for mapClass in Self.spokenClasses {
+            guard var node = try currentNodes(mapClass).first(where: { !$0.sensitive && Self.folded($0.name) == Self.folded(name) })
+            else { continue }
+            guard !Self.sameName(node, heard) else { return false }
+            node.aliases.append(heard)
+            try db.query("UPDATE main.nodes SET aliases = ?1, updated = ?2 WHERE id = ?3",
+                         [.text(Self.json(node.aliases)), .text(Self.now()), .int(node.id)])
+            return true
+        }
+        return false
+    }
+
     /// The current Document whose path or address is `label`, the most recently seen first.
     func documentWithLabel(_ label: String) -> MapNode? {
         ((try? db.query("""

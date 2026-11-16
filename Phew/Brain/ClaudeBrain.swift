@@ -71,6 +71,13 @@ struct ClaudeBrain: Brain {
 
     func spokenNames() async -> [String] { await map.spokenNames() }
 
+    func heardAs() async -> [String: String] { await map.heardAs() }
+
+    func learnHeard(_ heard: String, meant: String) async -> Bool {
+        guard let change = NameMatch.correction(heard: heard, meant: meant) else { return false }
+        return await map.addHeardAs(change.heard, name: change.meant)
+    }
+
     // MARK: Recently deleted (5.5, roadmap P5.15)
 
     func recentlyDeleted() async -> [DeletedItem] {

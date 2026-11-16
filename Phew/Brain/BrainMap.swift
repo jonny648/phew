@@ -77,6 +77,18 @@ actor BrainMap {
             .filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }.prefix(limit))
     }
 
+    /// N3.2: words heard before for those names, heard words to name. Does not wait for a Librarian still running.
+    func heardAs() async -> [String: String] {
+        guard let store = opened() else { return [:] }
+        return (try? await store.heardAs()) ?? [:]
+    }
+
+    /// N3.2: a correction the user made to a heard name, kept as "also heard as" of that name. False: nothing kept.
+    func addHeardAs(_ heard: String, name: String) async -> Bool {
+        guard let store = await ready() else { return false }
+        return (try? await store.addHeardAs(heard, name: name)) ?? false
+    }
+
     /// The real delete of every forget past 30 days.
     func purge(now: Date = .now) async {
         guard let store = await ready() else { return }

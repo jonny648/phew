@@ -107,12 +107,15 @@ enum SpokenSamples {
 
 /// `--debug-brain-check hear`: the 40 made-up sentences spoken by the Mac's own voices into files (`say`, the Mac
 /// speaking into a file, not Phew speaking), fed through `AppleListener.hear` (the microphone's path) to both
-/// recognisers, without and with context words. Logs numbers only, then deletes the files. No microphone, no window,
-/// no model call.
+/// recognisers, without and with context words, and with context words after the sound match (N3.5). Logs numbers
+/// only, then deletes the files. No microphone, no window, no model call.
 enum HearCheck {
     struct Score {
         var count = 0, rightLanguage = 0, exactOwn = 0, exactTop = 0, wordErrors = 0
         var rightByConfidence = 0, rightByGuess = 0
+        /// N3.5, with context only: after the sound match (N3.1), its own language exact; names right of the
+        /// sentences with names; shown first (N3.3); sent at once though the best hearing was not exact.
+        var exactMatched = 0, named = 0, namesRight = 0, shownFirst = 0, wrongSent = 0
         var seconds: [Double] = []
         var kinds: [String: Int] = [:]
     }
@@ -208,11 +211,11 @@ enum HearCheck {
     }
 
     @available(macOS 26, *)
-    private static func score(_ files: [URL], engines: [AppleTranscriber]) async {
+    static func score(_ files: [URL], engines: [AppleTranscriber]) async {
         for withContext in [false, true] {
             let pass = withContext ? "with" : "without"
             let listener = AppleListener(engines: engines, microphone: false)
-            var scores: [String: Score] = [:]  // "it plain", "en names"…, and "it all", "en all"
+            var scores: [String: Score] = [:]  // "it plain", "en names"…, "it all", "en all", and "all"
             for (i, sample) in SpokenSamples.all.enumerated() {
                 guard let (heard, startMS, finalSeconds) = await hear(files[i], context: withContext ? SpokenSamples.context(for: sample) : [],
                                                                     with: listener) else {
@@ -224,6 +227,11 @@ enum HearCheck {
                 let own = SpokenSamples.words(heard.hearings.first { $0.language == sample.language }?.text ?? "")
                 let top = SpokenSamples.words(heard.hearings.first?.text ?? "")
                 let errors = SpokenSamples.wordErrors(expected, own)
+                // N3.5: the sound match with the same words the recogniser had, and what N3.3 would do.
+                let matched = NameMatch.apply(heard, names: SpokenSamples.context(for: sample)).hearings
+                let ownMatched = SpokenSamples.words(matched.first { $0.language == sample.language }?.text ?? "")
+                let shown = SendOrShow.decide(matched.first) != .send
+                let namesRight = sample.names.allSatisfy { BrainVoiceCheck.holds(ownMatched, $0) }
                 let byConfidence = heard.hearings.max { $0.confidence < $1.confidence }?.language
                 let byGuess = heard.hearings.max { AppleListener.languageScore($0) < AppleListener.languageScore($1) }?.language
                 var kinds: [String: Int] = [:]
@@ -236,7 +244,7 @@ enum HearCheck {
                         : own.contains { $0 != word && $0.prefix(4) == word.prefix(4) && word.count >= 4 } ? "endings" : "other"
                     kinds[kind, default: 0] += 1
                 }
-                for key in ["\(sample.language) \(sample.kind.rawValue)", "\(sample.language) all"] {
+                for key in ["\(sample.language) \(sample.kind.rawValue)", "\(sample.language) all", "all"] {
                     var s = scores[key, default: Score()]
                     s.count += 1
                     s.rightLanguage += heard.hearings.first?.language == sample.language ? 1 : 0
@@ -244,18 +252,25 @@ enum HearCheck {
                     s.rightByGuess += byGuess == sample.language ? 1 : 0
                     s.exactOwn += own == expected ? 1 : 0
                     s.exactTop += top == expected ? 1 : 0
+                    if withContext {
+                        s.exactMatched += ownMatched == expected ? 1 : 0
+                        s.named += sample.kind == .names ? 1 : 0
+                        s.namesRight += sample.kind == .names && namesRight ? 1 : 0
+                        s.shownFirst += shown ? 1 : 0
+                        s.wrongSent += !shown && SpokenSamples.words(matched.first?.text ?? "") != expected ? 1 : 0
+                    }
                     s.wordErrors += errors
                     s.seconds.append(finalSeconds)
                     s.kinds.merge(kinds, uniquingKeysWith: +)
                     scores[key] = s
                 }
                 let confidences = heard.hearings.map { "\($0.language) \(String(format: "%.2f", $0.confidence))" }.joined(separator: " ")
-                shellLog("hear check: \(pass) #\(i) \(sample.language) \(sample.kind.rawValue): first right \(heard.hearings.first?.language == sample.language), exact \(own == expected), word errors \(errors), kinds \(kinds.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: " ")), confidences [\(confidences)], start \(startMS) ms, final \(Int(finalSeconds * 1000)) ms")
+                shellLog("hear check: \(pass) #\(i) \(sample.language) \(sample.kind.rawValue): first right \(heard.hearings.first?.language == sample.language), exact \(own == expected)\(withContext ? ", after sound match exact \(ownMatched == expected), shown first \(shown)" : ""), word errors \(errors), kinds \(kinds.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: " ")), confidences [\(confidences)], start \(startMS) ms, final \(Int(finalSeconds * 1000)) ms")
             }
             for key in scores.keys.sorted() {
                 let s = scores[key]!
                 let median = s.seconds.sorted()[s.seconds.count / 2]
-                shellLog("hear check summary \(pass) context, \(key): right language \(s.rightLanguage)/\(s.count) (by confidence alone \(s.rightByConfidence), by language guess alone \(s.rightByGuess)), exact own language \(s.exactOwn)/\(s.count), exact first hearing \(s.exactTop)/\(s.count), word errors \(s.wordErrors), median final \(String(format: "%.2f", median)) s, missed words by kind \(s.kinds.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: " "))")
+                shellLog("hear check summary \(pass) context, \(key): right language \(s.rightLanguage)/\(s.count) (by confidence alone \(s.rightByConfidence), by language guess alone \(s.rightByGuess)), exact own language \(s.exactOwn)/\(s.count), exact first hearing \(s.exactTop)/\(s.count), word errors \(s.wordErrors), median final \(String(format: "%.2f", median)) s, missed words by kind \(s.kinds.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: " "))\(withContext ? ", after sound match exact \(s.exactMatched)/\(s.count), names right \(s.namesRight)/\(s.named), shown first \(s.shownFirst), wrong sent at once \(s.wrongSent)" : "")")
             }
         }
     }

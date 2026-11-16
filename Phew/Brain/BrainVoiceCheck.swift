@@ -3,7 +3,7 @@ import Foundation
 
 /// `--debug-brain-check voice` (P6.3, the third number): each of the 40 made-up spoken sentences (`SpokenSamples`)
 /// is spoken by the Mac's own voice into a temporary file and run through the real listener with the context words
-/// (the microphone's path, no microphone), so both hearings are real. Its made-up window and both hearings then go
+/// (the microphone's path, no microphone), so both hearings are real, then the sound match (N3.1) as in the product. Its made-up window and both hearings then go
 /// through the real Conductor, and for an act sample the Doer's first action. The files are deleted at the end.
 /// Logs counts, languages, route names and fixed words only: never a hearing, a sentence or an understood line.
 ///
@@ -87,9 +87,10 @@ enum BrainVoiceCheck {
                     shellLog("voice check #\(i) \(sample.language) \(sample.kind.rawValue): not heard")
                     continue
                 }
-                let hearings = heard.hearings
                 let expected = SpokenSamples.words(sample.text)
-                let own = SpokenSamples.words(hearings.first { $0.language == sample.language }?.text ?? "")
+                let own = SpokenSamples.words(heard.hearings.first { $0.language == sample.language }?.text ?? "")
+                // As the product sends them: after the sound match on the same words (N3.1).
+                let hearings = NameMatch.apply(heard, names: SpokenSamples.context(for: sample)).hearings
                 if own == expected { s.recogniser = 1 }
                 let window = packet(sample)
                 let best = hearings.first?.text ?? ""

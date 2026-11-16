@@ -14,7 +14,7 @@ final class VoiceTests: XCTestCase {
     /// Made-up words that must never reach a log line.
     private static let italian = "rendi grassetto il QUOKKATITOLO"
     private static let english = "ran the grass set oil QUOKKATEA TOLO"
-    private let hearings = [Hearing(language: "it-IT", text: VoiceTests.italian, confidence: 0.82),
+    private let hearings = [Hearing(language: "it-IT", text: VoiceTests.italian, confidence: 0.95),
                             Hearing(language: "en-US", text: VoiceTests.english, confidence: 0.31)]
 
     override func tearDown() {

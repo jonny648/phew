@@ -390,6 +390,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.capture = capture
             ask(question, spoken: spoken)
         }
+        talk.heardAs = { [brain] in await brain.heardAs() }
+        talk.showFirst = { [unowned self] heard, doubtful, _, capture in showFirst(heard, doubtful: doubtful, capture: capture) }
         talk.missing = { [unowned self] in setup.showVoice() }
         talk.permissions = { [unowned self] in setup.voicePermissions() }
         return talk
@@ -415,6 +417,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     static let notCaught = "I did not catch that. Fix it and press Return."
+
+    /// N3.3: the recogniser was unsure or a name doubtful. The ask panel holds the heard text, the doubtful words
+    /// named on its grey line, the capture kept as for `unclear`. Sent as typed once the user presses Return; a
+    /// changed name is learnt (N3.2).
+    private func showFirst(_ heard: String, doubtful: [String], capture: Task<ContextPacket?, Never>?) {
+        self.capture = capture
+        panel.open(text: heard, line: Self.checkLine(doubtful), at: anchor) { [unowned self] question in
+            guard let question else { return self.capture = nil }
+            if question != heard { Task { [brain] in _ = await brain.learnHeard(heard, meant: question) } }
+            ask(question)
+        }
+    }
+
+    /// The grey line of a sentence shown first: the doubtful words in quotes, or the whole sentence.
+    nonisolated static func checkLine(_ doubtful: [String]) -> String {
+        doubtful.isEmpty ? "Is this what you said? Fix it and press Return."
+            : "Did I hear \(doubtful.map { "“\($0)”" }.joined(separator: " and ")) right? Fix it and press Return."
+    }
 }
 
 // MARK: - Debug evidence. Release builds log nothing.

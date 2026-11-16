@@ -38,3 +38,6 @@ Start with `00-now.md`.
 | `docs/github-guide.html` | What GitHub is, how projects are structured and shipped (used in phase PG) | reference |
 | `docs/archive/choices.html` | The page of four choices put to you before the direction was set | archive |
 | `docs/archive/review.html` | Your review page of phase PV, answered on 14 November 2026 | archive |
+| `docs/17-limits.md` | Phase NA. Every limit Phew has, sorted, with a recommendation and the decisions for you | current |
+| `docs/18-capabilities.md` | Phase NB. How he acts through real doors: connections (MCP), the other doors, agents that start agents. The design in short, then the research notes with sources | current |
+| `docs/connections.html` | The same in plain words with drawings | current |

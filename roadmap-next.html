@@ -130,6 +130,15 @@ li.is-done .when{display:none}
 <li><label><b>Comes from</b></label><span class="when">Your note: "a limit removal and research phase". Decision 34 (three wishes that touch privacy rules), decision 42.</span></li>
 <li><label><b>Who</b></label><span class="when">Lead, research. You decide.</span></li>
 </ul>
+<h3>Tasks</h3>
+<ul class="tasks">
+<li data-id="NA.1" data-done="2026-11-17" class="is-done"><label><input type="checkbox" disabled checked> <b>NA.1</b> The inventory: every limit, sorted, with what it blocks and a recommendation</label><span class="when">Done when: docs/17-limits.md lists them. Done 17 November: 103 limits, 20 places where a document and the code disagree. A read of the files, nothing run.</span></li>
+<li data-id="NA.2" data-done=""><label><input type="checkbox" disabled> <b>NA.2</b> Yours: the nine decisions of docs/17-limits.md 17.3</label><span class="when">Done when: You answered each, by number; "as advised" counts</span></li>
+<li data-id="NA.3" data-done=""><label><input type="checkbox" disabled> <b>NA.3</b> <code>CLAUDE.md</code> rewritten to your answers, and the stale documents corrected (fault F6)</label><span class="when">Done when: A read finds no rule the code or your answers contradict</span></li>
+<li data-id="NA.4" data-done=""><label><input type="checkbox" disabled> <b>NA.4</b> The faults that are not decisions, fixed in code: password managers never read by default if you say so (F2), script titles checked and an agent's task counted as one job (F3), the two unbuilt parts of the "cannot be undone" class built or struck (F4); pictures and the secrets filter stated plainly (F1)</label><span class="when">Done when: Tests for F2, F3, F4; the full suite passes</span></li>
+</ul>
+<h3>Added during build</h3>
+<ul class="tasks added"></ul>
 </section>
 <section class="phase" id="NB">
 <h2>NB Capabilities: he acts through real doors</h2>
@@ -140,6 +149,20 @@ li.is-done .when{display:none}
 <li><label><b>Comes from</b></label><span class="when">Your note: "the observation interface should be employed solely for comprehension". L9 (connections), L5 (files), PB.4.</span></li>
 <li><label><b>Who</b></label><span class="when">brain, senses, map, checker.</span></li>
 </ul>
+<h3>Tasks</h3>
+<ul class="tasks">
+<li data-id="NB.1" data-done=""><label><input type="checkbox" disabled> <b>NB.1</b> Two short tests on a real service, at your word: does the tool's server accept the standard's 2025-11-25 version and a sign-in from an unknown app; does sign-in work from a menu-bar app</label><span class="when">Done when: Written in docs/18-capabilities.md for Notion, and for each tool before it is built</span></li>
+<li data-id="NB.2" data-done=""><label><input type="checkbox" disabled> <b>NB.2</b> The client inside Phew, in Swift, with the official kit: connect, sign in through the browser, token in the Keychain, read the list of tools, call one. Notion first, reading only</label><span class="when">Done when: A test with a made-up server on the Mac: sign-in, list, one call. Live with Notion only at your word</span></li>
+<li data-id="NB.3" data-done=""><label><input type="checkbox" disabled> <b>NB.3</b> Writes through the one acting function: Phew's own table says which tools read and which write; a write is listed on the card and falls under the "cannot be undone or leaves your Mac" class; an agent's write waits for the confirm</label><span class="when">Done when: Tests: a write never runs outside the acting function; testOnlyHandActs still passes</span></li>
+<li data-id="NB.4" data-done=""><label><input type="checkbox" disabled> <b>NB.4</b> Guards: a fixed list of servers; the tool list remembered at connect, and a stop when it changes; answers treated as data and passed through the secrets filter; only the tools that fit the job sent to the model</label><span class="when">Done when: Tests for each, with a made-up server that changes its tools and one that answers with orders</span></li>
+<li data-id="NB.5" data-done=""><label><input type="checkbox" disabled> <b>NB.5</b> Your Shortcuts as tools: a list in the menu where you tick the ones he may run</label><span class="when">Done when: A test with a made-up runner; live with one shortcut at your word</span></li>
+<li data-id="NB.6" data-done=""><label><input type="checkbox" disabled> <b>NB.6</b> The desktop doors on your Mac: Fusion (read and change the open design) and Figma (read)</label><span class="when">Done when: Yours to try: one job in each, written in docs/apps/</span></li>
+<li data-id="NB.7" data-done=""><label><input type="checkbox" disabled> <b>NB.7</b> A menu panel "Connections": connect, see what he may do there, disconnect</label><span class="when">Done when: Tests on the panel's model; a disconnect removes the token from the Keychain</span></li>
+<li data-id="NB.8" data-done=""><label><input type="checkbox" disabled> <b>NB.8</b> A lead that starts workers, for research only: up to 4, on the small model, read only, one split, 2 dollars a job, checked by code and one fresh read before you see it. Not splitting is the normal case</label><span class="when">Done when: Tests with the scripted provider: each limit holds; a claim with no source is dropped</span></li>
+<li data-id="NB.L" data-done=""><label><input type="checkbox" disabled> <b>NB.L</b> Live checks, at your word: one read and one write in Notion, one shortcut, one research job with workers. Cost stated before</label><span class="when">Done when: Results and cost in the log</span></li>
+</ul>
+<h3>Added during build</h3>
+<ul class="tasks added"></ul>
 </section>
 <section class="phase" id="NC">
 <h2>NC Self-shaping: he makes the function he lacks</h2>

@@ -158,12 +158,14 @@ private struct MenuIcon: View {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The one place the Brain is made. Everything else in the Shell sees only the `Brain` protocol.
+    /// `answerEarly` (R57) is built and off: on, every typed question would also send the screen to the main model
+    /// before the route is known, also for "remember" and jobs, and pay for a dropped call. Yours to decide (decision 50).
     var brain: any Brain = {
         #if DEBUG
         // A test copy under another bundle id: no Map maintenance at launch, so it never touches the user's Map folder.
-        if CommandLine.arguments.contains("--debug-no-map") { return ClaudeBrain(map: BrainMap(maintenance: false), limits: Limits(), answerEarly: true) }
+        if CommandLine.arguments.contains("--debug-no-map") { return ClaudeBrain(map: BrainMap(maintenance: false), limits: Limits(), answerEarly: false) }
         #endif
-        return ClaudeBrain(limits: Limits(), answerEarly: true)
+        return ClaudeBrain(limits: Limits(), answerEarly: false)
     }()
     let panel = InputPanel()
     let card = TextCard()

@@ -279,6 +279,25 @@ final class MapRecallTests: XCTestCase {
         XCTAssertLessThanOrEqual(text.count, MapStore.recallLimit)
     }
 
+    /// R49: one answer's profile and recall read `stale` and `due_soon` once each, and give the same text as before.
+    func testOneAnswerReadsStaleAndDueSoonOnce() async throws {
+        final class Runs: @unchecked Sendable { var sql: [String] = [] }
+        let (store, _) = try await acmeMap()
+        let args = ("How should I space the poster title?", "Figma", "Untitled", "/Users/made-up/Acme/logo-v3.fig")
+        let apart = await [store.profile(now: now),
+                           store.recall(question: args.0, appName: args.1, windowTitle: args.2, documentPath: args.3, now: now)]
+        let runs = Runs()
+        let db = await store.db
+        db.traced = { runs.sql.append($0) }
+        let together = await store.profileAndRecall(question: args.0, appName: args.1, windowTitle: args.2, documentPath: args.3, now: now)
+        db.traced = nil
+        XCTAssertEqual(together, apart.filter { !$0.isEmpty }.joined(separator: "\n"))
+        for name in ["stale", "due_soon"] {
+            let query = try XCTUnwrap(MapStore.termQueries.first { $0.0 == name }).1
+            XCTAssertEqual(runs.sql.filter { $0.hasSuffix(query) }.count, 1, name)
+        }
+    }
+
     func testRecallShowsBothDisagreeingFactsOfTheSameOrigin() async throws {
         let (store, poster) = try await acmeMap()
         for sentence in ["The poster is due on the 20th", "The poster is due on the 22nd"] {

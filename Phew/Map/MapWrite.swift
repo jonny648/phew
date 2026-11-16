@@ -216,11 +216,12 @@ extension MapStore {
         }
         if existing == nil {
             let project = [MapClass.task, .document, .event].contains(mapClass) ? try projectInReply(of: thing.label, reply, s) : nil
-            existing = try match(mapClass, name: name, path: pathValue, project: project)
+            existing = try match(mapClass, name: name, path: pathValue, project: project, s)
         }
         if let existing {
             try merge(existing, name: name, kind: MapStore.kind(thing.kind), aliases: aliases, values: values,
                       replaces: status == "replaces", origin: origin, validFrom: validFrom, sensitive: thing.sensitive, s, &out)
+            try s.stored(node(existing.id))
             return existing.id
         }
         let id = try add(MapNode(mapClass: mapClass, kind: MapStore.kind(thing.kind), name: name,
@@ -228,6 +229,7 @@ extension MapStore {
                                        properties: MapStore.properties(values.mapValues { ($0, origin) }), origin: origin,
                                        sensitive: thing.sensitive, validFrom: validFrom, created: s.stamp, updated: s.stamp))
         out.stored.append(id)
+        try s.stored(node(id))
         return id
     }
 
@@ -450,11 +452,13 @@ extension MapStore {
     /// Name matching (5.9): a current thing of the same class with the same name or other name, ignoring capitals
     /// and accents; for a Task, a Document or an Event also in the same Project (none given: any Project). For a
     /// Document with a known path or address, that decides. Several: the one seen most recently.
-    func match(_ mapClass: MapClass, name: String, path: String?, project: Int64?) throws -> MapNode? {
+    private func match(_ mapClass: MapClass, name: String, path: String?, project: Int64?, _ s: WriteState) throws -> MapNode? {
         if mapClass == .document, let path {
             if let document = documentWithLabel(path) { return document }
         }
-        return try currentNodes(mapClass).first { node in
+        // R50: the current things of a class are read once per transaction, then kept up to date by `write(thing)`.
+        if s.things[mapClass] == nil { s.things[mapClass] = try currentNodes(mapClass) }
+        return s.things[mapClass]?.first { node in
             guard Self.sameName(node, name) else { return false }
             // A Document stored with a different path is a different file.
             if mapClass == .document, path != nil, !Self.values(node.properties).filter({ ["path", "address"].contains($0.key) }).isEmpty {
@@ -806,6 +810,8 @@ private final class WriteState {
     var corrected = false
     /// The current Notes' ids by folded text, read once on the first Note of the transaction (R50).
     var twins: [String: [Int64]]?
+    /// The current things of each class, read once on the first match of that class in the transaction (R50).
+    var things: [MapClass: [MapNode]] = [:]
     /// Set on an import (5.10): every fact is then "imported", whatever the reply says.
     let importing: ImportSource?
 
@@ -817,6 +823,16 @@ private final class WriteState {
     }
 
     func mention(_ id: Int64) { if !mentions.contains(id) { mentions.append(id) } }
+
+    /// A thing just added or merged, as now stored: its class's list stays as `currentNodes` reads it (seen most
+    /// recently first). Nothing to do before that class was read.
+    func stored(_ node: MapNode?) {
+        guard let node, var list = things[node.mapClass] else { return }
+        list.removeAll { $0.id == node.id }
+        if node.validTo == nil { list.append(node) }  // `node(_:)` never returns a row in Recently deleted
+        list.sort { ($0.updated, $0.id) > ($1.updated, $1.id) }
+        things[node.mapClass] = list
+    }
 
     /// The origin is set by code: "imported" on an import, else "told" only when the reply says so, else "observed".
     func origin(_ text: String) -> Origin { importing != nil ? .imported : text.lowercased() == "told" ? .told : .observed }

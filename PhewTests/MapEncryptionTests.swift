@@ -155,6 +155,23 @@ final class MapEncryptionTests: XCTestCase {
         db.close()
     }
 
+    /// R28: a second connection holding the write lock briefly makes the first wait, on opening and on a write to
+    /// the sensitive file, instead of failing at once with SQLITE_BUSY.
+    func testABriefLockElsewhereIsWaitedFor() throws {
+        let holder = try Database(folder: folder, key: key1, sensitiveKey: key2)
+        let release = { (db: Database) in
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { _ = try? db.query("COMMIT") }
+        }
+        try holder.query("BEGIN IMMEDIATE")
+        release(holder)
+        let other = try Database(folder: folder, key: key1, sensitiveKey: key2)  // writes main.counter
+        try holder.query("BEGIN IMMEDIATE")
+        release(holder)
+        XCTAssertNoThrow(try other.query("INSERT INTO s.forgets (time, label) VALUES ('2026-01-01', 'made up')"))
+        other.close()
+        holder.close()
+    }
+
     private func assertAbsent(_ words: [String], in bytes: Data, _ file: String, line: UInt = #line) {
         for word in words {
             for form in [word, word.lowercased()] {

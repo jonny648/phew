@@ -344,7 +344,7 @@ final class ImportTests: XCTestCase {
         XCTAssertEqual(memory.files.count, 2)
         XCTAssertGreaterThan(memory.totalBytes, 0)
         XCTAssertTrue(fake.requests.isEmpty, "choosing the folder sends nothing")
-        XCTAssertEqual(folders.folders.map(\.lastPathComponent), ["Orbit Lamp"], "the folder is remembered")
+        XCTAssertEqual(folders.folders, [], "R34: picked, not yet stored")
 
         let sort = try await brain.sortImport(memory)
         XCTAssertEqual(fake.requests.count, 2, "one call per file")
@@ -360,6 +360,7 @@ final class ImportTests: XCTestCase {
         var ticked = sort.candidates
         for index in ticked.indices { ticked[index].ticked = true }
         _ = try await brain.keepImport(ticked)
+        XCTAssertEqual(folders.folders.map(\.lastPathComponent), ["Orbit Lamp"], "kept: the folder is remembered")
         let export = try unwrapped(await brain.exportMap(includeSensitive: false))
         XCTAssertTrue(export.contains("## Project: Orbit Lamp"))
         XCTAssertTrue(export.contains("Imported from Claude Code"))
@@ -393,7 +394,8 @@ final class ImportTests: XCTestCase {
         // R34: Undo last import takes the Project, and with it the reading of the folder's files.
         _ = await brain.undoLastImport()
         let afterUndo = await brain.projectMemoryBlock("", packet: inside, store: store)
-        XCTAssertNil(afterUndo, "the folder is still remembered, but its Project is gone: nothing read")
+        XCTAssertNil(afterUndo, "its Project is gone: nothing read")
+        XCTAssertEqual(folders.folders, [], "and its path leaves the settings")
     }
 
     /// R34: a folder picked and then cancelled, before anything is kept, is never read for an answer.
@@ -402,14 +404,46 @@ final class ImportTests: XCTestCase {
         let suite = "PhewImportTest-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
+        // The file must exist: a path that does not resolve never matches the folder, and the test would pass for that.
+        try write("print(1)\n", project.appending(path: "Sources/main.swift"))
         let folders = ProjectFolders(defaults: defaults, claudeHome: home)
         let store = try MapStore()
-        let brain = brain(FakeProvider([:]), store, folders: folders)
+        let brain = brain(FakeProvider(["librarian": [Self.sorted]]), store, folders: folders)
         _ = brain.projectMemory(folder: project)
+        XCTAssertEqual(folders.folders, [], "picked and cancelled: never stored")
+        // A path stored before this rule, with no Project in the Map: never read, and it leaves the settings.
+        folders.remember(project)
         let inside = ContextPacket(appName: "Xcode", bundleID: "", windowTitle: "x", visibleText: "", cursor: nil,
                                    documentPath: project.appending(path: "Sources/main.swift").path)
         let block = await brain.projectMemoryBlock("", packet: inside, store: store)
         XCTAssertNil(block)
+        XCTAssertEqual(folders.folders, [])
+        // A pick cancelled, then a paste kept: the picked folder is not stored.
+        _ = brain.projectMemory(folder: project)
+        let sort = try await brain.sortImport(Self.paste, source: .claude)
+        _ = try await brain.keepImport(sort.candidates)
+        XCTAssertEqual(folders.folders, [])
+    }
+
+    /// R34: forgetting the folder's Project on the remember route takes its path out of the settings at once.
+    func testForgettingTheProjectDropsItsFolder() async throws {
+        let (project, home) = try madeUpProject()
+        let suite = "PhewImportTest-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let folders = ProjectFolders(defaults: defaults, claudeHome: home)
+        let store = try MapStore()
+        try await store.add(MapNode(mapClass: .project, kind: "product", name: "Orbit Lamp", origin: .imported))
+        folders.remember(project)
+        XCTAssertEqual(folders.folders.count, 1)
+        let fake = FakeProvider(rounds: ["conductor": [Reply(pieces: [#"{"route":"remember"}"#])],
+                                         "librarian": [Reply(pieces: [Made.reply(forget: ["f1"])])]])
+        var card = ""
+        for try await event in brain(fake, store, folders: folders).answer("Forget the Orbit Lamp project", packet: nil) {
+            if case .text(let text) = event { card = text }
+        }
+        XCTAssertTrue(card.hasPrefix("Forgot Orbit Lamp"), card)
+        XCTAssertEqual(folders.folders, [])
     }
 
     // MARK: PB.3 Undo last import

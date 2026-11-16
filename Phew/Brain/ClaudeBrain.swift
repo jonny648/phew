@@ -180,10 +180,9 @@ struct ClaudeBrain: Brain {
     /// Does not wait for the last answer's Librarian (PS.12); the remember route does.
     private func recall(_ question: String, packet: ContextPacket?) async -> (MapStore?, String) {
         guard let store = await map.now() else { return (nil, "") }
-        let profile = await store.profile()
-        let recall = await store.recall(question: question, appName: packet?.appName ?? "", windowTitle: packet?.windowTitle ?? "",
-                                        documentPath: packet?.documentPath)
-        return (store, [profile, recall].filter { !$0.isEmpty }.joined(separator: "\n"))
+        let text = await store.profileAndRecall(question: question, appName: packet?.appName ?? "", windowTitle: packet?.windowTitle ?? "",
+                                                documentPath: packet?.documentPath)
+        return (store, text)
     }
 
     /// "Read again when needed" (5.10, 5.11): when the question or the task is about a project whose folder the user
@@ -191,21 +190,26 @@ struct ClaudeBrain: Brain {
     /// CLAUDE.md and memory files as one filtered data block, for this request only. Nil otherwise: never for another
     /// project, never with no folder chosen.
     func projectMemoryBlock(_ question: String, packet: ContextPacket?, store: MapStore?) async -> String? {
+        guard let store, !projectFolders.folders.isEmpty else { return nil }
+        // R34: only while the Map holds that folder's Project, so a cancelled import, Undo last import or Forget stops it.
+        await pruneFolders(store)
         let folders = projectFolders.folders
-        guard !folders.isEmpty else { return nil }
         let path = packet?.documentPath.map { ProjectMemoryReader.real(URL(fileURLWithPath: $0)).path }
         var chosen = folders.first { folder in path?.hasPrefix(folder.path + "/") == true }
-        if chosen == nil, let store,
+        if chosen == nil,
            let project = await store.detectProject(appName: packet?.appName ?? "", windowTitle: packet?.windowTitle ?? "",
                                                    documentPath: packet?.documentPath, question: question) {
             chosen = folders.first { MapStore.sameName(project, $0.lastPathComponent) }
         }
-        // R34: only while the Map holds that folder's Project, so a cancelled import, Undo last import or Forget stops it.
-        guard let chosen, let store,
-              ((try? await store.currentNodes(.project)) ?? []).contains(where: { MapStore.sameName($0, chosen.lastPathComponent) }),
-              let block = ProjectMemoryReader.excerpt(folder: chosen, claudeHome: projectFolders.claudeHome) else { return nil }
+        guard let chosen, let block = ProjectMemoryReader.excerpt(folder: chosen, claudeHome: projectFolders.claudeHome) else { return nil }
         shellLog("brain: project memory added, \(block.count) chars")
         return block
+    }
+
+    /// R34: a stored project folder goes when its Project is no longer current in the Map. A failed read drops nothing.
+    func pruneFolders(_ store: MapStore) async {
+        guard let projects = try? await store.currentNodes(.project) else { return }
+        projectFolders.keepOnly(projects)
     }
 
     /// The remember route (5.9): the Librarian alone, then its one line on the card. A forget clears the turns.
@@ -213,7 +217,10 @@ struct ClaudeBrain: Brain {
         guard let store = await map.ready() else { return emit(.text(Self.cannotRemember)) }
         let outcome = try await store.learn(question: question, answer: "", route: .remember, packet: BrainMap.labels(packet),
                                             lastTurn: memory.turns.last, provider: provider)
-        if outcome.forgot != nil { memory.clear() }
+        if outcome.forgot != nil {
+            memory.clear()
+            await pruneFolders(store)
+        }
         emit(.text(outcome.askBack ?? outcome.card))
     }
 }
@@ -292,7 +299,7 @@ extension ClaudeBrain {
     }
 
     func projectMemory(folder: URL) -> ProjectMemory {
-        projectFolders.remember(folder)
+        projectFolders.pick(folder)  // R34: stored only if its import is kept
         return ProjectMemoryReader.read(folder: folder, claudeHome: projectFolders.claudeHome)
     }
 
@@ -324,13 +331,20 @@ extension ClaudeBrain {
     /// After every Librarian run started before, like every other write.
     func keepImport(_ candidates: [ImportCandidate]) async throws -> ImportKept {
         guard let store = await map.ready() else { return ImportKept(card: Self.cannotRemember) }
-        do { return try await store.keep(candidates) } catch { throw BrainError(error) }
+        do {
+            let kept = try await store.keep(candidates)
+            projectFolders.kept(fromFolder: candidates.contains { $0.source == .claudeCode })
+            await pruneFolders(store)
+            return kept
+        } catch { throw BrainError(error) }
     }
 
     func lastImport() async -> ImportInfo? { await map.ready()?.lastImport() }
 
     func undoLastImport() async -> String? {
         guard let store = await map.ready() else { return nil }
-        return (try? await store.undoLastImport())?.label
+        let label = (try? await store.undoLastImport())?.label
+        await pruneFolders(store)
+        return label
     }
 }

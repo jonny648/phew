@@ -450,4 +450,25 @@ final class ProjectFolders: @unchecked Sendable {
             defaults?.set(Array(list.prefix(10)), forKey: Self.key)
         }
     }
+
+    /// R34: the folder picked in the import panel, in memory only until Keep. A cancelled import never stores it.
+    private var picked: URL?
+
+    func pick(_ folder: URL) { lock.withLock { picked = folder } }
+
+    /// After a keep: the picked folder is stored only when the kept facts came from it. Either way it is let go.
+    func kept(fromFolder: Bool) {
+        let folder: URL? = lock.withLock { defer { picked = nil }; return picked }
+        if fromFolder, let folder { remember(folder) }
+    }
+
+    /// R34: a stored folder whose Project is not current in the Map (forgotten, undone, never kept) can no longer be
+    /// read, so its path leaves UserDefaults.
+    func keepOnly(_ projects: [MapNode]) {
+        lock.withLock {
+            guard let list = defaults?.stringArray(forKey: Self.key) else { return }
+            let kept = list.filter { path in projects.contains { MapStore.sameName($0, URL(fileURLWithPath: path).lastPathComponent) } }
+            if kept != list { defaults?.set(kept, forKey: Self.key) }
+        }
+    }
 }

@@ -53,6 +53,8 @@ final class Database {
             close()
             throw Failure(code: code, step: "open")
         }
+        // Wait up to 2 s for a lock another connection holds, on both files (the attached one shares this connection), instead of failing at once (R28).
+        sqlite3_busy_timeout(handle, 2000)
         do {
             if let key {
                 // The key goes first on the connection, as the text x'<hex>' with its length, never the raw bytes.

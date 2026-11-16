@@ -195,14 +195,16 @@ extension MapStore {
     /// facts found by a text search, and at most 3 lines each of due soon, coming up, next step and the Project's
     /// open points. Rules 1 to 3 of 5.7: "Start from" an open point a Task requires, the next step, and "may be
     /// outdated" on stale facts. Empty when the Map has nothing to add.
-    func recall(question: String, appName: String, windowTitle: String, documentPath: String?, now: Date = .now) -> String {
-        let context = LineContext(now: now, stale: Set(term("stale", now: now)))
+    func recall(question: String, appName: String, windowTitle: String, documentPath: String?, now: Date = .now,
+                shared: SharedTerms? = nil) -> String {
+        let shared = shared ?? sharedTerms(now)
+        let context = LineContext(now: now, stale: shared.stale)
         let project = detectProject(appName: appName, windowTitle: windowTitle, documentPath: documentPath, question: question)
         let words = [question, appName, windowTitle]
         let questions = project.map { lastQuestions(on: $0.id, limit: 3) } ?? searchEvents(words, limit: 3)
-        let dueSoon = term("due_soon", now: now)
+        let dueSoon = shared.dueSoon
         let comingUp = term("coming_up", now: now)
-        let next = nextStep(project: project?.id, now: now)
+        let next = nextStep(project: project?.id, now: now, dueSoon: dueSoon)
         var tasks = dueSoon
         if case .task(let task)? = next { tasks.insert(task.id, at: 0) }
         let allOpenPoints = term("open_point", now: now, project: project?.id)
@@ -238,15 +240,34 @@ extension MapStore {
 
     static let recallLimit = 6_000
 
+    /// R49: the two terms the profile, recall and the next step all use, read once per answer.
+    struct SharedTerms {
+        let stale: Set<Int64>
+        let dueSoon: [Int64]
+    }
+
+    func sharedTerms(_ now: Date) -> SharedTerms {
+        SharedTerms(stale: Set(term("stale", now: now)), dueSoon: term("due_soon", now: now))
+    }
+
+    /// Layers 1 and 2 of 5.11 for one answer: the profile, then recall, sharing one read of `stale` and `due_soon`.
+    func profileAndRecall(question: String, appName: String, windowTitle: String, documentPath: String?, now: Date = .now) -> String {
+        let shared = sharedTerms(now)
+        return [profile(now: now, shared: shared),
+                recall(question: question, appName: appName, windowTitle: windowTitle, documentPath: documentPath, now: now, shared: shared)]
+            .filter { !$0.isEmpty }.joined(separator: "\n")
+    }
+
     // MARK: - Profile (5.8)
 
     /// A short summary of the user, built by code: their name, current Notes about Me (told, then observed, then
     /// imported; more confident first), then active Projects with their Tasks due soon. The same facts and `now`
     /// always give the same text. At most 200 lines.
-    func profile(now: Date = .now) -> String {
-        let context = LineContext(now: now, stale: Set(term("stale", now: now)))
+    func profile(now: Date = .now, shared: SharedTerms? = nil) -> String {
+        let shared = shared ?? sharedTerms(now)
+        let context = LineContext(now: now, stale: shared.stale)
         var lines = aboutMe(context)
-        let dueSoon = term("due_soon", now: now)
+        let dueSoon = shared.dueSoon
         let active = nodes(term("active", now: now)[...])
         if !active.isEmpty { lines.append("Active projects:") }
         for project in active {
@@ -330,8 +351,8 @@ extension MapStore {
 
     /// The first open Task due soon, earliest first; else the open Task of the Project with the oldest "last seen"
     /// (with no Project, the one of the latest past question); else the last past question on that Project.
-    func nextStep(project: Int64?, now: Date) -> NextStep? {
-        if let first = term("due_soon", now: now).first, let task = try? node(first) { return .task(task) }
+    func nextStep(project: Int64?, now: Date, dueSoon: [Int64]? = nil) -> NextStep? {
+        if let first = (dueSoon ?? term("due_soon", now: now)).first, let task = try? node(first) { return .task(task) }
         let latest = try? db.scalar("SELECT project FROM all_events WHERE deleted = '' AND project IS NOT NULL ORDER BY time DESC, id DESC LIMIT 1")
         guard let project = project ?? latest?.intValue else { return nil }
         let open = Set(term("open", now: now))

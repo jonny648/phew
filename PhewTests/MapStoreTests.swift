@@ -152,6 +152,31 @@ final class MapStoreTests: XCTestCase {
         XCTAssertEqual(kept.seen, 2, "a twin from the same keep and one from before")
     }
 
+    /// R50: matching things by name reads each class's current things once per keep, not once per thing, and still
+    /// finds a twin made earlier in the same keep or stored before it.
+    func testKeepingManyThingsReadsEachClassOnce() async throws {
+        final class Reads: @unchecked Sendable { var classes = 0 }
+        let store = try MapStore()
+        let before = try await store.add(MapNode(mapClass: .person, name: "Quillan Vesh", origin: .told))
+        let reads = Reads()
+        let db = await store.db
+        db.traced = { if $0.contains("WHERE class = ? AND valid_to IS NULL") { reads.classes += 1 } }
+        func fact(_ i: Int, _ things: [(MapClass, String)]) -> ImportCandidate {
+            ImportCandidate(id: i, sentence: "Made-up fact number \(i)", kind: "fact", aboutMe: false,
+                            things: things.map { .init(mapClass: $0.0, kind: "", name: $0.1) }, date: "", sensitive: false,
+                            instruction: false, ticked: true, source: .other)
+        }
+        let facts = (0..<20).map { fact($0, [(.person, "Made-up person \($0)"), (.topic, "Made-up topic \($0 % 4)")]) }
+            + [fact(20, [(.person, "made-up PERSON 3")]), fact(21, [(.person, "quillan vesh")])]
+        _ = try await store.keep(facts)
+        db.traced = nil
+        XCTAssertEqual(reads.classes, 2, "Person and Topic, once each")
+        let nodes = await store.visibleNodes()
+        XCTAssertEqual(nodes.filter { $0.mapClass == .person }.count, 21, "20 new people, Quillan matched, person 3 matched again")
+        XCTAssertEqual(nodes.filter { $0.mapClass == .topic }.count, 4, "twins made in the same keep are found")
+        XCTAssertTrue(nodes.contains { $0.id == before })
+    }
+
     func testSensitiveMoveLeavesTheRowInExactlyOneFile() async throws {
         let store = try MapStore()
         let person = try await store.add(MapNode(mapClass: .person, name: "Quillon", origin: .told))

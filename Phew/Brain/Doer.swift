@@ -29,7 +29,7 @@ enum Doer {
         screen is that app's. The user is brought back to where they were when the job ends, by itself.
 
         For Notes, Reminders, Calendar and Excel, use these instead of pressing. They work behind the app, which need \
-        not be in front (no open_app for them), and they only add:
+        not be in front (no open_app for them):
         - note: a new note in Notes. In title its first line, in text the lines under it.
         - append: lines added at the end of the note you made earlier in this job, in text.
         - reminder: a new reminder. In title its name; in start its due date, "YYYY-MM-DD", or with a time \
@@ -39,12 +39,22 @@ enum Doer {
         - workbook: a new empty Excel workbook.
         - cells: fill cells of the workbook you made earlier in this job. In cell the top-left cell, such as "A1"; in \
         rows the values row by row, as typed (a number, a text, or a formula starting with =).
+        To change or delete what is already there, give in title its exact title as it reads. When no item, or more \
+        than one, has that title, nothing is done (notFound, manyFound): say stuck.
+        - rename_note, rename_reminder, rename_event: in text the new title.
+        - edit_note: in text the lines under the note's title, replacing those there now.
+        - complete_reminder: ticks the reminder done.
+        - move_event: start and end as "YYYY-MM-DDTHH:MM"; with no end given, it keeps its length.
+        - delete_note, delete_reminder, delete_event: deletes it.
+        - change_cells: writes over cells of an open Excel workbook. In title the workbook's name, in cell the \
+        top-left cell, in rows the values row by row.
         Dates and times are the user's local ones; "Now" below says when that is. Use the words of the request for \
         names and text, unchanged. These actions do not show on the screen: judge them by how they ended in the \
         actions so far.
 
-        - done: every part of the request is done: visible on the screen, or a note, reminder, event, workbook or \
-        cells action that ended done. In text, one short line saying what you did, in the language of the request.
+        - done: every part of the request is done: visible on the screen, or one of the actions above for Notes, \
+        Reminders, Calendar or Excel that ended done. In text, one short line saying what you did, in the language \
+        of the request.
         - stuck: the next action is not possible. In text, one short plain reason, in the language of the request.
 
         Do only what the request asks, nothing more, and in the order it asks. Use only ids from the list, never \
@@ -66,7 +76,7 @@ enum Doer {
     }()
 
     static let schema = #"""
-        {"type":"object","properties":{"action":{"type":"string","enum":["press","set","pick","click","open_app","note","append","reminder","event","workbook","cells","done","stuck"]},"element":{"type":["string","null"]},"point":{"anyOf":[{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"additionalProperties":false},{"type":"null"}]},"menu":{"type":"array","items":{"type":"string"}},"text":{"type":"string"},"title":{"type":"string"},"start":{"type":["string","null"]},"end":{"type":["string","null"]},"cell":{"type":["string","null"]},"rows":{"type":"array","items":{"type":"array","items":{"type":"string"}}}},"required":["action","element","point","menu","text","title","start","end","cell","rows"],"additionalProperties":false}
+        {"type":"object","properties":{"action":{"type":"string","enum":["press","set","pick","click","open_app","note","append","reminder","event","workbook","cells","rename_note","rename_reminder","rename_event","edit_note","complete_reminder","move_event","change_cells","delete_note","delete_reminder","delete_event","done","stuck"]},"element":{"type":["string","null"]},"point":{"anyOf":[{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"additionalProperties":false},{"type":"null"}]},"menu":{"type":"array","items":{"type":"string"}},"text":{"type":"string"},"title":{"type":"string"},"start":{"type":["string","null"]},"end":{"type":["string","null"]},"cell":{"type":["string","null"]},"rows":{"type":"array","items":{"type":"array","items":{"type":"string"}}}},"required":["action","element","point","menu","text","title","start","end","cell","rows"],"additionalProperties":false}
         """#
 
     struct Output: Decodable {
@@ -138,7 +148,7 @@ enum Doer {
         case "pick":
             let menu = output.menu.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
             return menu.isEmpty ? .stuck(noTarget) : .act(.pick, target: nil, menu: menu)
-        case "note", "append", "reminder", "event", "workbook", "cells":
+        case let word where scripts.contains(word):
             return script(output).map(NextAction.script) ?? .stuck(badScript)
         case "open_app":
             let name = (output.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -153,11 +163,40 @@ enum Doer {
         }
     }
 
+    /// The actions that are scripts, behind the app.
+    static let scripts: Set<String> = ["note", "append", "reminder", "event", "workbook", "cells", "rename_note", "rename_reminder",
+                                       "rename_event", "edit_note", "complete_reminder", "move_event", "change_cells",
+                                       "delete_note", "delete_reminder", "delete_event"]
+
     /// A script answer as the Hand takes it, or nil when a part it needs is missing or not a real date or cell.
     static func script(_ output: Output) -> HandScript? {
         let title = (output.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let text = output.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        switch output.action.lowercased() {
+        let action = output.action.lowercased()
+        // A change or delete: the item's kind is the word after the verb.
+        let item = HandItem(rawValue: String(action.drop { $0 != "_" }.dropFirst()))
+        switch action {
+        case "rename_note", "rename_reminder", "rename_event":
+            guard let item, !title.isEmpty, !text.isEmpty, !text.contains(where: \.isNewline) else { return nil }
+            return .rename(item, title: title, to: text)
+        case "delete_note", "delete_reminder", "delete_event":
+            guard let item, !title.isEmpty else { return nil }
+            return .delete(item, title: title)
+        case "edit_note": return title.isEmpty ? nil : .noteBody(title: title, body: text)
+        case "complete_reminder": return title.isEmpty ? nil : .complete(title: title)
+        case "move_event":
+            guard !title.isEmpty, let given = output.start.flatMap(components), given.hour != nil,
+                  let start = Calendar.current.date(from: given) else { return nil }
+            let end = output.end.flatMap(components).flatMap { Calendar.current.date(from: $0) }
+            return end.map { $0 > start } == false ? nil : .move(title: title, start: start, end: end)
+        case "change_cells":
+            let rows = (output.rows ?? []).filter { !$0.isEmpty }
+            guard !title.isEmpty, let cell = output.cell, !rows.isEmpty,
+                  Hand.range(top: cell, rows: rows.count, columns: rows.map(\.count).max() ?? 0) != nil else { return nil }
+            return .changeCells(book: title, top: cell.uppercased().trimmingCharacters(in: .whitespaces), rows: rows)
+        default: break
+        }
+        switch action {
         case "note": return title.isEmpty ? nil : .note(title: title, body: text)
         case "append": return text.isEmpty ? nil : .append(text: text)
         case "reminder":

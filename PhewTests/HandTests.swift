@@ -89,7 +89,19 @@ final class FakeSurface: HandSurface, @unchecked Sendable {  // state under `loc
         case .reminder(let title, _): return (.done, HandMade(kind: "reminder", id: "made-\(scripts.count)", title: title))
         case .event(let title, _, _): return (.done, HandMade(kind: "event", id: "made-\(scripts.count)", title: title))
         case .workbook: return (.done, HandMade(kind: "workbook", id: "made-\(scripts.count)"))
+        default: return (.failed, nil)  // changes go through `change`
         }
+    }
+
+    /// N2.2, N2.3: the real change logic (`HandChanges`) on made-up Notes, Excel, reminders and events in memory.
+    let apps = FakeScripts()
+    let items = FakeItems()
+    private(set) var changed: [HandScript] = []
+    private var changes: HandChanges { HandChanges(script: apps.run, items: items) }
+    func facts(_ script: HandScript) -> HandFacts { changes.facts(script) }
+    func change(_ script: HandScript, stop: @escaping () -> Bool) -> (HandEnd, HandKept?) {
+        lock.withLock { changed.append(script) }
+        return changes.run(script)
     }
 }
 

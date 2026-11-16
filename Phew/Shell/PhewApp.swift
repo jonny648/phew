@@ -67,7 +67,14 @@ private struct TaskEntries: View {
             Text("Ready")
             ForEach(tasks.waiting) { item in Button(item.title) { open(item.id) } }
         }
-        if !tasks.running.isEmpty || !tasks.waiting.isEmpty { Divider() }
+        // N2.4: one row per task whose action waits; Confirm runs exactly that action, Dismiss drops it.
+        ForEach(tasks.confirms) { item in
+            Menu(item.waits.map(TaskList.asks) ?? "") {
+                Button("Confirm") { Task { await tasks.confirm(item.id) } }
+                Button("Dismiss") { tasks.dismiss(item.id) }
+            }
+        }
+        if !tasks.running.isEmpty || !tasks.waiting.isEmpty || !tasks.confirms.isEmpty { Divider() }
     }
 }
 

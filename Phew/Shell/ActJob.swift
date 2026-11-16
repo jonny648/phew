@@ -18,6 +18,8 @@ struct ActJob {
     var starting: (String) -> Void = { _ in }
     /// Every hearing of a job asked aloud, best first (P6.3); empty when typed.
     var spoken: [Hearing] = []
+    /// Each action that landed, with how: the card ticks its row, tags it, and follows a switch (N2.5).
+    var landed: (HandStep, HandResult) -> Void = { _, _ in }
 
     enum Outcome: Equatable {
         case done(String)
@@ -78,6 +80,7 @@ struct ActJob {
             done.append("\(line): \(result.end.rawValue)")
             guard result.end == .done else { return .ended(result.end) }
             listed(line)
+            landed(step, result)
         }
     }
 
@@ -122,6 +125,13 @@ struct ActJob {
             case .event(let title, _, _): return "Added the event “\(title)” to Calendar"
             case .workbook: return "Made a new workbook in Excel"
             case let .cells(top, rows): return "Filled \(rows.joined().count) cells from \(top) in Excel"
+            case let .rename(item, title, to): return "Renamed the \(item.rawValue) “\(title)” to “\(to)”"
+            case let .noteBody(title, _): return "Rewrote the note “\(title)”"
+            case let .complete(title): return "Ticked the reminder “\(title)” done"
+            case let .move(title, _, _): return "Moved the event “\(title)”"
+            case let .changeCells(book, top, rows): return "Wrote over \(rows.joined().count) cells from \(top) in “\(book)”"
+            case let .delete(item, title): return "Deleted the \(item.rawValue) “\(title)”"
+            case .restore: return "Put back what was there"
             case nil: return "Ran a script"
             }
         }
@@ -151,6 +161,9 @@ struct ActJob {
         case .timeout: "The app did not answer in time. I stopped."
         case .checkFailed: "I acted, but I could not see the change. Check before going on."
         case .noAccess: "macOS has not allowed me to use that app. You can allow it in System Settings, Privacy & Security."
+        case .notFound: "I found nothing with that exact name, so I changed nothing."
+        case .manyFound: "More than one thing has that exact name, so I changed nothing."
+        case .needsConfirm: "That cannot be undone, so it waits in the menu bar for your confirm."
         }
     }
 }

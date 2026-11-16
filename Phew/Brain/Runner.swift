@@ -70,7 +70,9 @@ enum Runner {
         as soon as you can answer.
 
         When you have add_item, use it only for what the task asks to add on the Mac: a note, a reminder, an event \
-        or a sheet. It answers in one word. When it answers off, acting is off: add nothing more.
+        or a sheet, or to change or delete one note, reminder or event the task names. It answers in one word. When \
+        it answers off, acting is off: add nothing more. When it answers needsConfirm, the action waits for the \
+        user's confirm in the menu bar: do not ask for it again.
 
         Then write the report in Markdown, in the language of the task, for anyone who works on a Mac: plain words, \
         no preamble.
@@ -331,14 +333,15 @@ struct AddItemTool: ToolRunner {
     func run(_ name: String, input: Data) async throws -> String {
         guard name == ToolSpec.addItem.name, let (kind, title, script) = Self.item(input) else { return Self.refused }
         let word = await add(script)
-        added.note(kind, title, word)
+        added.note(kind, title, word, changed: script.changes)
         return word
     }
 
-    /// The kind's name for the report, the title, and the script. Nil for anything but the four kinds well formed.
+    /// The kind's name for the report, the title, and the script. Nil for anything but the four kinds well formed,
+    /// or a change or delete of one note, reminder or event named by its title (N2.4).
     static func item(_ input: Data) -> (String, String, HandScript)? {
         struct Input: Decodable {
-            var kind: String, title: String
+            var kind: String, title: String, action: String?, newTitle: String?
             var body: String?, due: String?, start: String?, end: String?, topLeft: String?, rows: [[String]]?
         }
         let decoder = JSONDecoder()
@@ -346,6 +349,26 @@ struct AddItemTool: ToolRunner {
         guard let item = try? decoder.decode(Input.self, from: input) else { return nil }
         let title = item.title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty, title.count <= 200 else { return nil }
+        if let action = item.action, action != "add" {
+            let done = ["rename": "Renamed", "delete": "Deleted", "edit": "Edited", "complete": "Completed", "move": "Moved"]
+            guard let thing = HandItem(rawValue: item.kind), let verb = done[action] else { return nil }  // never a sheet
+            let label = "\(verb) \(item.kind)"
+            switch (action, thing) {
+            case ("rename", _):
+                let to = (item.newTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !to.isEmpty, to.count <= 200, !to.contains(where: \.isNewline) else { return nil }
+                return (label, title, .rename(thing, title: title, to: to))
+            case ("delete", _): return (label, title, .delete(thing, title: title))
+            case ("edit", .note): return (label, title, .noteBody(title: title, body: item.body ?? ""))
+            case ("complete", .reminder): return (label, title, .complete(title: title))
+            case ("move", .event):
+                guard let start = day(item.start).flatMap(time) else { return nil }
+                let end = day(item.end).flatMap(time)
+                guard item.end == nil || end.map({ $0 > start }) == true else { return nil }
+                return (label, title, .move(title: title, start: start, end: end))
+            default: return nil
+            }
+        }
         switch item.kind {
         case "note":
             return ("Note", title, .note(title: title, body: item.body ?? ""))
@@ -387,19 +410,27 @@ struct AddItemTool: ToolRunner {
 /// What a task added, by title, for the end of its report. Memory only.
 final class AddedItems: @unchecked Sendable {  // state under `lock`
     private let lock = NSLock()
-    private var lines: [(String, String, String)] = []
+    private var lines: [(kind: String, title: String, word: String, changed: Bool)] = []
 
-    func note(_ kind: String, _ title: String, _ word: String) { lock.withLock { lines.append((kind, title, word)) } }
+    func note(_ kind: String, _ title: String, _ word: String, changed: Bool = false) {
+        lock.withLock { lines.append((kind, title, word, changed)) }
+    }
 
     /// Empty when nothing was asked for.
     var section: String {
         let lines = lock.withLock { self.lines }
         guard !lines.isEmpty else { return "" }
-        let done = lines.filter { $0.2 == HandEnd.done.rawValue }.map { "- \($0.0) “\($0.1)”" }
-        let notDone = lines.filter { $0.2 != HandEnd.done.rawValue && $0.2 != HandEnd.off.rawValue }.map { "- \($0.0) “\($0.1)”" }
+        func list(_ keep: (String, Bool) -> Bool) -> String {
+            lines.filter { keep($0.word, $0.changed) }.map { "- \($0.kind) “\($0.title)”" }.joined(separator: "\n")
+        }
+        let (done, off, waits) = (HandEnd.done.rawValue, HandEnd.off.rawValue, HandEnd.needsConfirm.rawValue)
         var out = ""
-        if !done.isEmpty { out += "\n\n## Added on your Mac\n\n" + done.joined(separator: "\n") }
-        if !notDone.isEmpty { out += "\n\n## Not added\n\n" + notDone.joined(separator: "\n") }
+        for (heading, part) in [("Added on your Mac", list { $0 == done && !$1 }), ("Changed on your Mac", list { $0 == done && $1 }),
+                                ("Waiting for your confirm in Phew's menu", list { word, _ in word == waits }),
+                                ("Not added", list { ![done, off, waits].contains($0) && !$1 }),
+                                ("Not changed", list { ![done, off, waits].contains($0) && $1 })] where !part.isEmpty {
+            out += "\n\n## \(heading)\n\n" + part
+        }
         if lines.contains(where: { $0.2 == HandEnd.off.rawValue }) { out += "\n\n" + Self.off }
         return out
     }
@@ -408,17 +439,20 @@ final class AddedItems: @unchecked Sendable {  // state under `lock`
 }
 
 extension ToolSpec {
-    /// The one way a task acts (PA.4): four kinds that only add, behind the apps. Identical on every call.
+    /// The one way a task acts (PA.4): four kinds that add, and changes or deletes of one named note, reminder or
+    /// event (N2.4), behind the apps. Identical on every call.
     static let addItem = ToolSpec(
         name: "add_item",
         description: """
             Adds one new item on the user's Mac, in the background, without taking their screen: a note in Notes, a \
             reminder in Reminders, an event in Calendar, or a new Excel workbook filled with rows from a top-left \
-            cell. Use it only when the task asks you to add such an item. It only adds; it never changes or deletes \
-            anything. Times are the user's local time. It answers one word: done, or why the item was not added \
-            (off: the user turned acting off). Do not add the same item again after a word other than done.
+            cell. With action, it changes or deletes one note, reminder or event instead, named in title by its \
+            exact title. Use it only when the task asks for such an item. Times are the user's local time. It \
+            answers one word: done, or why it was not done (off: the user turned acting off; notFound or manyFound: \
+            no item, or more than one, has that title; needsConfirm: it cannot be undone and waits for the user's \
+            confirm). Do not ask for the same item again after a word other than done.
             """,
         schema: #"""
-            {"type":"object","properties":{"kind":{"type":"string","enum":["note","reminder","event","sheet"]},"title":{"type":"string","description":"The note's first line, the reminder's or event's title, or a short name for the sheet."},"body":{"type":"string","description":"note: the text under the title."},"due":{"type":"string","description":"reminder: YYYY-MM-DD, or YYYY-MM-DDTHH:MM with a time. Leave it out for no due date."},"start":{"type":"string","description":"event: YYYY-MM-DDTHH:MM."},"end":{"type":"string","description":"event: YYYY-MM-DDTHH:MM, after start."},"top_left":{"type":"string","description":"sheet: the first cell, such as A1."},"rows":{"type":"array","items":{"type":"array","items":{"type":"string"}},"description":"sheet: the rows, each a list of cell values from left to right."}},"required":["kind","title"],"additionalProperties":false}
+            {"type":"object","properties":{"kind":{"type":"string","enum":["note","reminder","event","sheet"]},"action":{"type":"string","enum":["add","rename","edit","complete","move","delete"],"description":"add, the default: a new item. rename: new_title. edit: a note's body replaced. complete: a reminder ticked done. move: an event to start and end. delete. Never for a sheet."},"new_title":{"type":"string","description":"rename: the new title."},"title":{"type":"string","description":"The note's first line, the reminder's or event's title, or a short name for the sheet. To change or delete: the exact title it has now."},"body":{"type":"string","description":"note: the text under the title."},"due":{"type":"string","description":"reminder: YYYY-MM-DD, or YYYY-MM-DDTHH:MM with a time. Leave it out for no due date."},"start":{"type":"string","description":"event: YYYY-MM-DDTHH:MM."},"end":{"type":"string","description":"event: YYYY-MM-DDTHH:MM, after start."},"top_left":{"type":"string","description":"sheet: the first cell, such as A1."},"rows":{"type":"array","items":{"type":"array","items":{"type":"string"}},"description":"sheet: the rows, each a list of cell values from left to right."}},"required":["kind","title"],"additionalProperties":false}
             """#)
 }

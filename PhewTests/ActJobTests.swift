@@ -519,6 +519,90 @@ final class ActJobTests: XCTestCase {
         XCTAssertEqual(fake.sentCount, 0)
     }
 
+    // MARK: N2.2 and N2.5: changes from the Doer, the card that tells the truth
+
+    func testDoerChangeAnswers() throws {
+        func decide(_ json: String) throws -> NextAction {
+            Doer.decide(try JSONDecoder().decode(Doer.Output.self, from: Data(json.utf8)), packet: packet, shot: nil)
+        }
+        XCTAssertEqual(try decide(script("rename_note", title: " Made-up plan ", text: "Made-up plan two")),
+                       .script(.rename(.note, title: "Made-up plan", to: "Made-up plan two")))
+        XCTAssertEqual(try decide(script("rename_event", title: "Review", text: "Made-up review")),
+                       .script(.rename(.event, title: "Review", to: "Made-up review")))
+        XCTAssertEqual(try decide(script("edit_note", title: "Made-up plan", text: #"One\nTwo"#)),
+                       .script(.noteBody(title: "Made-up plan", body: "One\nTwo")))
+        XCTAssertEqual(try decide(script("complete_reminder", title: "Call")), .script(.complete(title: "Call")))
+        let start = try XCTUnwrap(Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 18, hour: 9, minute: 0)))
+        XCTAssertEqual(try decide(script("move_event", title: "Review", start: "2026-11-18T09:00")),
+                       .script(.move(title: "Review", start: start, end: nil)))
+        XCTAssertEqual(try decide(script("move_event", title: "Review", start: "2026-11-18T09:00", end: "2026-11-18T09:30")),
+                       .script(.move(title: "Review", start: start, end: start.addingTimeInterval(1800))))
+        XCTAssertEqual(try decide(script("delete_reminder", title: "Call")), .script(.delete(.reminder, title: "Call")))
+        XCTAssertEqual(try decide(script("change_cells", title: "Made-up budget.xlsx", cell: "c3", rows: [["5"]])),
+                       .script(.changeCells(book: "Made-up budget.xlsx", top: "C3", rows: [["5"]])))
+        // Never a guess: no title, no new name, a move with no time or ending first, cells with no workbook.
+        for bad in [script("rename_note", text: "x"), script("rename_note", title: "Made-up plan"), script("delete_event"),
+                    script("move_event", title: "Review", start: "2026-11-18"),
+                    script("move_event", title: "Review", start: "2026-11-18T09:00", end: "2026-11-18T08:00"),
+                    script("change_cells", cell: "A1", rows: [["1"]]), script("complete_reminder")] {
+            XCTAssertEqual(try decide(bad), .stuck(Doer.badScript), bad)
+        }
+        XCTAssertTrue(Doer.schema.contains(#""delete_event","done""#))
+        XCTAssertTrue(Doer.system.contains("its exact title as it reads"))
+    }
+
+    func testTheCardTagsFollowsTheSwitchAndOffersUndo() {
+        let model = CardModel()
+        model.startActing(in: "Practice")
+        model.actions.append(.init(line: "Deleting"))
+        model.landed("Deleted the event “Made-up launch”", step: HandStep(kind: .script, pid: 0, script: .delete(.event, title: "Made-up launch")),
+                     result: HandResult(end: .done, final: true))
+        XCTAssertEqual(model.actions.last, .init(line: "Deleted the event “Made-up launch”", state: .done, cannotUndo: true))
+        model.actions.append(.init(line: "Switching"))
+        model.landed("Switched to Excel", step: HandStep(kind: .front, pid: 0, name: "Excel", app: "com.microsoft.Excel"),
+                     result: HandResult(end: .done))
+        XCTAssertEqual(model.actingApp, "Excel", "the label follows the switch")
+        XCTAssertEqual(model.actions.last, .init(line: "Switched to Excel", state: .done))
+        model.actions.append(.init(line: "Clicking"))
+        model.landed("Clicked a spot", step: HandStep(kind: .click, pid: 7), result: HandResult(end: .done, marked: true))
+        XCTAssertTrue(model.actions.last?.cannotUndo == true, "the code could not judge it: the careful side")
+        model.canUndo = true
+        model.undone(.done)
+        XCTAssertFalse(model.canUndo)
+        XCTAssertEqual(model.ended, CardModel.putBack)
+        model.canUndo = true
+        model.undone(.notFound)
+        XCTAssertEqual(model.problem, ActJob.sentence(for: .notFound))
+        model.canUndo = true
+        model.begin("A made-up next question")
+        XCTAssertFalse(model.canUndo, "the turn ends: Undo goes")
+    }
+
+    func testAJobsChangesAreTaggedFollowedAndUndone() async throws {
+        let start = Date(timeIntervalSince1970: 2_000_000_000)
+        fake.apps.add("Made-up plan", ["A made-up line"])
+        fake.items.entries[.event] = [HandEntry(id: "e1", title: "Made-up launch", start: start, end: start + 1800, guests: true)]
+        fake.launchable["com.microsoft.Excel"] = Self.excel
+        let (made, _, job, hand) = make([script("delete_note", title: "Made-up plan"),
+                                         script("rename_event", title: "Made-up launch", text: "Made-up launch two"),
+                                         script("open_app", title: "Excel"), reply("done", text: "Done.")])
+        let model = CardModel()
+        model.startActing(in: "Practice")
+        var run = made
+        run.starting = { model.actions.append(CardModel.Action(line: $0)) }
+        run.landed = { model.landed(ActJob.line($0), step: $0, result: $1) }
+        let outcome = await run.run("Delete the plan, rename the launch, then go to Excel", job: job) { _ in }
+        XCTAssertEqual(outcome, .done("Done."))
+        XCTAssertEqual(model.actions.map(\.cannotUndo), [false, true, false], "only the event with guests is tagged")
+        XCTAssertEqual(model.actingApp, "Excel")
+        hand.close(job)
+        // "To undo" is real: the deleted note comes back through the Hand; the event with guests had no way back.
+        XCTAssertEqual(job.kept.count, 1)
+        XCTAssertEqual(hand.undo(job), .done)
+        XCTAssertEqual(fake.apps.notes.map(\.text), ["Made-up plan\nA made-up line"])
+        XCTAssertEqual(fake.items.entries[.event]?.first?.title, "Made-up launch two")
+    }
+
     func testRowsListEachActionAsItHappens() async {
         let (made, _, job, _) = make([reply("press", element: "e1"), reply("done", text: "Done.")])
         var run = made

@@ -42,6 +42,8 @@ final class TextCard: EditPanel {
     var lookTask: Task<Void, Never>?
     /// The job of the act route while the Hand works (TextCardActing.swift); nil otherwise.
     var handJob: HandJob?
+    /// The last job, while its turn shows, for Undo (N2.3). What it kept goes with it: on the next turn or the close.
+    var undoJob: HandJob?
     /// The "Let Phew act" switch; the debug check gives it a throwaway defaults suite.
     var consent = ActConsent()
     /// The task route (PA.2): starts the task with the words and this turn's capture; returns the card's one line.
@@ -67,6 +69,7 @@ final class TextCard: EditPanel {
             onClose: { [weak self] in self?.dismiss() },
             onStep: { [weak self] in self?.jump(to: $0) },
             onStop: { [weak self] in self?.handJob?.stop() },
+            onUndo: { [weak self] in self?.undo() },
             // Next turn of the run loop: resizing the window inside SwiftUI's layout pass would nest layouts.
             onHeight: { [weak self] height in DispatchQueue.main.async { self?.fit(height: height) } }))
         host.sizingOptions = []  // the card sets its own frame, top-left fixed
@@ -125,6 +128,7 @@ final class TextCard: EditPanel {
                                acting: consent.allowed)
         idleTask?.cancel()
         idleTask = nil
+        undoJob = nil
         model.begin(question)
         let asked = NSWorkspace.shared.frontmostApplication  // the app the user asked in: a job works there only
         task = Task { [weak self] in
@@ -236,6 +240,7 @@ final class TextCard: EditPanel {
     /// the active app.
     func dismiss() {
         handJob?.stop()  // Stop: Escape, the close control and closing the card end a job within a second
+        undoJob = nil  // what the job kept goes with the card
         task?.cancel()
         task = nil
         idleTask?.cancel()
@@ -361,7 +366,7 @@ final class CardModel: ObservableObject {
         enum State { case now, done, failed }
         var line: String
         var state = State.now
-        /// The "can't be undone" tag. A seam: nothing sets it yet (docs/13-hand.md 13.5, the class is not built).
+        /// The "can't be undone" tag: in the class (`NeverList.final`), or the code could not judge it (13.5).
         var cannotUndo = false
     }
 
@@ -391,7 +396,30 @@ final class CardModel: ObservableObject {
     @Published var ended: String?
     /// A task's PDF, when the card shows its report (PA.2).
     @Published var saved: URL?
+    /// The "To undo" line (N2.5): the job ended with changes it can put back. Gone with the turn.
+    @Published var canUndo = false
     private(set) var pieces = 0
+
+    static let toUndo = "To undo: Undo puts back what I changed or deleted."
+    static let putBack = "Put back as it was."
+
+    /// An action landed: its row ticked with its line, tagged when it cannot be undone; after a switch to another
+    /// app the footer names that app (N2.5).
+    func landed(_ line: String, step: HandStep, result: HandResult) {
+        if let last = actions.indices.last {
+            actions[last].line = line
+            actions[last].state = .done
+            actions[last].cannotUndo = result.final || result.marked
+        }
+        if step.kind == .front, !step.name.isEmpty { actingApp = step.name }
+    }
+
+    /// Undo ran: a plain line, or why not.
+    @MainActor
+    func undone(_ end: HandEnd) {
+        canUndo = false
+        if end == .done { ended = Self.putBack; problem = nil } else { problem = ActJob.sentence(for: end) }
+    }
     private var started = false
 
     func apply(_ event: BrainEvent) {
@@ -414,7 +442,7 @@ final class CardModel: ObservableObject {
         started = true
         self.question = question
         thinking = true; text = ""; steps = []; current = 0; problem = nil; note = nil; pieces = 0
-        acting = false; actions = []; actingApp = ""; ended = nil; saved = nil
+        acting = false; actions = []; actingApp = ""; ended = nil; saved = nil; canUndo = false
     }
 
     func startActing(in app: String) {
@@ -428,7 +456,7 @@ final class CardModel: ObservableObject {
     func reset() {
         question = ""; thinking = true; text = ""; steps = []; current = 0; problem = nil; note = nil; pieces = 0
         history = []; open = false; draft = ""; queued = false; started = false
-        acting = false; actions = []; actingApp = ""; ended = nil; saved = nil
+        acting = false; actions = []; actingApp = ""; ended = nil; saved = nil; canUndo = false
     }
 }
 
@@ -438,6 +466,7 @@ private struct CardView: View {
     let onClose: () -> Void
     let onStep: (Int) -> Void
     let onStop: () -> Void
+    let onUndo: () -> Void
     let onHeight: (CGFloat) -> Void
     @State private var bodyHeight: CGFloat = 0
     @State private var footerHeight: CGFloat = 0
@@ -688,6 +717,13 @@ private struct CardView: View {
         }
         if let ended = model.ended {
             Text(verbatim: ended).font(Design.Text.body).foregroundStyle(Design.Ink.secondary)
+        }
+        if model.canUndo && !model.acting {
+            HStack(alignment: .firstTextBaseline, spacing: Design.Space.s8) {
+                Text(verbatim: CardModel.toUndo).font(Design.Text.small).foregroundStyle(Design.Ink.secondary)
+                Spacer(minLength: 0)
+                Button("Undo", action: onUndo).buttonStyle(QuietButton())
+            }
         }
         if let problem = model.problem {
             HStack(alignment: .firstTextBaseline, spacing: Design.Space.s8) {

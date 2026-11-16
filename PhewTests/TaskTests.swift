@@ -223,6 +223,74 @@ final class TaskTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(item.report?.markdown).hasSuffix("\n\n" + AddedItems.off))
     }
 
+    // MARK: N2.4: what cannot be undone waits for one confirm
+
+    func testAddItemAsksForChangesAndDeletesByTitle() throws {
+        func item(_ json: String) -> HandScript? { AddItemTool.item(Data(json.utf8))?.2 }
+        XCTAssertEqual(item(#"{"kind":"note","title":"Made-up plan","action":"rename","new_title":"Made-up plan two"}"#),
+                       .rename(.note, title: "Made-up plan", to: "Made-up plan two"))
+        XCTAssertEqual(item(#"{"kind":"note","title":"Made-up plan","action":"edit","body":"A made-up line"}"#),
+                       .noteBody(title: "Made-up plan", body: "A made-up line"))
+        XCTAssertEqual(item(#"{"kind":"reminder","title":"Made-up call","action":"complete"}"#), .complete(title: "Made-up call"))
+        XCTAssertEqual(item(#"{"kind":"event","title":"Made-up review","action":"delete"}"#), .delete(.event, title: "Made-up review"))
+        let start = try XCTUnwrap(DateComponents(calendar: .current, year: 2030, month: 1, day: 3, hour: 10, minute: 0).date)
+        XCTAssertEqual(item(#"{"kind":"event","title":"Made-up review","action":"move","start":"2030-01-03T10:00"}"#),
+                       .move(title: "Made-up review", start: start, end: nil))
+        XCTAssertEqual(AddItemTool.item(Data(#"{"kind":"reminder","title":"Made-up call","action":"delete"}"#.utf8))?.0, "Deleted reminder")
+        // Refused: a sheet changed, a rename with no new name, a verb on the wrong kind, a move with no time.
+        for bad in [#"{"kind":"sheet","title":"Made-up","action":"delete"}"#, #"{"kind":"note","title":"Made-up","action":"rename"}"#,
+                    #"{"kind":"note","title":"Made-up","action":"complete"}"#, #"{"kind":"event","title":"Made-up","action":"move","start":"2030-01-03"}"#,
+                    #"{"kind":"note","title":"Made-up","action":"burn"}"#] {
+            XCTAssertNil(item(bad), bad)
+        }
+        XCTAssertTrue(ToolSpec.addItem.schema.contains(#""enum":["add","rename","edit","complete","move","delete"]"#))
+    }
+
+    func testABackgroundDeleteStopsAndShowsOneConfirmRow() async throws {
+        fake.apps.add("Made-up plan", ["A made-up line"])
+        fake.items.entries[.reminder] = [HandEntry(id: "r1", title: "Made-up call")]
+        let script = Script([
+            call(#"{"kind":"note","title":"Made-up plan","action":"delete"}"#),
+            call(#"{"kind":"reminder","title":"Made-up call","action":"delete"}"#, id: "toolu_2"),
+            call(#"{"kind":"reminder","title":"Made-up call","action":"rename","new_title":"Made-up call later"}"#, id: "toolu_3"),
+            .init(text: report),
+        ])
+        let list = list(script)
+        _ = list.start("Research a made-up topic and tidy my notes", packet: nil)
+        let item = try await finished(list)
+        XCTAssertEqual(try result(script, 1), HandEnd.needsConfirm.rawValue)
+        XCTAssertEqual(try result(script, 2), AddItemTool.refused, "one waits at a time")
+        XCTAssertEqual(try result(script, 3), AddItemTool.refused, "an agent's change waits too: it has no Undo")
+        XCTAssertEqual(fake.apps.notes.count, 1, "not deleted")
+        XCTAssertEqual(fake.changed, [], "nothing changed before the confirm")
+        XCTAssertEqual(list.confirms.map(\.id), [item.id], "one confirm row")
+        XCTAssertEqual(item.waits, .delete(.note, title: "Made-up plan"))
+        XCTAssertEqual(TaskList.asks(try XCTUnwrap(item.waits)), "Waiting for you: Delete the note “Made-up plan”?")
+        let markdown = try XCTUnwrap(item.report?.markdown)
+        XCTAssertTrue(markdown.contains("## Waiting for your confirm in Phew's menu\n\n- Deleted note “Made-up plan”"), markdown)
+        // Confirm runs exactly that one action, through the Hand, as the user's own: tagged, not waiting again.
+        let confirmed = await list.confirm(item.id)
+        XCTAssertEqual(confirmed, .done)
+        XCTAssertTrue(fake.apps.notes.isEmpty)
+        XCTAssertEqual(fake.changed.last, .delete(.note, title: "Made-up plan"))
+        XCTAssertTrue(list.confirms.isEmpty)
+        let again = await list.confirm(item.id)
+        XCTAssertEqual(again, .stopped, "once")
+    }
+
+    func testDismissDropsTheWaitingAction() async throws {
+        fake.apps.add("Made-up plan")
+        let script = Script([call(#"{"kind":"note","title":"Made-up plan","action":"delete"}"#), .init(text: report)])
+        let list = list(script)
+        _ = list.start("Research a made-up topic", packet: nil)
+        let item = try await finished(list)
+        XCTAssertEqual(list.confirms.count, 1)
+        list.dismiss(item.id)
+        XCTAssertTrue(list.confirms.isEmpty)
+        XCTAssertEqual(fake.changed, [])
+        XCTAssertEqual(fake.apps.notes.count, 1)
+    }
+
     // MARK: Logs
 
     func testTheTasksWordsAreNeverLogged() async throws {

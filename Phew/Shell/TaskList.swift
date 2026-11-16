@@ -5,8 +5,9 @@ import AppKit
 /// Memory only: the user's words and the reports live here until Quit; the report files are on disk.
 /// The one screen read of a task is the capture taken when the panel opened: it goes into `runTask` and is dropped
 /// when the task ends or is stopped.
-/// A task acts only through `add_item`, in the background (PA.4): a script that adds, through `Hand.act`, in a job
-/// that does not watch the user. Never a click, never another app brought to the front.
+/// A task acts only through `add_item`, in the background (PA.4): a script, through `Hand.act`, in an agent's job
+/// that does not watch the user. Never a click, never another app brought to the front. What cannot be undone or
+/// leaves the Mac waits in the menu for one confirm (N2.4).
 @MainActor
 final class TaskList: ObservableObject {
     static let most = 3
@@ -28,6 +29,9 @@ final class TaskList: ObservableObject {
         var report: TaskReport?
         var cost: Double?
         var opened = false
+        /// An action that cannot be undone or leaves the Mac, waiting for the user's one confirm in the menu (N2.4).
+        /// At most one per task, memory only.
+        var waits: HandScript?
 
         /// The task's first words, for the menu.
         var title: String {
@@ -40,6 +44,8 @@ final class TaskList: ObservableObject {
     var running: [Item] { items.filter { $0.state == .running } }
     /// Finished, not opened yet: the menu's Ready list and the waiting dot.
     var waiting: [Item] { items.filter { !$0.opened && $0.state != .running && $0.state != .stopped } }
+    /// Tasks with an action waiting for a confirm: one row each in the menu.
+    var confirms: [Item] { items.filter { $0.waits != nil } }
 
     private let brain: any Brain
     private let hand: Hand
@@ -99,7 +105,7 @@ final class TaskList: ObservableObject {
     func stop(_ number: Int) {
         tasks.removeValue(forKey: number)?.cancel()
         jobs[number]?.stop()
-        update(number) { $0.state = .stopped }
+        update(number) { $0.state = .stopped; $0.waits = nil }
         shellLog("task \(number): stopped")
     }
 
@@ -137,17 +143,58 @@ final class TaskList: ObservableObject {
 
     // MARK: add_item, in the background (PA.4)
 
-    /// Runs the Runner's item through the Hand: a script that adds, nothing else, in a job that does not watch the
+    /// Runs the Runner's item through the Hand: a script, nothing else, in an agent's job that does not watch the
     /// user and is closed at once. A sheet is a new workbook, then its cells. Returns the Hand's fixed word.
+    /// What cannot be undone or leaves the Mac is not done (`needsConfirm`): it waits in the menu for one confirm.
     func add(_ script: HandScript, task number: Int) async -> String {
         let scripts: [HandScript]
         switch script {
-        case .note, .reminder, .event: scripts = [script]
+        case .note, .reminder, .event, .rename, .noteBody, .complete, .move, .delete: scripts = [script]
         case .cells: scripts = [.workbook, script]
-        case .append, .workbook: return AddItemTool.refused  // only whole new items
+        // Only whole new items, and changes or deletes of one named note, reminder or event.
+        case .append, .workbook, .changeCells, .restore: return AddItemTool.refused
         }
         guard tasks[number] != nil else { return HandEnd.stopped.rawValue }
-        let hand = hand, job = hand.begin(watchUser: false)
+        let end = await run(scripts, agent: true, task: number)
+        // One waits at a time: a second is refused, never queued unseen. The Hand did nothing either way.
+        let refused = end == .needsConfirm && items.first(where: { $0.id == number })?.waits != nil
+        if end == .needsConfirm, !refused { update(number) { $0.waits = script } }
+        shellLog("task \(number): item \(refused ? AddItemTool.refused : end.rawValue)")
+        return refused ? AddItemTool.refused : end.rawValue
+    }
+
+    /// The menu's Confirm: runs exactly the one stored action through the Hand, now as the user's own, then drops it.
+    /// Returns the Hand's fixed word.
+    @discardableResult
+    func confirm(_ number: Int) async -> HandEnd {
+        guard let script = items.first(where: { $0.id == number })?.waits else { return .stopped }
+        update(number) { $0.waits = nil }
+        let end = await run([script], agent: false, task: number)
+        shellLog("task \(number): confirmed item \(end.rawValue)")
+        return end
+    }
+
+    /// The confirm row: what happens once confirmed. Memory only, never logged.
+    static func asks(_ script: HandScript) -> String {
+        let what: String = switch script {
+        case let .delete(item, title): "Delete the \(item.rawValue) “\(title)”"
+        case let .rename(item, title, to): "Rename the \(item.rawValue) “\(title)” to “\(to)”"
+        case let .noteBody(title, _): "Rewrite the note “\(title)”"
+        case let .complete(title): "Tick the reminder “\(title)” done"
+        case let .move(title, _, _): "Move the event “\(title)”"
+        default: ActJob.line(HandStep(kind: .script, pid: 0, script: script))
+        }
+        return "Waiting for you: \(what)?"
+    }
+
+    /// The menu's Dismiss: the stored action is dropped, nothing runs.
+    func dismiss(_ number: Int) {
+        update(number) { $0.waits = nil }
+        shellLog("task \(number): waiting item dismissed")
+    }
+
+    private func run(_ scripts: [HandScript], agent: Bool, task number: Int) async -> HandEnd {
+        let hand = hand, job = hand.begin(watchUser: false, agent: agent)
         jobs[number] = job
         var end = HandEnd.done
         for script in scripts where end == .done {
@@ -157,8 +204,7 @@ final class TaskList: ObservableObject {
         }
         hand.close(job)
         jobs[number] = nil
-        shellLog("task \(number): item \(end.rawValue)")
-        return end.rawValue
+        return end
     }
 }
 

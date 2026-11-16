@@ -384,6 +384,7 @@ extension AppDelegate {
         case let .event(title, start, end): return "event marked=\(title.hasPrefix(marker)) start=\(when(start)) minutes=\(Int(end.timeIntervalSince(start) / 60))"
         case .workbook: return "workbook"
         case let .cells(top, rows): return "cells top=\(top) rows=\(rows.count) columns=\(rows.map(\.count).max() ?? 0)"
+        case .rename, .noteBody, .complete, .move, .changeCells, .delete, .restore: return "change"
         }
     }
 

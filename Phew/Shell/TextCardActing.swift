@@ -57,22 +57,20 @@ extension TextCard {
                          })
         run.spoken = spoken
         run.starting = { [weak self] line in self?.model.actions.append(CardModel.Action(line: line)) }
-        let outcome = await run.run(request, job: job) { [weak self] line in
-            count += 1
-            guard let self, !model.actions.isEmpty else { return }
-            model.actions[model.actions.count - 1].line = line
-            model.actions[model.actions.count - 1].state = .done
-        }
+        run.landed = { [weak self] step, result in self?.model.landed(ActJob.line(step), step: step, result: result) }
+        let outcome = await run.run(request, job: job) { _ in count += 1 }
         Hand.shared.close(job)
         handJob = nil
+        undoJob = job.kept.isEmpty ? nil : job
         if overlay === pointer {
             pointer.goHome()
             overlay = nil
         }
         let kind = switch outcome { case .done: "done"; case .stuck: "stuck"; case .ended(let end): end.rawValue; case .failed(let error): "error \(error)" }
         shellLog("act: job \(job.number) ended \(kind), \(count) actions, \(Int(Date().timeIntervalSince(start) * 1000)) ms")
-        guard !Task.isCancelled, isVisible else { return }  // the card was closed: nothing more to show
+        guard !Task.isCancelled, isVisible else { undoJob = nil; return }  // the card was closed: nothing more to show
         model.acting = false
+        model.canUndo = undoJob != nil
         // A row still under way did not land: the Hand refused it, or the job ended before it was sent.
         if let last = model.actions.indices.last, model.actions[last].state == .now { model.actions[last].state = .failed }
         switch outcome {
@@ -82,6 +80,18 @@ extension TextCard {
         case .ended(let end) where end == .stopped || end == .userInput: model.ended = ActJob.sentence(for: end)
         case .ended(let end): model.problem = ActJob.sentence(for: end)
         case .failed(let error): model.problem = Self.sentence(for: error)
+        }
+    }
+
+    /// The card's Undo (N2.3): what the last job changed or deleted, put back through the Hand, once.
+    func undo() {
+        guard let job = undoJob else { return }
+        undoJob = nil
+        model.canUndo = false
+        Task { [weak self] in
+            let end = await Task.detached { Hand.shared.undo(job) }.value
+            shellLog("act: undo of job \(job.number) ended \(end.rawValue)")
+            self?.model.undone(end)
         }
     }
 }

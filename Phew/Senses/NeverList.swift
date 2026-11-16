@@ -63,6 +63,38 @@ enum NeverList {
         return ![.english, .italian].contains(language)
     }
 
+    /// The "cannot be undone or leaves your Mac" class (13.5): words in a control's name or menu path. English and
+    /// Italian, matched as `words` are.
+    static let finalWords = [
+        "send", "submit", "post", "publish", "share", "invite", "forward", "delete", "remove", "erase", "clear", "empty",
+        "discard", "replace", "overwrite", "revert", "don't save", "quit", "sign out", "log out", "print", "export",
+        "invia", "inoltra", "pubblica", "condividi", "invita", "elimina", "cancella", "rimuovi", "svuota", "scarta",
+        "sostituisci", "sovrascrivi", "ripristina", "non salvare", "esci", "disconnetti", "stampa", "esporta",
+    ]
+
+    /// Whether `step` is in the "cannot be undone or leaves your Mac" class. Decided by this code only, never by the
+    /// model. In a job the user watches it still runs, tagged on the card; an agent's waits for one confirm.
+    /// `names`: the control's name and menu path, as read; `replaces`: a `set` over text already there; `facts`: what
+    /// was read of the item a script changes; `agent`: a research agent's job, where any change or delete counts:
+    /// a background task has no card, so no Undo can reach the old value.
+    static func final(_ step: HandStep, names: [String]? = nil, replaces: Bool = false, facts: HandFacts = HandFacts(),
+                      agent: Bool = false) -> Bool {
+        switch step.kind {
+        case .front: return false
+        case .set: return replaces
+        case .press, .pick, .click:
+            let text = " " + (names ?? [step.name] + step.menuPath).map(fold).joined(separator: " ") + " "
+            return finalWords.contains { text.contains(" \($0) ") }
+        case .script:
+            switch step.script {
+            // Invitations or updates go out to guests; a repeat cannot be put back whole.
+            case .delete?, .rename?, .noteBody?, .complete?, .move?: return agent || facts.guests || facts.repeats
+            // Adds, cells written over with what they held kept, and Undo itself.
+            default: return false
+            }
+        }
+    }
+
     /// Lower case, no accents, curly apostrophes straight, every other sign a space.
     static func fold(_ s: String) -> String {
         let plain = s.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil).replacingOccurrences(of: "’", with: "'")

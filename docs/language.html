@@ -1,0 +1,191 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Swift or TypeScript</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column; drawings are rows of "actor" boxes joined by labelled arrows, the way a wiring sheet is drawn. */
+:root{
+  --bg:#fbfaf8; --panel:#f1efeb; --ink:#1c1b19; --muted:#66625b; --rule:#dcd8d0;
+  --accent:#d9480f; --accent-soft:#fbe6dc; --mac:#1f6f5c; --mac-soft:#dff1ec; --out:#3b5bdb; --out-soft:#e3e9fb; --warn:#a15c00; --warn-soft:#fbefd6;
+  --display:"Space Grotesk","Inter",system-ui,sans-serif; --body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif; --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;
+  --bg:#141412; --panel:#1e1d1a; --ink:#ecebe6; --muted:#a09b91; --rule:#34322d;
+  --accent:#ff7a45; --accent-soft:#3a2118; --mac:#5fcdb0; --mac-soft:#16302a; --out:#8ea2ff; --out-soft:#1c2444; --warn:#f0b455; --warn-soft:#33270f}}
+:root[data-theme="dark"]{color-scheme:dark;
+  --bg:#141412; --panel:#1e1d1a; --ink:#ecebe6; --muted:#a09b91; --rule:#34322d;
+  --accent:#ff7a45; --accent-soft:#3a2118; --mac:#5fcdb0; --mac-soft:#16302a; --out:#8ea2ff; --out-soft:#1c2444; --warn:#f0b455; --warn-soft:#33270f}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.6}
+main{max-width:46rem;margin:0 auto;padding-block:2.5rem 4rem;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:2.75rem}
+section{display:flex;flex-direction:column;gap:.9rem;min-width:0}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.2}
+h1{font-size:2rem;font-weight:600}
+h2{font-size:1.35rem;font-weight:600;padding-top:1.5rem;border-top:1px solid var(--rule)}
+h3{font-size:1.02rem;font-weight:600}
+p,ul,ol{margin:0}
+ul,ol{padding-left:1.2rem;display:flex;flex-direction:column;gap:.35rem}
+a{color:var(--out)}
+.lede{font-size:1.1rem;color:var(--muted)}
+.meta{font-family:var(--mono);font-size:.78rem;color:var(--muted);letter-spacing:.02em}
+code{font-family:var(--mono);font-size:.88em;background:var(--panel);padding:.05em .3em;border-radius:3px}
+.note{background:var(--panel);border-radius:6px;padding:.8rem 1rem;font-size:.94rem}
+.warn{background:var(--warn-soft);border-radius:6px;padding:.8rem 1rem;font-size:.94rem}
+.warn b{color:var(--warn)}
+/* drawings */
+.wire{display:flex;flex-wrap:wrap;align-items:stretch;gap:.4rem;font-size:.86rem}
+.box{flex:1 1 7.5rem;min-width:0;border:1.5px solid var(--rule);border-radius:6px;padding:.6rem .7rem;background:var(--bg);display:flex;flex-direction:column;gap:.15rem}
+.box b{font-family:var(--display);font-size:.95rem}
+.box span{color:var(--muted);font-size:.8rem}
+.box.mac{border-color:var(--mac);background:var(--mac-soft)}
+.box.out{border-color:var(--out);background:var(--out-soft)}
+.box.you{border-color:var(--accent);background:var(--accent-soft)}
+.arrow{flex:0 0 auto;align-self:center;font-family:var(--mono);color:var(--muted);font-size:.72rem;text-align:center;line-height:1.2}
+.arrow i{display:block;font-style:normal;font-size:1.1rem;color:var(--ink)}
+.key{display:flex;flex-wrap:wrap;gap:.4rem 1rem;font-size:.8rem;color:var(--muted)}
+.key span::before{content:"";display:inline-block;width:.7rem;height:.7rem;border-radius:2px;margin-right:.35rem;vertical-align:-1px;border:1.5px solid}
+.key .k-mac::before{border-color:var(--mac);background:var(--mac-soft)}
+.key .k-out::before{border-color:var(--out);background:var(--out-soft)}
+.key .k-you::before{border-color:var(--accent);background:var(--accent-soft)}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));gap:1rem}
+.lane{border:1px solid var(--rule);border-radius:6px;padding:.9rem 1rem;display:flex;flex-direction:column;gap:.6rem;min-width:0}
+.lane ol{font-size:.93rem}
+.lane .sum{font-family:var(--mono);font-size:.8rem;color:var(--muted);border-top:1px dashed var(--rule);padding-top:.55rem}
+.steps{counter-reset:s;list-style:none;padding:0;gap:.6rem}
+.steps li{counter-increment:s;display:grid;grid-template-columns:1.9rem 1fr;gap:.2rem .6rem;align-items:start}
+.steps li::before{content:counter(s);font-family:var(--mono);font-size:.8rem;width:1.6rem;height:1.6rem;border-radius:50%;background:var(--panel);display:grid;place-items:center}
+.steps small{grid-column:2;color:var(--muted);font-size:.86rem}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.88rem;min-width:34rem}
+th,td{text-align:left;padding:.5rem .6rem;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-family:var(--mono);font-weight:500;font-size:.74rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.pill{display:inline-block;font-family:var(--mono);font-size:.72rem;padding:.05rem .4rem;border-radius:99px;white-space:nowrap}
+.yes{background:var(--mac-soft);color:var(--mac)} .no{background:var(--accent-soft);color:var(--accent)} .mid{background:var(--warn-soft);color:var(--warn)}
+details{border:1px solid var(--rule);border-radius:6px;padding:.6rem .9rem}
+summary{cursor:pointer;font-weight:500}
+summary:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+pre{font-family:var(--mono);font-size:.78rem;overflow-x:auto;background:var(--panel);padding:.8rem;border-radius:6px;margin:.7rem 0 0;line-height:1.5}
+.pick{border:1.5px solid var(--accent);border-radius:6px;padding:1rem 1.1rem;display:flex;flex-direction:column;gap:.6rem}
+</style>
+<main>
+<header style="display:flex;flex-direction:column;gap:.7rem">
+  <p class="meta">PHEW · THE LANGUAGE QUESTION · 17 NOVEMBER 2026</p>
+  <h1>Swift, or TypeScript for the thinking part?</h1>
+  <p class="lede">You asked whether Phew's agents should move to TypeScript, with Swift kept only for the Mac app, to reach more capabilities. This page gives the answer, the reasons, and the numbers from a small trial.</p>
+  <div class="pick">
+    <h3>The answer: stay all Swift for now</h3>
+    <p>Do not move the thinking part. Keep one door open: a small TypeScript helper, only for connections, and only if the tools refuse the Swift kit. One short test decides that.</p>
+  </div>
+  <p class="note">Nothing in the app was changed. The trial lived in a throwaway folder, used a fake model, and made no real call.</p>
+</header>
+
+<section>
+  <h2>What the question really is</h2>
+  <p>TypeScript is not more powerful than Swift as a language. Both can express the same logic. The difference is what already exists around each one.</p>
+  <div class="two">
+    <div class="lane"><h3>What Swift has</h3><p>The Mac itself: reading another app's window, pressing and typing, the Keychain, the microphone and on-device speech, the menu bar, panels that never take focus. None of this exists in TypeScript without native code underneath.</p></div>
+    <div class="lane"><h3>What TypeScript has</h3><p>Ready-made parts for AI work: the newest kit for connections, browser automation, the official agent kits, and thousands of packages. New helpers appear there first.</p></div>
+  </div>
+  <p>So the real question is where the line goes between the two, and whether a second language is worth its cost.</p>
+</section>
+
+<section>
+  <h2>Where TypeScript is really ahead, for Phew</h2>
+  <div class="scroll"><table>
+    <tr><th>What you want</th><th>In Swift today</th><th>Gap</th></tr>
+    <tr><td>Talking to Claude</td><td>Phew's own client, about 290 lines. No official Swift kit exists</td><td><span class="pill yes">small</span> a retry on a busy service was missing; added on 17 November</td></tr>
+    <tr><td>Connections (MCP)</td><td>An official Swift kit, one version of the standard behind</td><td><span class="pill mid">real</span> the main reason to consider TypeScript</td></tr>
+    <tr><td>Driving a browser</td><td>Nothing like Playwright</td><td><span class="pill mid">real</span> if you want it</td></tr>
+    <tr><td>Reading Excel and PowerPoint files</td><td>No good reader</td><td><span class="pill mid">real</span> but narrow</td></tr>
+    <tr><td>Structured answers</td><td>Built in</td><td><span class="pill yes">none</span></td></tr>
+    <tr><td>Searching the memory</td><td>Already there, with Apple's own tools</td><td><span class="pill yes">none</span></td></tr>
+    <tr><td>Reading PDF</td><td>Apple's own tools</td><td><span class="pill yes">none</span></td></tr>
+    <tr><td>A closed box for running code</td><td>Apple's tools are the strongest, and Swift reaches them directly</td><td><span class="pill yes">none</span></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>The four shapes</h2>
+  <div class="scroll"><table>
+    <tr><th></th><th>1. All Swift (today)</th><th>2. Swift + a TypeScript engine</th><th>3. All TypeScript</th><th>4. A server part</th></tr>
+    <tr><td><b>What you gain</b></td><td>Connections through the Swift kit</td><td>The newest kits, browser automation, every package</td><td>The same as 2</td><td>A shared key, work while the Mac sleeps</td></tr>
+    <tr><td><b>Work</b> (rough)</td><td>2 to 3 weeks for connections</td><td>5 to 8 weeks</td><td>12 to 20 weeks</td><td>4 to 6 weeks, then running costs</td></tr>
+    <tr><td><b>Size of the app</b></td><td>4 MB</td><td>115 to 170 MB (measured)</td><td>120 MB or more</td><td>4 MB</td></tr>
+    <tr><td><b>Your safety rules</b></td><td><span class="pill yes">hold by construction</span></td><td><span class="pill mid">hold only if the engine has no network</span></td><td><span class="pill no">hold by discipline</span></td><td><span class="pill no">three are lost</span></td></tr>
+    <tr><td><b>Upkeep</b></td><td>One language</td><td>Two languages, a runtime to patch and sign</td><td>One language, many native add-ons</td><td>A service to run</td></tr>
+  </table></div>
+  <p><b>Shape 3 fails on the Mac parts.</b> Nine of Phew's ten Mac needs would still require native code. Electron cannot read another app's controls, and its global shortcut never reports the key being released, so hold-to-talk would not work.</p>
+</section>
+
+<section>
+  <h2>The catch with shape 2</h2>
+  <p>Today "only one function may act" and "the secrets filter runs before every network call" are true because there is one program. Nothing else exists that could go around them.</p>
+  <div class="wire">
+    <div class="box mac"><b>Swift app</b><span>the gates: acting, the secrets filter, the key, the limits, Stop</span></div>
+    <div class="arrow"><i>⇄</i>pipe</div>
+    <div class="box mac"><b>TypeScript engine</b><span>the agents. No key. No network of its own</span></div>
+    <div class="arrow"><i>✕</i></div>
+    <div class="box out"><b>The internet</b><span>reached only through Swift</span></div>
+  </div>
+  <p>With an engine beside the app, the rules stay true by construction only if the engine cannot reach the network by itself. The trial showed macOS can enforce that.</p>
+  <p class="warn"><b>But</b> an engine with no network cannot run the things TypeScript was wanted for. The connections kit, browser automation and the agent kits all need their own network. So you would choose between the reach and the rules. You cannot have both from the same engine.</p>
+</section>
+
+<section>
+  <h2>The trial, measured</h2>
+  <p>One agent, the research one, was rewritten in TypeScript with the official Claude kit and run beside a small Swift program, talking over a pipe. A scripted fake model stood in for Claude.</p>
+  <div class="scroll"><table>
+    <tr><th>Measure</th><th>Result</th></tr>
+    <tr><td>Start of the engine</td><td>97 ms</td></tr>
+    <tr><td>Memory when idle</td><td>69 MB</td></tr>
+    <tr><td>One crossing between the two programs</td><td>0.03 ms</td></tr>
+    <tr><td>What would ship with the app</td><td>Node 111 MB, packages 54 to 86 MB. The engine's own code: 11 KB</td></tr>
+    <tr><td>Code for the agent's loop and limits</td><td>125 lines of TypeScript against 140 of Swift</td></tr>
+    <tr><td>Plumbing that exists only because there are two programs</td><td>about 225 lines</td></tr>
+    <tr><td>Tests</td><td>14 pass: the five limits, Stop within a second, a planted fake key never reaching the model</td></tr>
+  </table></div>
+  <div class="two">
+    <div class="lane"><h3>What it bought</h3><p>The official kit's types and request code, and a loop about 15 lines shorter. The gates did stay in Swift: Swift refused a 13th request even when the engine was told it could make 99.</p></div>
+    <div class="lane"><h3>What it cost</h3><p>An app 30 to 40 times larger, 69 MB more memory, a second language and toolchain, a process that can hang or die, and a network lock that rests on a macOS tool Apple marks as deprecated.</p></div>
+  </div>
+  <p>For this one agent, already written and tested in Swift, the move bought almost nothing. It could pay only if many agents or ready-made connectors shared one engine.</p>
+</section>
+
+<section>
+  <h2>What others did</h2>
+  <ul>
+    <li><b>Raycast</b> kept a Swift host and added a Node part, for a Windows version and for hiring. Its memory use rose.</li>
+    <li><b>Codex</b> moved away from TypeScript to drop the Node dependency and to sandbox better.</li>
+    <li><b>Claude Code</b> is TypeScript, shipped as one program. It is a terminal tool with no Mac interface to drive.</li>
+    <li>No public case was found of a Mac assistant moving to TypeScript to gain reach on the Mac.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>The strongest argument against my answer</h2>
+  <p>The gap grows every month. New agent helpers ship for TypeScript and Python first, the Swift connections kit is already one version behind, and an AI coding assistant writes TypeScript agent code more fluently than Swift. Staying in Swift is right today and may stop being right.</p>
+</section>
+
+<section>
+  <h2>How to settle it</h2>
+  <ol class="steps">
+    <li><span><b>Run the test already planned as NB.1.</b> Connect the Swift kit to Notion, then Linear and GitHub.</span><small>It touches a real service, so it needs your word.</small></li>
+    <li><span><b>If all three accept it,</b> Swift holds. Connections are built in Swift as planned.</span></li>
+    <li><span><b>If two or more refuse,</b> build a small TypeScript helper for connections only. Swift still makes every model call and every action.</span></li>
+    <li><span><b>If a second runtime is ever added,</b> make it a worker with no network for one pure job (read a file, run a self-made skill), not the brain.</span></li>
+  </ol>
+</section>
+
+<section>
+  <h2>Not shown</h2>
+  <ul>
+    <li>The trial used a fake model, one agent and no real connection.</li>
+    <li>Words appearing live as they are written were not built across the pipe.</li>
+    <li>Signing and notarising an app with Node inside was not tried.</li>
+    <li>Bun and Deno, which make smaller programs than Node, were not installed and not measured.</li>
+    <li>The week counts are estimates.</li>
+  </ul>
+  <p class="meta">The research with a source for every claim, and the trial's own results: <code>docs/20-language.md</code>.</p>
+</section>
+</main>

@@ -203,7 +203,7 @@ Your idea: the answer card opens, on a click, into a chat-style card.
 
 - The conversation lives in memory only. Nothing of it is written to disk or to a log.
 - Each reply sends the earlier questions and answers as text, plus a fresh recall from the Map. The secrets filter runs on the whole text again before every call, because it leaves the Mac again each time.
-- The limit of 3 turns and 5 minutes (P5.5) is replaced: the conversation keeps its last 8 turns for as long as it is open, at most 10 minutes without a reply. Older turns are dropped, not summarised. First proposal.
+- The limit of 3 turns and 5 minutes (P5.5) is replaced: the conversation keeps up to 8 turns for as long as it is open, at most 10 minutes without a reply. Past 8, the older turns are dropped in a block and the last 4 kept (16 November 2026, so the cache of earlier turns holds); they are not summarised.
 - What lasts after closing is what the Map already keeps: the question as a past question, and the facts the Librarian learned. The Librarian reads each turn as it does today.
 - Each turn is one line in `calls.log`, with numbers only.
 

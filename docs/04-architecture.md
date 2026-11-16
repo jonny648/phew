@@ -10,13 +10,13 @@ One Swift app, one repository, no cloud of your own. The only outside call is to
 PHEW.APP (Swift, on your Mac)
   Shell     menu bar item, input panel, pointer overlay, text card
   Senses    window text and positions, screenshot, speech to text, secrets filter
-  Brain     Conductor, Observer, Guide, Follower, Librarian, Runner
+  Brain     Conductor, Guide, Follower, Doer, Librarian, Runner
             behind one interface, so it can move to a backend later
   Map       SQLite file with text search. Stored only on the Mac
   Keychain  your Claude API key
         |
         v
-  Claude API   small model for Conductor, Observer, Librarian
+  Claude API   small model for Conductor, Librarian
                main model for Guide, Follower, Runner
                web search and web fetch run at Anthropic, for the Runner
 ```
@@ -72,7 +72,7 @@ Positions from the Accessibility API let Phew point at the exact button. When an
 | Agent | Job | Model | MVP |
 |---|---|---|---|
 | Conductor | Understands the request, chooses who works | Small | Yes |
-| Observer | Turns window text and screenshot into a clean context packet | Small, with vision | Yes |
+| Observer | Removed on 16 November 2026: it never ran, since the packet's text is capped at 4,000 characters | none | No |
 | Guide | Explains and produces pointing steps. The main agent | Main, with vision | Yes |
 | Follower | During a guide, looks at the screen after each action and says which step you are on, so the guide moves on by itself | Main, with vision. The small model missed steps done at once in testing | Yes |
 | Librarian | Writes what was learned to the Map after each answer. Reading before an answer is done by Phew's own code, with no model call | Small | Yes |
@@ -86,7 +86,7 @@ Model provider: Claude API. Small means the Haiku class, main means the Sonnet c
 Flow of one request:
 
 1. You press the shortcut or hold the key and say "I don't get this".
-2. Senses build the raw packet. The Observer cleans it only when the screen text is over 4,000 characters; otherwise it is skipped and the packet goes on as it is. Decided on 15 November, for speed.
+2. Senses build the raw packet, with its text capped at 4,000 characters, and it goes on as it is. The Observer that once cleaned it was removed on 16 November 2026.
 3. Phew's own code adds what the Map knows about this project and topic, and the last turns of the conversation as text. It is a text search, with no model call (see `05-map.md`). The Guide can also search the Map itself when it needs more.
 4. Conductor sends it to Guide.
 5. Guide streams an explanation and steps, each tied to an element on screen.
@@ -138,7 +138,7 @@ All numbers come from live calls on made-up data: a full display picture (1512×
 | Measured | Before | After | What changed |
 |---|---|---|---|
 | Wait before the Guide starts | 3.2 s | 1.1 s | Only the Conductor is waited for now |
-| Observer | 2.0 to 3.1 s, all before the Guide | Skipped | It cut 4,000 characters to about 1,300 and saved the Guide about 0.14 cents. It now runs only on text longer than the packet's cap, so today never |
+| Observer | 2.0 to 3.1 s, all before the Guide | Skipped | It cut 4,000 characters to about 1,300 and saved the Guide about 0.14 cents. It then ran only on text longer than the packet's cap, so never; its code was removed on 16 November 2026 |
 | Wait for the last Librarian | Up to 1.1 s here, 3.2 s on 14 November | None | The next answer reads the Map as it is. Remember and forget still wait for it |
 | First word | 4.9 s | 2.7 s | |
 | Text the Guide reads | 8,000 to 9,000 tokens, all at full price | 4,000 to 5,100 new, 3,226 from the cache | An explanation no longer gets the list of elements; the fixed part is cached |

@@ -6,7 +6,7 @@ import Foundation
     override init() { super.init(); CommonWords.fix() }
 }
 
-/// The common words the tests meet, as this Mac's English and Italian word lists gave them on 17 November 2026 (R45).
+/// The common words the tests meet, as this Mac's English and Italian word lists gave them on 16 November 2026 (R45).
 /// Fixed here so the tests give the same numbers on a Mac with other lists, or none. Made-up test sentences only.
 enum CommonWords {
     static func fix() { NameMatch.fixedCommon = all }

@@ -101,6 +101,7 @@ struct ActJob {
             landed(step, result)
             if step.kind == .script, var last = packet {
                 last.screenshot = nil
+                last.image = nil  // the raw pixels go with the picture
                 reuse = last
             }
         }

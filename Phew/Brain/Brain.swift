@@ -83,6 +83,13 @@ protocol Brain: Sendable {
     func lastImport() async -> ImportInfo?
     /// "Undo last import": the card's one line, or nil when there was nothing to undo. Restore is `restore(_:)`.
     func undoLastImport() async -> String?
+
+    // MARK: Limits
+
+    /// Today's spend and started requests against the ceilings, for the Limits panel. Nil: this Brain has no limits.
+    func limitsToday() async -> LimitsToday?
+    /// The daily dollar ceiling, from the next request on. 0: no limit.
+    func setDayLimit(usd: Double)
 }
 
 extension Brain {
@@ -190,6 +197,26 @@ enum BrainError: Error, Sendable, Equatable {
     case runaway
     /// Any other HTTP status from the API (400, 402, 403, 404, 413…).
     case failed(status: Int)
+    /// One of Phew's own ceilings (`Limits`) was reached: nothing was sent.
+    case limited(Limit)
+
+    enum Limit: Sendable, Equatable {
+        /// Too many requests in one minute.
+        case minute
+        /// Today's dollars, with the ceiling.
+        case dayUSD(Double)
+        /// Today's requests, with the ceiling.
+        case dayRequests(Int)
+
+        /// A fixed word for the log.
+        var word: String {
+            switch self {
+            case .minute: "minute"
+            case .dayUSD: "day dollars"
+            case .dayRequests: "day requests"
+            }
+        }
+    }
 }
 
 extension BrainError {
@@ -233,4 +260,7 @@ extension Brain {
     func keepImport(_ candidates: [ImportCandidate]) async throws -> ImportKept { ImportKept() }
     func lastImport() async -> ImportInfo? { nil }
     func undoLastImport() async -> String? { nil }
+
+    func limitsToday() async -> LimitsToday? { nil }
+    func setDayLimit(usd: Double) {}
 }

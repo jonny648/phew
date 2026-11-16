@@ -12,6 +12,9 @@ struct ClaudeBrain: Brain {
     var map = BrainMap()
     /// The project folders the user pointed Phew at (PB.2), and where Claude Code keeps its memory files.
     var projectFolders = ProjectFolders()
+    /// The ceilings on what the key spends, checked before each new request from the user. Nil: none (unit tests,
+    /// so they never read the real calls.log or settings); the app passes `Limits()`.
+    var limits: Limits? = nil
 
     /// Only when the Map cannot be opened.
     static let cannotRemember = "My memory isn't available right now, so nothing was stored."
@@ -28,6 +31,7 @@ struct ClaudeBrain: Brain {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
+                    try limits?.start()  // a question or a reply: a new request
                     // The packet was filtered by Senses; the typed question is filtered here, before any call (the
                     // hearings in `Spoken.block`).
                     try await run(SecretsFilter.clean(question), packet: packet, state: state, spoken: spoken) { continuation.yield($0) }
@@ -100,9 +104,11 @@ struct ClaudeBrain: Brain {
         async let cleaned = Observer.clean(packet?.visibleText ?? "", question: question, provider: provider)
         async let recalled = recall(question, packet: packet)
         var route: Route
+        var aboutPhew = true  // A1: unsure, the text about himself goes along
         do {
             let understood = try await routing
             route = understood.route
+            aboutPhew = understood.aboutPhew
             if let heard = understood.heard { emit(.heard(heard)) }  // P6.3: the card shows what he understood
         } catch BrainError.refused, BrainError.badOutput {
             route = .explain  // the Guide, with its fallback model, can still answer
@@ -124,7 +130,7 @@ struct ClaudeBrain: Brain {
         let project = route == .explain ? await projectMemoryBlock(question, packet: packet, store: store) : nil
         var explanation = "", steps: [GuideStep] = []
         try await Guide.answer(question, packet: packet, route: route, earlier: earlier, recall: lines, about: about,
-                               projectMemory: project, spoken: spoken, tools: tools ?? store.map(MapSearch.init), provider: provider) { event in
+                               aboutPhew: aboutPhew, projectMemory: project, spoken: spoken, tools: tools ?? store.map(MapSearch.init), provider: provider) { event in
             if case .text(let piece) = event { explanation += piece }
             if case .steps(let given) = event { steps = given }
             emit(event)
@@ -184,12 +190,31 @@ extension ClaudeBrain {
 
     func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?) -> AsyncThrowingStream<TaskEvent, Error> {
         let injected = tools, map = map, brain = self
+        // The task was counted when its words were routed. Today's dollars left cap its cost: past them, the task
+        // ends through its own cost limit, with its report so far.
+        var taskLimits = TaskLimits()
+        if let limits {
+            taskLimits.dayLeft = limits.dayLeft()
+            taskLimits.dayCeiling = limits.usdPerDay
+            guard taskLimits.dayLeft > 0 else {
+                return AsyncThrowingStream { $0.finish(throwing: BrainError.limited(.dayUSD(limits.usdPerDay))) }
+            }
+        }
         return Runner.stream(words, packet: packet, spoken: spoken, number: number, folder: folder, tools: {
             let search: (any ToolRunner)? = if let injected { injected } else { await map.now().map { MapSearch(store: $0, forRunner: true) } }
             return search.map(RunnerTools.init)
         }, projectMemory: {
             await brain.projectMemoryBlock(SecretsFilter.clean(words), packet: packet, store: await map.now()).map(Runner.withoutAddresses)
-        }, add: add, provider: provider)
+        }, add: add, provider: provider, limits: taskLimits)
+    }
+
+    func limitsToday() async -> LimitsToday? {
+        guard let limits else { return nil }
+        return await Task.detached { limits.today() }.value
+    }
+
+    func setDayLimit(usd: Double) {
+        limits?.defaults.set(max(0, usd), forKey: Limits.usdKey)
     }
 
     func keepTurn(_ question: String, answer: String) {
@@ -200,8 +225,12 @@ extension ClaudeBrain {
 // MARK: Imported memory (phase PB)
 
 extension ClaudeBrain {
+    // Each sort is one new request for the limits, however many calls it makes.
     func sortImport(_ text: String, source: ImportSource) async throws -> ImportSort {
-        do { return try await Importer.sort(text, source: source, provider: provider) } catch { throw BrainError(error) }
+        do {
+            try limits?.start()
+            return try await Importer.sort(text, source: source, provider: provider)
+        } catch { throw BrainError(error) }
     }
 
     func projectMemory(folder: URL) -> ProjectMemory {
@@ -210,7 +239,10 @@ extension ClaudeBrain {
     }
 
     func sortImport(_ memory: ProjectMemory) async throws -> ImportSort {
-        do { return try await Importer.sort(memory, provider: provider) } catch { throw BrainError(error) }
+        do {
+            try limits?.start()
+            return try await Importer.sort(memory, provider: provider)
+        } catch { throw BrainError(error) }
     }
 
     func claudeExport(at url: URL) async -> ClaudeExport {
@@ -218,7 +250,10 @@ extension ClaudeBrain {
     }
 
     func sortImport(_ export: ClaudeExport, progress: @escaping @Sendable (Int, Int) -> Void) async throws -> ImportSort {
-        do { return try await Importer.sort(export, provider: provider, progress: progress) } catch { throw BrainError(error) }
+        do {
+            try limits?.start()
+            return try await Importer.sort(export, provider: provider, progress: progress)
+        } catch { throw BrainError(error) }
     }
 
     /// After every Librarian run started before, like every other write.

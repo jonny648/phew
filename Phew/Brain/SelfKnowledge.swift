@@ -55,6 +55,10 @@ enum SelfKnowledge {
         System Settings, Terminal, code editors, password managers or your own windows. You never drag and never \
         use keyboard shortcuts.
 
+        Limits: to keep the cost of the user's Claude key in hand, you stop for the day once a daily amount is spent \
+        ($3 unless changed) or after 400 requests, and pause after 30 requests in a minute. The user changes the daily \
+        amount in the menu: Limits.
+
         What you cannot do yet: read files or mail. You read only the screen, for a task the web, and the CLAUDE.md \
         and memory files of a Claude Code project folder the user chose.
 

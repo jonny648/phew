@@ -60,6 +60,7 @@ enum Guide {
 
     /// The guide route's system prompt: the same without the self text (PS.16). With it, a guide sometimes came back
     /// as an empty skeleton; without it, 4 of 4 good answers in the PS.15 work. Fixed too, so cached on its own.
+    /// Also an explanation's when the question is not about Phew (A1): the self text is about 1,490 tokens.
     static let guideSystem = system.replacingOccurrences(of: SelfKnowledge.text + "\n\n", with: "")
 
     static let schema = #"""
@@ -83,12 +84,15 @@ enum Guide {
     /// `recall`: the Map's lines for this question (`docs/05-map.md` 5.11), for this request only: never kept in a
     /// turn, so a follow-up gets its own fresh recall or none.
     /// `about`: the live facts of `SelfKnowledge.live`, in their `<self>` block; nil, none.
-    static func answer(_ question: String, packet: ContextPacket?, route: Route, earlier: [Turn] = [], recall: String? = nil,
-                       about: String? = nil, projectMemory: String? = nil, spoken: [Hearing] = [], tools: (any ToolRunner)? = nil,
-                       provider: any ModelProvider, emit: (BrainEvent) -> Void) async throws {
-        let shot = packet?.screenshot.flatMap(ScreenshotSize.init(png:))
+    /// `aboutPhew` (A1): the Conductor found the question is about Phew; false leaves out the self text and `about`.
+    static func answer(_ question: String, packet taken: ContextPacket?, route: Route, earlier: [Turn] = [], recall: String? = nil,
+                       about: String? = nil, aboutPhew: Bool = true, projectMemory: String? = nil, spoken: [Hearing] = [],
+                       tools: (any ToolRunner)? = nil, provider: any ModelProvider, emit: (BrainEvent) -> Void) async throws {
+        // A3: a whole-display picture goes smaller; `shot` maps the model's points back to the captured pixels.
+        let sent = taken.map(ScreenshotSize.sent)
+        let packet = sent?.0, shot = sent?.1 ?? nil
         var request = request(question, packet: packet, route: route, shot: shot, earlier: earlier, recall: recall, about: about,
-                              projectMemory: projectMemory, spoken: spoken)
+                              aboutPhew: aboutPhew, projectMemory: projectMemory, spoken: spoken)
         var shown = false  // explanation words already on the card
         var answer: Output?
         // PS.16: a blank answer (an empty skeleton, or one-character fields) is asked once more and never shown.
@@ -149,8 +153,8 @@ enum Guide {
     }
 
     static func request(_ question: String, packet: ContextPacket?, route: Route, shot: ScreenshotSize?,
-                        earlier: [Turn] = [], recall: String? = nil, about: String? = nil, projectMemory: String? = nil,
-                        spoken: [Hearing] = []) -> ModelRequest {
+                        earlier: [Turn] = [], recall: String? = nil, about: String? = nil, aboutPhew: Bool = true,
+                        projectMemory: String? = nil, spoken: [Hearing] = []) -> ModelRequest {
         // "Never empty" (PS.15): since the self text joined the system prompt, about 1 guide in 3 came back as an
         // empty skeleton, every field blank, with "Explain briefly". In the user turn, so the cached prefix stays.
         let task = route == .guide ? "Route: guide. First the explanation: one or two sentences, never empty. Then the steps, each with its instruction."
@@ -161,11 +165,13 @@ enum Guide {
         // The whole history leaves the Mac again with every reply, so it is filtered again every time (3.10).
         let history = earlier.map { Turn(question: SecretsFilter.clean($0.question), answer: SecretsFilter.clean($0.answer)) }
         // The live facts sit in the user turn, after the fixed system prompt, so the system prompt never changes.
-        // A guide gets neither the self text nor the live facts (PS.16): questions about Phew are explained.
-        let me = route == .guide ? [] : about.map { [$0] } ?? []
+        // A guide gets neither the self text nor the live facts (PS.16): questions about Phew are explained. An
+        // explanation gets them only when the question is about Phew (A1). Two fixed system prompts, each cached.
+        let himself = route != .guide && aboutPhew
+        let me = himself ? about.map { [$0] } ?? [] : []
         // PB.2: the project's Claude Code notes, already filtered and in their own data block; filtered again (cheap).
         let notes = projectMemory.map { [SecretsFilter.clean($0)] } ?? []
-        return ModelRequest(agent: "guide", tier: .main, system: route == .guide ? guideSystem : system, text: (map + me + notes + [screen, task, Spoken.after(asked(question), spoken)]).joined(separator: "\n\n"),
+        return ModelRequest(agent: "guide", tier: .main, system: himself ? system : guideSystem, text: (map + me + notes + [screen, task, Spoken.after(asked(question), spoken)]).joined(separator: "\n\n"),
                             image: shot == nil ? nil : packet?.screenshot, schema: schema, maxTokens: 8192, earlier: history)
     }
 

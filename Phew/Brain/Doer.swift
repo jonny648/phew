@@ -108,10 +108,10 @@ enum Doer {
     static let practiceTwo = CommandLine.arguments.contains("--debug-act") ? ["Practice Two": "com.example.phew-practice-two"] : [:]
     #endif
 
-    static func next(_ request: String, packet: ContextPacket?, done: [String], spoken: [Hearing] = [],
+    static func next(_ request: String, packet taken: ContextPacket?, done: [String], spoken: [Hearing] = [],
                      provider: any ModelProvider) async throws -> NextAction {
-        guard let packet, !packet.neverRead else { return .stuck(noScreen) }
-        let shot = packet.screenshot.flatMap(ScreenshotSize.init(png:))
+        guard let taken, !taken.neverRead else { return .stuck(noScreen) }
+        let (packet, shot) = ScreenshotSize.sent(taken)  // A3: a whole-display picture goes smaller
         let call = self.request(request, packet: packet, shot: shot, done: done, spoken: spoken)
         var output: Output?
         // A runaway or off-schema answer is asked once more, as the Follower does; a refusal is not.

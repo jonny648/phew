@@ -15,12 +15,13 @@ enum ScreenCapture {
     /// Accessibility coordinates). One pixel per point, so frame origin + picture pixel = screen point.
     /// Phew's own windows are left out. Nil without Screen Recording permission or on failure.
     /// `windowOnly` (live acting tests, PH.10): the front window wherever the mouse is, and never the whole display.
-    static func picture(pid: pid_t, windowFrame: CGRect?, mouse: CGPoint, windowOnly: Bool = false) async -> (png: Data, frame: CGRect)? {
+    /// `display`: the picture is the whole display, which the Brain sends smaller (A3); captured at full size here.
+    static func picture(pid: pid_t, windowFrame: CGRect?, mouse: CGPoint, windowOnly: Bool = false) async -> (png: Data, frame: CGRect, display: Bool)? {
         guard CGPreflightScreenCaptureAccess() else { return nil }
         do {
             // Off-screen windows too: Phew's panel or card, still being ordered in, must be listed to be left out.
             let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: false)
-            let filter: SCContentFilter, origin: CGPoint
+            let filter: SCContentFilter, origin: CGPoint, whole: Bool
             // SCWindow frames use the same top-left origin as Accessibility.
             if windowOnly || picksWindow(mouse: mouse, windowFrame: windowFrame), let frame = windowFrame,
                // windowOnly: also on another Space, as a test's window is while the user works in a full-screen app.
@@ -28,6 +29,7 @@ enum ScreenCapture {
                    .min(by: { gap($0.frame, frame) < gap($1.frame, frame) }) {
                 filter = SCContentFilter(desktopIndependentWindow: window)  // that window only, nothing on top
                 origin = window.frame.origin
+                whole = false
             } else if windowOnly {
                 return nil
             } else {
@@ -39,6 +41,7 @@ enum ScreenCapture {
                 let phew = content.applications.filter { $0.processID == getpid() }
                 filter = SCContentFilter(display: display, excludingApplications: phew, exceptingWindows: [])
                 origin = CGDisplayBounds(display.displayID).origin
+                whole = true
             }
             // shortcut: 1 pixel per point halves Retina detail; capture at 2x if small text is misread.
             let config = SCStreamConfiguration()
@@ -47,7 +50,7 @@ enum ScreenCapture {
             config.showsCursor = false
             let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
             guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { return nil }
-            return (png, CGRect(origin: origin, size: filter.contentRect.size))
+            return (png, CGRect(origin: origin, size: filter.contentRect.size), whole)
         } catch {
             shellLog("screenshot failed: \(error.localizedDescription)")
             return nil

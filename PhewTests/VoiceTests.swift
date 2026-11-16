@@ -463,7 +463,7 @@ final class VoiceTests: XCTestCase {
         XCTAssertEqual(typedEvents.first, .route(.guide), "a typed question never shows an understood line")
         XCTAssertNil(Conductor.heard(#"{"route":"explain"}"#))
         XCTAssertNil(Conductor.heard(#"{"route":"explain","heard":"  "}"#))
-        XCTAssertTrue(Conductor.schema.contains(#""required":["route"]"#), "heard is optional")
+        XCTAssertTrue(Conductor.schema.contains(#""required":["route","about_phew"]"#), "heard is optional")
     }
 
     @MainActor

@@ -168,13 +168,41 @@ final class SelfKnowledgeTests: XCTestCase {
         let explain = Guide.request("Who are you?", packet: packet("x"), route: .explain, shot: nil, about: about)
         XCTAssertEqual(explain.system, Guide.system)
         XCTAssertTrue(explain.text.contains("<self>"))
+        // A1: an explanation not about Phew gets the guide's fixed prompt and no live facts: two cached variants only.
+        let plain = Guide.request("What is this chart?", packet: packet("x"), route: .explain, shot: nil, about: about, aboutPhew: false)
+        XCTAssertEqual(plain.system, Guide.guideSystem)
+        XCTAssertFalse(plain.text.contains("<self>"))
+        XCTAssertTrue(plain.text.contains("Route: explain. Leave the steps empty."))
+    }
+
+    /// A1: the Conductor's `about_phew` picks the variant through the whole Brain; left out, it errs towards true.
+    func testTheConductorDecidesWhetherTheSelfTextGoes() async throws {
+        func system(_ conductor: String, _ question: String = "What is this?") async throws -> ModelRequest {
+            let fake = FakeProvider(rounds: ["conductor": [Reply(pieces: [conductor])],
+                                             "guide": [Reply(pieces: [#"{"explanation":"Made-up answer.","steps":[]}"#])]])
+            for try await _ in ClaudeBrain(provider: fake).answer(question, packet: packet("\(made) screen"), state: ShellState()) {}
+            return try XCTUnwrap(fake.requests.first { $0.agent == "guide" })
+        }
+        let about = try await system(#"{"route":"explain","about_phew":true}"#)
+        XCTAssertEqual(about.system, Guide.system)
+        XCTAssertTrue(about.text.contains("<self>"))
+        let screen = try await system(#"{"route":"explain","about_phew":false}"#)
+        XCTAssertEqual(screen.system, Guide.guideSystem)
+        XCTAssertFalse(screen.text.contains("<self>"))
+        let unsure = try await system(#"{"route":"explain"}"#)
+        XCTAssertEqual(unsure.system, Guide.system)  // left out: with the self text
+        let pointer = try await system("", "  ")
+        XCTAssertEqual(pointer.system, Guide.guideSystem)  // no question: what is under the pointer
+        XCTAssertTrue(Conductor.aboutPhew("not json"))
+        XCTAssertFalse(Conductor.aboutPhew(#"{"route":"guide","about_phew":false}"#))
+        XCTAssertTrue(Conductor.schema.contains(#""about_phew":{"type":"boolean"}"#))
     }
 
     /// The five live cases of `--debug-brain-check` run offline on a fake provider, and the email check refuses a
     /// claim that it was sent.
     func testSelfCheckCasesRunWithoutTheNetwork() async throws {
         func provider(_ answer: String) -> FakeProvider {
-            FakeProvider(rounds: ["conductor": [Reply(pieces: [#"{"route":"explain"}"#])],
+            FakeProvider(rounds: ["conductor": [Reply(pieces: [#"{"route":"explain","about_phew":true}"#])],
                                   "guide": [Reply(pieces: [#"{"explanation":"\#(answer)","steps":[]}"#])]])
         }
         let email = try XCTUnwrap(BrainSelfCheck.selfCases.last)
@@ -186,6 +214,13 @@ final class SelfKnowledgeTests: XCTestCase {
         for item in BrainSelfCheck.selfCases.dropLast() {
             let result = try await item.run(provider("I'm Phew, a shy chick in the menu bar."))
             XCTAssertFalse(result.1.isEmpty)
+            XCTAssertTrue(result.1.contains("self text true"), result.1)
         }
+        // A1: an explanation without the self text fails the self case, however good the words.
+        let without = FakeProvider(rounds: ["conductor": [Reply(pieces: [#"{"route":"explain","about_phew":false}"#])],
+                                            "guide": [Reply(pieces: [#"{"explanation":"I'm Phew, a shy chick in the menu bar.","steps":[]}"#])]])
+        let who = try XCTUnwrap(BrainSelfCheck.selfCases.first)
+        let first = try await who.run(without)
+        XCTAssertFalse(first.0, first.1)
     }
 }

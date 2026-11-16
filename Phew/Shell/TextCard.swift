@@ -332,7 +332,14 @@ final class TextCard: EditPanel {
         case .runaway: "Claude took too long to answer. Please ask again."
         case .failed(let status): "Something went wrong (error \(status)). Please ask again."
         case .noKey, .badKey: "Phew needs a working Claude API key."
+        case .limited(.minute): "That is a lot at once. Try again in a moment."
+        case .limited(.dayUSD(let usd)): Self.dayLimit(String(format: "$%.2f", usd))
+        case .limited(.dayRequests(let count)): Self.dayLimit("\(count) requests")
         }
+    }
+
+    private static func dayLimit(_ ceiling: String) -> String {
+        "Today's limit is reached (\(ceiling)). It starts again tomorrow. You can change it in the menu: Limits."
     }
 }
 

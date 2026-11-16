@@ -35,6 +35,7 @@ struct PhewApp: App {
             Menu("Reports") {
                 Button("Choose reports folder…") { delegate.chooseReportsFolder() }
             }
+            Button("Limits…") { delegate.showLimits() }
             Divider()
             Button("API Key…") { delegate.setup.showKey() }
             Button("About Phew") { delegate.menuPanel.show(title: "About Phew", AboutView()) }
@@ -137,9 +138,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var brain: any Brain = {
         #if DEBUG
         // A test copy under another bundle id: no Map maintenance at launch, so it never touches the user's Map folder.
-        if CommandLine.arguments.contains("--debug-no-map") { return ClaudeBrain(map: BrainMap(maintenance: false)) }
+        if CommandLine.arguments.contains("--debug-no-map") { return ClaudeBrain(map: BrainMap(maintenance: false), limits: Limits()) }
         #endif
-        return ClaudeBrain()
+        return ClaudeBrain(limits: Limits())
     }()
     let panel = InputPanel()
     let card = TextCard()
@@ -302,6 +303,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func showNeverRead() {
         menuPanel.show(title: "Never-read apps", NeverReadView(model: NeverReadModel()))
+    }
+
+    func showLimits() {
+        let model = LimitsModel(brain: brain)
+        menuPanel.show(title: "Limits", LimitsView(model: model))
+        Task { await model.refresh() }
     }
 
     /// The shortcut, and "Ask Phew" in the menu.

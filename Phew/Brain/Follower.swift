@@ -62,13 +62,13 @@ enum Follower {
     /// The answer itself is about 30 tokens; the rest is room for thinking.
     static let maxTokens = 1024
 
-    static func progress(steps: [GuideStep], current: Int, packet: ContextPacket?,
+    static func progress(steps: [GuideStep], current: Int, packet whole: ContextPacket?,
                          provider: any ModelProvider) async throws -> GuideProgress {
         let current = min(max(current, 0), steps.count)
         // Nothing left to follow, or no screen to judge from: no call.
-        guard current < steps.count, let full = packet else { return GuideProgress(current: current, target: nil) }
-        let (packet, offset) = less(full, steps: steps, current: current)
-        let shot = packet.screenshot.flatMap(ScreenshotSize.init(png:))
+        guard current < steps.count, let full = whole else { return GuideProgress(current: current, target: nil) }
+        let (cut, offset) = less(full, steps: steps, current: current)
+        let (packet, shot) = ScreenshotSize.sent(cut)  // A3, when the look was not cut
         let call = request(steps: steps, current: current, packet: packet, shot: shot)
         var output: Output?
         for attempt in 1...2 where output == nil {

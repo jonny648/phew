@@ -14,6 +14,7 @@ h3{font-size:1rem;margin:1.2rem 0 .3rem}
 p{margin:.45rem 0;max-width:78ch}
 ul,ol{margin:.3rem 0;padding-left:1.4rem;max-width:78ch}
 li{margin:.2rem 0}
+a{color:var(--accent)}
 code{font-family:inherit;background:var(--tint);padding:0 .25rem}
 .meta,.lab,small{color:var(--muted)}
 .sec{border-top:1px solid var(--rule);margin-top:2.4rem;padding-top:.9rem}
@@ -260,6 +261,80 @@ input[type=number]{font:inherit;color:var(--ink);background:var(--paper);border:
 <li><code>docs/14-company.md</code> says a heavy user costs about $10 a month. That fits about 25 requests a day. A truly heavy user, about 90 a day, costs about $39.</li>
 </ul>
 <p class="lab">Sources: the call log on your Mac (numbers only), the prices in <code>Phew/Brain/ModelProvider.swift</code>, Anthropic's pricing page, Apple's and GitHub's and Supabase's pricing pages, and the measured checks in <code>docs/07-decisions.md</code> 7.4.</p>
+</section>
+<section class="sec">
+<h2>9. A "skin" for each user: what is possible</h2>
+<p class="meta">Research of 17 November 2026, on your question: can the model be changed, or given a lasting layer per user, so it does not have to load and understand the memory on every request? Nothing here is built.</p>
+
+<div class="box">
+<p><b>Short answer.</b> The model itself cannot be changed: Claude cannot be trained on a user through the API today. But the same effect exists, and Phew already uses half of it: a block of text that the model has <b>already read</b> and that is reused at one twentieth of the price. Your "skin" is that block, one per user. It is worth building, more for speed and quality than for money, because the memory is not where the money goes. The money goes to the screen.</p>
+</div>
+
+<h3>Why the model cannot be edited</h3>
+<ul>
+<li><b>Training Claude on your own data is not offered.</b> The one route that existed (an older small model, through Amazon) has closed. Secondary sources; Anthropic's own pages were not read for this.</li>
+<li><b>It would not fit anyway.</b> A trained copy per user costs far more than any saving, your memory changes every day while training takes hours, and it would put your private facts inside a model kept on someone else's servers.</li>
+<li>A model has no lasting memory between two calls. Every call starts from nothing, and everything it should know must be in the call. What can change is the <b>price and the speed of the part that repeats</b>.</li>
+</ul>
+
+<h3>The idea that works: layers that are already read</h3>
+<p>The model's provider keeps the start of a request "already read" for 5 minutes or one hour. Reused, it costs $0.10 per million tokens in place of $2.00. Only the start can be kept: the first byte that differs ends the reuse. So the order decides everything, and a request can hold four such layers.</p>
+<div class="tw"><table>
+<tr><th>Layer</th><th>What is in it</th><th>Changes</th><th>Today</th></tr>
+<tr><td>1. Who Phew is</td><td>His fixed instructions. The same for every user</td><td>Only with a new version</td><td>Built, reused</td></tr>
+<tr><td><b>2. Your skin</b></td><td>A card about you, written by Phew from the Map: who you are, your projects and their state, the people and tools you name, how you like answers, your languages</td><td>At most once a day</td><td><b>Missing.</b> Facts are searched and sent fresh on each question</td></tr>
+<tr><td><b>3. The project's skin</b></td><td>The project you are in now: its aim, its files, its decisions, its own words</td><td>When you change project</td><td>Partly: a short excerpt, sent fresh</td></tr>
+<tr><td>4. The conversation</td><td>The earlier turns in the card</td><td>Each reply</td><td>Built, reused</td></tr>
+<tr><td>Last, never kept</td><td>The screen now, and your question</td><td>Every call</td><td>Always fresh, and it must be</td></tr>
+</table></div>
+
+<h3>What your skin would cost and bring</h3>
+<div class="tw"><table>
+<tr><th></th><th class="n">Number</th><th>Basis</th></tr>
+<tr><td>Size of the card</td><td class="n">about 1,500 tokens</td><td>Estimated. It must be over 512 to be kept at all</td></tr>
+<tr><td>Reading it, each call after the first</td><td class="n">0.015¢</td><td>Computed: 1,500 tokens at the reused price</td></tr>
+<tr><td>Writing it, once an hour of use</td><td class="n">0.6¢</td><td>Computed: the one-hour keep costs twice the sending price</td></tr>
+<tr><td>Writing the card itself, once a day</td><td class="n">about 0.1¢</td><td>Estimated: the small model, from the Map</td></tr>
+<tr><td>Money saved</td><td class="n">about 1% of the month</td><td>Estimated. It removes most memory searches, which happen on about 4 answers in 100 and cost 0.75¢ each</td></tr>
+<tr><td>Time saved</td><td class="n">1 to 2 seconds on those answers</td><td>Estimated: one round less</td></tr>
+</table></div>
+<p><b>The real gain is not money.</b> Today he knows you only when he thinks of searching. With the skin he knows you in every answer, at once, in guides and jobs too, where no memory is sent today. A spoken name is heard right more often, because the names are in front of him. That is the part of your idea that is right, and it is cheap.</p>
+<p><b>The limit, said plainly:</b> the memory is about 4% of what Phew costs. A perfect skin cannot save more than that. What costs is the screen: 58%.</p>
+
+<h3>The same idea, aimed at the screen: a skin for each app</h3>
+<p>This is where your idea can save real money. Today, for every call, he is sent up to 80 controls of the window and a picture, because he knows nothing about the app beforehand. An <b>app card</b> would be written once per app and version: what the app is, where its menus and panels are, what its controls are called, how its common jobs go. Kept as a layer, already read.</p>
+<ul>
+<li>With the card, a call can send fewer controls and a smaller picture, because he already knows the place. Estimated: 5 to 10% of the month, uncertain until measured.</li>
+<li>It also makes him better at acting in that app, which is the weak point named in the next roadmap (Dia, Figma, Fusion).</li>
+<li>The cards hold nothing personal, so with a hosted key they would be shared by every user and almost free.</li>
+<li>Cost: writing a card is one research task per app, a few cents, and it goes stale when the app changes. That needs a date on each card and a way to notice.</li>
+</ul>
+
+<h3>Four more ideas of the same family</h3>
+<div class="tw"><table>
+<tr><th>Idea</th><th>What it does</th><th>Gain</th><th>Cost or risk</th><th>Verdict</th></tr>
+<tr><td><b>Warm him up when you call him</b></td><td>The moment you press the shortcut, a request with no answer makes the layers "already read" while you type</td><td>The first word comes sooner after a pause. No extra money: that write is paid anyway</td><td>A wasted write if you close the panel without asking</td><td>Do, with the skin</td></tr>
+<tr><td><b>"The screen has not changed"</b></td><td>In a conversation, when the window is the same as at the last turn, send that sentence in place of the whole screen again</td><td>A reply drops from 1.25¢ to about 0.5¢. Up to 8% of the month</td><td>It bends your rule "a capture is never kept for a follow-up". Only a fingerprint would be kept, and only while the card is open</td><td>Your decision</td></tr>
+<tr><td><b>Let the provider hold the conversation</b></td><td>A new option: the conversation stays at Anthropic for up to 5 minutes, and each new call sends only what is new</td><td>Faster looks and jobs. The price is the same</td><td>Your screens of that conversation are held on their servers for that time, in memory. Not allowed under the strictest data setting</td><td>Later, for speed, if you accept it</td></tr>
+<tr><td><b>A memory kept by the provider</b></td><td>Anthropic offers a memory that lives on its side</td><td>Nothing Phew lacks: the Map does this</td><td>Your memory would leave the Mac. Against your rule</td><td>No</td></tr>
+</table></div>
+
+<h3>What does not work, so you need not wonder</h3>
+<ul>
+<li><b>Uploading your profile once as a file.</b> It is still read and charged on every call, unless kept as a layer. And it would sit on their servers. No gain over the skin.</li>
+<li><b>A small trained add-on per user, on the Mac.</b> Possible in a lab, on open models. It could only replace the small-model jobs, which are 4% of the cost.</li>
+<li><b>Keeping the skin alive for days.</b> One hour is the longest. After a night he reads it again, once, for 0.6¢.</li>
+</ul>
+
+<h3>What I suggest, in order</h3>
+<ol>
+<li><b>Your skin and the project's skin</b>, as layers 2 and 3, with the warm-up. Small work. It changes how he feels more than any other item on this page.</li>
+<li><b>App cards</b>, as part of the next acting phase (N2). This is the one that can cut the screen cost.</li>
+<li><b>"The screen has not changed"</b>, if you allow the fingerprint.</li>
+<li>Holding the conversation at the provider: only if speed in guides and jobs still bothers you after the rest.</li>
+</ol>
+<p class="lab">One rule the skin must keep: nothing in a layer may change between two calls, or the reuse is lost and it costs more than today. So no time of day, no last question, no counter inside it. And layer 1 must never hold anything personal, because with a hosted key it would be shared by everyone.</p>
+<p class="lab">Sources: Anthropic's documentation on prompt caching, message threads, the memory tool and the Files API, read on 17 November 2026; prices from section 1; shares from the call log. Training availability: <a href="https://www.anthropic.com/news/fine-tune-claude-3-haiku-ga">Anthropic's 2024 announcement</a> and <a href="https://www.ertas.ai/blog/can-you-fine-tune-claude">a third-party summary of 2026</a>, not verified on Anthropic's current pages.</p>
 </section>
 </main>
 

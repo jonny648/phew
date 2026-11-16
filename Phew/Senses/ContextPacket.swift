@@ -22,6 +22,9 @@ struct ContextPacket: Codable {
     /// Where the screenshot sits on screen, same coordinates as `windowFrame`. The screenshot is 1 pixel per
     /// point, so this origin + screenshot pixel = screen point.
     var screenshotFrame: CGRect? = nil
+    /// The screenshot is the whole display, not cut to a window: the Brain sends it smaller (A3,
+    /// `ScreenshotSize.sent`). Its pixels and `screenshotFrame` stay as captured.
+    var wholeDisplay = false
     /// The open document's file path or page address, when the app gives one (`WindowReader.documentPath`).
     /// A label for project detection (docs/05-map.md 5.11), not capture: the Map may keep it.
     var documentPath: String? = nil

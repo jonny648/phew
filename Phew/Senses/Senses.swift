@@ -44,6 +44,7 @@ enum Senses {
             if let shot = await ScreenCapture.picture(pid: pid, windowFrame: window.frame, mouse: point, windowOnly: windowOnly) {
                 packet.screenshot = shot.png
                 packet.screenshotFrame = shot.frame
+                packet.wholeDisplay = shot.display
             }
             #if DEBUG
             packet.logStats(pointablesFound: window.pointables.count, cursorMS: cursorMS, walkMS: walkMS,

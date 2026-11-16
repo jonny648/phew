@@ -23,7 +23,7 @@ struct ClaudeProvider: ModelProvider {
                 var parser = SSEParser()
                 var first: Int?
                 do {
-                    let (bytes, response) = try await URLSession.shared.bytes(for: Self.urlRequest(request, key: key))
+                    let (bytes, response) = try await URLSession.shared.bytes(for: Self.urlRequest(request, key: key, hour: CallLog.hourCache))
                     let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                     guard status == 200 else { throw await Self.failure(status: status, body: bytes) }
                     for try await line in bytes.lines {
@@ -64,8 +64,13 @@ struct ClaudeProvider: ModelProvider {
 
     /// The 5-minute cache: a conversation's replies come minutes apart at most.
     static let ephemeral = ["type": "ephemeral"]
+    /// The one-hour cache (D1, docs: prompt caching; no beta header). Written at 2x the input price, so only on the
+    /// fixed part and only when `CacheLife` says this Mac's calls come 5 to 60 minutes apart. A longer mark must come
+    /// before shorter ones: the system prompt is before every message, so the 5-minute marks after it stay valid.
+    static let hourLong = ["type": "ephemeral", "ttl": "1h"]
 
-    static func urlRequest(_ request: ModelRequest, key: String) throws -> URLRequest {
+    /// `hour`: the system prompt's mark lasts one hour.
+    static func urlRequest(_ request: ModelRequest, key: String, hour: Bool = false) throws -> URLRequest {
         var content: [[String: Any]] = []
         if let image = request.image {
             content.append(["type": "image",
@@ -103,7 +108,7 @@ struct ClaudeProvider: ModelProvider {
             "model": request.tier.model.id,
             "max_tokens": request.maxTokens,
             "stream": true,
-            "system": [["type": "text", "text": request.system, "cache_control": ephemeral]],
+            "system": [["type": "text", "text": request.system, "cache_control": hour ? hourLong : ephemeral]],
             "messages": messages,
             "output_config": output,
         ]

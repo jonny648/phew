@@ -123,6 +123,9 @@ extension Usage {
         output = fields["output_tokens"] as? Int ?? output
         cacheWrite = fields["cache_creation_input_tokens"] as? Int ?? cacheWrite
         cacheRead = fields["cache_read_input_tokens"] as? Int ?? cacheRead
+        if let creation = fields["cache_creation"] as? [String: Any] {
+            cacheWriteHour = creation["ephemeral_1h_input_tokens"] as? Int ?? cacheWriteHour
+        }
         if let server = fields["server_tool_use"] as? [String: Any] {
             searches = server["web_search_requests"] as? Int ?? searches
             fetches = server["web_fetch_requests"] as? Int ?? fetches

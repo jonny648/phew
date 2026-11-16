@@ -656,12 +656,36 @@ extension BrainSelfCheck {
         cursor: nil, windowFrame: CGRect(x: 0, y: 25, width: 1200, height: 800))
 
     /// Each answer is checked in memory on key words; only true or false and counts are logged.
+    /// A1: an explanation must also have carried the text about himself (the Conductor said `about_phew`). `guideOK`:
+    /// a guide may answer instead (the email case, asked as an act with acting off), and a guide never carries it (PS.16).
     static func selfCase(_ name: String, _ question: String, _ packet: ContextPacket, map: (() async throws -> MapStore)? = nil,
-                         says: @escaping (String) -> Bool) -> MapCase {
+                         guideOK: Bool = false, says: @escaping (String) -> Bool) -> MapCase {
         MapCase(name: name) { provider in
-            let text = try await ask(brain(provider, try await map?()), question, packet, state: setUp)
+            let seen = Variants(provider)
+            let text = try await ask(brain(seen, try await map?()), question, packet, state: setUp)
             let me = firstPerson(text), ok = says(text)
-            return (me && ok, "answer \(text.count) chars, first person \(me), says what it must \(ok)")
+            let variant = seen.selfText || (guideOK && seen.guide)
+            return (me && ok && variant, "answer \(text.count) chars, first person \(me), says what it must \(ok), self text \(seen.selfText), guide \(seen.guide)")
+        }
+    }
+
+    /// The real provider, noting which fixed prompt the Guide's requests carried. In memory only.
+    final class Variants: ModelProvider, @unchecked Sendable {
+        let base: any ModelProvider
+        private let lock = NSLock()
+        private var with = false, guided = false
+        init(_ base: any ModelProvider) { self.base = base }
+        var selfText: Bool { lock.withLock { with } }
+        var guide: Bool { lock.withLock { guided } }
+
+        func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+            if request.agent == "guide" {
+                lock.withLock {
+                    with = with || request.system == Guide.system
+                    guided = guided || request.text.contains("Route: guide.")
+                }
+            }
+            return base.stream(request)
         }
     }
 
@@ -680,7 +704,7 @@ extension BrainSelfCheck {
         },
         // Since PH.8 he may say he can send it when asked to (or that acting is off), but an answer never claims the
         // email went: answering is not acting.
-        selfCase("can you send this email", "Can you send this email for me?", mailDraft) {
+        selfCase("can you send this email", "Can you send this email for me?", mailDraft, guideOK: true) {
             has($0, "send", "Send") && !has($0, "I sent", "I've sent", "I’ve sent", "I have sent", "has been sent", "was sent", "email sent")
         },
     ]

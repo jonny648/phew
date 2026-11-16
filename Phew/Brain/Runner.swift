@@ -34,9 +34,14 @@ struct TaskLimits: Sendable {
     var rounds = 12
     var usd = 0.50
     var seconds: TimeInterval = 300
+    /// What today's dollar ceiling left when the task started (`Limits`), and that ceiling, for the report's line.
+    var dayLeft = Double.infinity
+    var dayCeiling = 0.0
 
+    /// The task's own dollars, or less when today's ceiling is nearer: the same cost limit ends it either way.
+    var capUSD: Double { min(usd, dayLeft) }
     /// Past these, the next round writes the report with what is there, so a limit still leaves a report.
-    var writeAtUSD: Double { usd * 0.8 }
+    var writeAtUSD: Double { capUSD * 0.8 }
     var writeAtSeconds: TimeInterval { seconds * 0.8 }
 }
 
@@ -105,6 +110,8 @@ enum Runner {
         case .searches: "Phew stopped searching here: the limit of \(limits.searches) searches for a task was reached."
         case .pages: "Phew stopped reading pages here: the limit of \(limits.pages) pages for a task was reached."
         case .rounds: "Phew stopped here: the limit of \(limits.rounds) steps for a task was reached."
+        case .cost where limits.dayLeft < limits.usd:
+            "Phew stopped here: today's limit of \(String(format: "$%.2f", limits.dayCeiling)) was reached."
         case .cost: "Phew stopped here: the limit of \(Int((limits.usd * 100).rounded())) cents for a task was reached."
         case .time: "Phew stopped here: the limit of \(Int(limits.seconds / 60)) minutes for a task was reached."
         }
@@ -173,7 +180,7 @@ enum Runner {
             // Text before a call to Phew's tools is not the report; a paused reply goes on in the next one.
             report = round.stop == "tool_use" ? "" : report + round.text
             shellLog("runner: task \(number), round \(rounds), \(searches) searches, \(pages) pages, $\(String(format: "%.4f", spent))")
-            if spent >= limits.usd { limit = .cost; break }
+            if spent >= limits.capUSD { limit = .cost; break }
             if limit == nil, searches >= limits.searches { limit = .searches }
             if limit == nil, pages >= limits.pages { limit = .pages }
             if last { break }
@@ -243,7 +250,7 @@ enum Runner {
     /// `projectMemory` (PB.2): the task's project's Claude Code notes in their data block, or nil.
     static func request(_ words: String, packet: ContextPacket?, spoken: [Hearing] = [], number: Int, tools: (any ToolRunner)? = nil,
                         projectMemory: String? = nil, limits: TaskLimits = TaskLimits()) -> ModelRequest {
-        let read = packet?.neverRead == false ? packet : nil
+        let read = packet?.neverRead == false ? packet.map { ScreenshotSize.sent($0).0 } : nil  // A3: smaller when whole display
         let day = Date().formatted(Date.ISO8601FormatStyle(timeZone: .current).year().month().day())
         let text = [Spoken.after("Task: \(SecretsFilter.clean(words))", spoken), read.map(screenBlock) ?? "No screen was read."]
             + (projectMemory.map { [SecretsFilter.clean($0)] } ?? []) + ["Today is \(day)."]

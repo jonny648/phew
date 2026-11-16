@@ -231,7 +231,7 @@ final class ImportUndo: ObservableObject {
     /// Reads the last import again each time a menu opens, so the entry is right when the user sees it.
     func watchMenus() {
         observer = NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { Task { await self?.refresh() } }
+            Task { @MainActor [weak self] in await self?.refresh() }
         }
     }
 

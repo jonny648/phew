@@ -250,6 +250,9 @@ final class HandJob: @unchecked Sendable {  // state under `lock`
     fileprivate(set) var made: [HandMade] = []
     /// The app the job began in: where the user was, and where `Hand.back` returns at the end.
     let start: pid_t
+    /// That app's focused window when the job began (N2.8), so `Hand.back` returns to it, not only to the app. An
+    /// opaque handle: nothing of it is read. Memory only, gone with the job.
+    fileprivate var window: AnyObject?
     private var current: pid_t  // under `lock`
     /// A research agent's job (PA.4), not one the user watches: what cannot be undone waits for a confirm.
     let agent: Bool
@@ -325,6 +328,15 @@ protocol HandSurface {
     /// Brings the app to the front, launching it if needed, and waits until it is in front, or `stop`, at most
     /// `Hand.frontTimeout`. Returns how it ended and the app's pid.
     func activate(_ bundleID: String, stop: @escaping () -> Bool) -> (HandEnd, pid_t?)
+    /// The app's focused window now, as a handle; nil when it has none. Reads nothing of it (N2.8).
+    func focusedWindow(_ pid: pid_t) -> AnyObject?
+    /// Raises that window in its app, once; false when it is gone or refused.
+    func raise(_ window: AnyObject) -> Bool
+}
+
+extension HandSurface {
+    func focusedWindow(_ pid: pid_t) -> AnyObject? { nil }
+    func raise(_ window: AnyObject) -> Bool { false }
 }
 
 /// An element as read at the moment of acting. `value` is never read from a secure field.
@@ -389,6 +401,7 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     @MainActor
     func begin(watchUser: Bool = true, in app: pid_t = 0, agent: Bool = false) -> HandJob {
         let job = lock.withLock { jobs += 1; return HandJob(number: jobs, app: app, agent: agent) }
+        if app != 0 { job.window = surface.focusedWindow(app) }
         if watchUser {
             let events: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .keyDown]
             if let global = NSEvent.addGlobalMonitorForEvents(matching: events, handler: { [weak self, weak job] in
@@ -561,7 +574,8 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     }
 
     /// At the job's end, however it ended: brings back the app the job began in, when the job brought another to
-    /// the front. Not when the user took over (their own input, or another app they brought to the front): he
+    /// the front, and in it the window that was in front when the job began (N2.8); when that window is gone, the app
+    /// as it comes. Not when the user took over (their own input, or another app they brought to the front): he
     /// leaves them where they are. The switch and own-app check apply and it is logged like any action; no ceiling,
     /// so a job stopped at one still returns; no Never list, as the user was in that app and nothing of it is read.
     /// Nil when there is nothing to return. Blocks up to `frontTimeout`: off the main thread.
@@ -576,7 +590,10 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
             if home == ownPID { return .ownApp }
             guard let bundle = surface.bundleID(home) else { return .failed }
             let (end, pid) = surface.activate(bundle, stop: { false })
-            if end == .done, let pid { job.moved(to: pid) }
+            if end == .done, let pid {
+                job.moved(to: pid)
+                if let window = job.window { _ = surface.raise(window) }  // gone: the app as it came, as before N2.8
+            }
             return end
         }
         ActionLog.record(ActionLog.line(job: job.number, step: job.steps, kind: .front, role: "", ended: end, marked: false,
@@ -700,6 +717,9 @@ struct AXSurface: HandSurface {
 
     /// The point inside `bounds` (both top-left origin) as `NSEvent.mouseEvent` must be given it for another app's
     /// window: flipped against the main screen's height, as if the window sat at its top-left corner (measured, PL.1).
+    /// On any display (N2.9): `point` and `bounds` are both global, top-left origin of the main display, so a window
+    /// on a display to the left or above (negative coordinates) gives the same offset inside it. `mainHeight` is the
+    /// main display's (`NSScreen.screens[0]`, the one with the menu bar), never the window's own display.
     static func clickLocation(_ point: CGPoint, in bounds: CGRect, mainHeight: CGFloat) -> NSPoint {
         NSPoint(x: point.x - bounds.minX, y: mainHeight - (point.y - bounds.minY))
     }
@@ -724,6 +744,14 @@ struct AXSurface: HandSurface {
         guard AXUIElementCopyElementAtPosition(wide, Float(point.x), Float(point.y), &hit) == .success, let hit,
               AXUIElementGetPid(hit, &owner) == .success, owner != getpid() else { return nil }
         return owner
+    }
+
+    func focusedWindow(_ pid: pid_t) -> AnyObject? { attribute(app(pid), kAXFocusedWindowAttribute).flatMap(asElement) }
+
+    func raise(_ window: AnyObject) -> Bool {
+        let window = window as! AXUIElement
+        AXUIElementSetMessagingTimeout(window, Hand.timeout)
+        return AXUIElementPerformAction(window, kAXRaiseAction as CFString) == .success
     }
 
     func running(_ bundleID: String) -> pid_t? {

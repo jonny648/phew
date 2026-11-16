@@ -56,6 +56,7 @@ extension TextCard {
                              pointer.act(on: spot)
                          })
         run.spoken = spoken
+        run.menus = { pid in await Task.detached { MenuReader.names(pid: pid) }.value }
         run.starting = { [weak self] line in self?.model.actions.append(CardModel.Action(line: line)) }
         run.landed = { [weak self] step, result in self?.model.landed(ActJob.line(step), step: step, result: result) }
         let outcome = await run.run(request, job: job) { _ in count += 1 }

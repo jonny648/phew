@@ -1,5 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
+import WebKit
 import XCTest
 @testable import Phew
 
@@ -91,6 +92,19 @@ final class FakeSurface: HandSurface, @unchecked Sendable {  // state under `loc
         case .workbook: return (.done, HandMade(kind: "workbook", id: "made-\(scripts.count)"))
         default: return (.failed, nil)  // changes go through `change`
         }
+    }
+
+    /// N2.8: each app's focused window, by a made-up name; windows closed since; the windows raised, in order.
+    var focused: [pid_t: String] = [:]
+    var closedWindows: Set<String> = []
+    private(set) var raised: [String] = []
+    func focusedWindow(_ pid: pid_t) -> AnyObject? { focused[pid].map { $0 as NSString } }
+    func raise(_ window: AnyObject) -> Bool {
+        let name = (window as! NSString) as String
+        guard !closedWindows.contains(name) else { return false }
+        raised.append(name)
+        focused[front ?? 0] = name
+        return true
     }
 
     /// N2.2, N2.3: the real change logic (`HandChanges`) on made-up Notes, Excel, reminders and events in memory.
@@ -339,6 +353,22 @@ final class HandTests: XCTestCase {
         XCTAssertEqual(AXSurface.clickLocation(CGPoint(x: 961, y: 440), in: bounds, mainHeight: 982), NSPoint(x: 80, y: 695))
         XCTAssertEqual(AXSurface.clickLocation(CGPoint(x: 881, y: 153), in: bounds, mainHeight: 982), NSPoint(x: 0, y: 982))
         XCTAssertNil(AXSurface.window(of: 999_999, at: CGPoint(x: 10, y: 10)))
+    }
+
+    /// N2.9: a window on a second display. Main display 1440 x 900 (the one with the menu bar); global coordinates have
+    /// their origin at its top-left. The point inside the window comes out the same wherever the window sits.
+    func testClickLocationOnASecondDisplay() {
+        let inside = NSPoint(x: 80, y: 900 - 287)  // 80 right of the window's left edge, 287 down from its top
+        let windows = [
+            CGRect(x: -1600, y: 120, width: 420, height: 472),   // display to the left: negative x
+            CGRect(x: 1700, y: -150, width: 420, height: 472),   // display to the right, taller and higher: negative y
+            CGRect(x: 300, y: -1000, width: 420, height: 472),   // display above
+            CGRect(x: 1500, y: 600, width: 420, height: 472),    // display to the right, lower than the main one
+        ]
+        for bounds in windows {
+            let point = CGPoint(x: bounds.minX + 80, y: bounds.minY + 287)
+            XCTAssertEqual(AXSurface.clickLocation(point, in: bounds, mainHeight: 900), inside, "\(bounds)")
+        }
     }
 
     func testUserInputStopsAndOwnClicksDoNot() throws {
@@ -629,6 +659,38 @@ final class HandTests: XCTestCase {
         XCTAssertEqual(fake.front, Self.sheets)
     }
 
+    /// N2.8: back to the exact window the user was in when the job began, not only the app; when it is gone, the app
+    /// as it comes, as before.
+    func testBackReturnsToTheExactWindow() {
+        fake.bundles[Self.sheets] = "com.example.sheets"
+        let hand = self.hand()
+        func job() -> HandJob {
+            fake.front = FakeSurface.pid
+            let job = hand.begin(watchUser: false, in: FakeSurface.pid)
+            fake.focused[FakeSurface.pid] = "Made-up window one"  // the app's other window came up meanwhile
+            XCTAssertEqual(hand.act(front(), in: job).end, .done)
+            return job
+        }
+        fake.focused[FakeSurface.pid] = "Made-up window two"
+        XCTAssertEqual(hand.back(job()), .done)
+        XCTAssertEqual(fake.front, FakeSurface.pid)
+        XCTAssertEqual(fake.raised, ["Made-up window two"])
+        XCTAssertEqual(fake.focused[FakeSurface.pid], "Made-up window two")
+        // The window was closed during the job: the app comes back as it is, nothing else raised.
+        fake.focused[FakeSurface.pid] = "Made-up window two"
+        let gone = job()
+        fake.closedWindows = ["Made-up window two"]
+        XCTAssertEqual(hand.back(gone), .done)
+        XCTAssertEqual(fake.front, FakeSurface.pid)
+        XCTAssertEqual(fake.raised, ["Made-up window two"])
+        // No window at the start: the app only.
+        fake.focused = [:]
+        let bare = hand.begin(watchUser: false, in: FakeSurface.pid)
+        XCTAssertEqual(hand.act(front(), in: bare).end, .done)
+        XCTAssertEqual(hand.back(bare), .done)
+        XCTAssertEqual(fake.raised, ["Made-up window two"])
+    }
+
     /// The user's own click or key stops the job only in the app he works in now (the user's word, PH.7).
     func testUserInputStopsOnlyInTheAppHeWorksIn() throws {
         fake.bundles[Self.sheets] = "com.example.sheets"
@@ -714,10 +776,9 @@ final class HandTests: XCTestCase {
                       "NSAppleEventDescriptor", "AESend", "kAXFrontmostAttribute"]
         // Named exceptions, line by line:
         // WindowReader asks Chromium, Electron and Keynote to build their full Accessibility tree, for reading only
-        // (AXManualAccessibility, AXEnhancedUserInterface). It sets those two flags and nothing else.
+        // (AXManualAccessibility, AXEnhancedUserInterface, N2.7). It sets those two flags and nothing else.
         let exceptions: [String: (String) -> Bool] = [
-            "Senses/WindowReader.swift": { $0.contains("AXUIElementSetAttributeValue(app, ")
-                && ($0.contains("\"AXManualAccessibility\"") || $0.contains("enhanced as CFString")) },
+            "Senses/WindowReader.swift": { $0.contains("[manual, enhanced].contains(name) && AXUIElementSetAttributeValue(app, name as CFString") },
         ]
         var files = 0, offenders: [String] = []
         let all = try XCTUnwrap(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil))
@@ -852,6 +913,58 @@ final class HandTests: XCTestCase {
             done += ends.filter { $0 == .done }.count
         }
         XCTAssertEqual(practice.presses["Slow"], done, "every press the Hand counted, and no other")
+    }
+
+    /// N2.6, live: the practice window's own made-up menu bar, read by Accessibility, gives its commands by name, and
+    /// the path as read is one the Hand picks in one step. Off unless PHEW_LIVE (it shows a window).
+    func testPracticeWindowMenusAreReadAndPicked() async throws {
+        let hand = try realHand()
+        let practice = PracticeWindow()
+        defer { practice.close() }
+        try await Task.sleep(for: .milliseconds(200))
+        let names = MenuReader.names(pid: getpid(), list: neverRead)
+        XCTAssertTrue(names.contains("Practice: Make Bold"), names)
+        XCTAssertTrue(names.contains("Account: Sign In…"), names)
+        let end = try act(hand, HandStep(kind: .pick, pid: getpid(), role: "AXMenuItem", menuPath: ["Practice", "Make Bold"]),
+                          hand.begin(watchUser: false))
+        XCTAssertEqual(end, .done)
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(practice.presses["Make Bold"], 1)
+    }
+
+    /// N2.7, live: a made-up local page in a test window (WebKit, no network). After the ask for the full tree, its
+    /// button and field come back as named controls, and the Hand presses and types by name, with no click at a point.
+    /// Off unless PHEW_LIVE (it shows a window). Not run when written: N2.L checks it.
+    func testMadeUpPageIsPressedAndTypedByName() async throws {
+        let hand = try realHand()
+        let window = NSWindow(contentRect: NSRect(x: 160, y: 180, width: 420, height: 240), styleMask: [.titled],
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.level = .floating
+        let page = WKWebView(frame: window.contentView!.bounds)
+        window.contentView?.addSubview(page)
+        defer { window.orderOut(nil) }
+        page.loadHTMLString("""
+            <html><body><button onclick="document.title='pressed'">Made-up send</button>
+            <input placeholder="Made-up name"></body></html>
+            """, baseURL: nil)
+        window.orderFrontRegardless()
+        try await Task.sleep(for: .seconds(1))
+        if WindowReader.askForFullTree(pid: getpid()).wait { try await Task.sleep(for: .seconds(1)) }
+        let read = WindowReader.readWindow(pid: getpid())
+        let button = try XCTUnwrap(read.pointables.first { $0.role == "AXButton" && $0.label == "Made-up send" }, "\(read.pointables)")
+        let field = try XCTUnwrap(read.pointables.first { $0.role == "AXTextField" && $0.label == "Made-up name" }, "\(read.pointables)")
+        let job = hand.begin(watchUser: false)
+        let pressed = try act(hand, HandStep(kind: .press, pid: getpid(), role: button.role, name: button.label, frame: button.frame), job)
+        XCTAssertEqual(pressed, .done)
+        let typed = try act(hand, HandStep(kind: .set, pid: getpid(), role: field.role, name: field.label, frame: field.frame,
+                                           text: "Made-up words"), job)
+        XCTAssertEqual(typed, .done)
+        try await Task.sleep(for: .milliseconds(300))
+        let title = try await page.evaluateJavaScript("document.title") as? String
+        XCTAssertEqual(title, "pressed")
+        let value = try await page.evaluateJavaScript("document.querySelector('input').value") as? String
+        XCTAssertEqual(value, "Made-up words")
     }
 
     /// Runs `step` over and over in `job` while another thread presses Stop after `after` seconds. Returns how many

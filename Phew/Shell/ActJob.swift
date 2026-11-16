@@ -20,6 +20,8 @@ struct ActJob {
     var spoken: [Hearing] = []
     /// Each action that landed, with how: the card ticks its row, tags it, and follows a switch (N2.5).
     var landed: (HandStep, HandResult) -> Void = { _, _ in }
+    /// The names of an app's menu commands (`MenuReader.names(pid:)`), read once per job and per app (N2.6).
+    var menus: (pid_t) async -> String = { _ in "" }
 
     enum Outcome: Equatable {
         case done(String)
@@ -40,9 +42,16 @@ struct ActJob {
     private func work(_ request: String, job: HandJob, listed: (String) -> Void) async -> Outcome {
         var done: [String] = []  // for the Brain: what was made, by name, and how it ended
         var last = "", repeats = 0  // the same action on the same spot, in a row
+        var menuNames: [pid_t: String] = [:]  // once per app, gone with the job
         while true {
             if let end = job.end { return .ended(end) }
-            let packet = await capture(job.app)
+            let app = job.app
+            var packet = await capture(app)
+            // Not for an app on the Never read list: its look came back empty, and so do its menus.
+            if packet?.neverRead == false {
+                if menuNames[app] == nil { menuNames[app] = await menus(app) }
+                packet?.menus = SecretsFilter.clean(menuNames[app] ?? "")
+            }
             if let end = job.end { return .ended(end) }
             let next: NextAction
             do {

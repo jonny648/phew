@@ -87,6 +87,37 @@ final class ActJobTests: XCTestCase {
         XCTAssertTrue(calls[0].text.contains("<screen>") && calls[0].text.hasSuffix("Request: Make it bold and type Made up"))
     }
 
+    /// N2.6: the app's menu names are read once per job and per app, go to the Doer in their own block, filtered; the
+    /// Doer's pick by the real path goes to the Hand in one step. Never for an app on the Never read list.
+    func testMenusAreReadOncePerAppAndGoToTheDoer() async {
+        fake.menus[["Format", "Font", "Bold"]] = FakeSurface.Element(HandSeen(role: "AXMenuItem", name: "Bold"), window: "")
+        let (made, provider, job, _) = make([reply("press", element: "e1"), reply("pick", menu: ["Format", "Font", "Bold"]),
+                                            reply("done", text: "Done.")])
+        var run = made
+        var reads: [pid_t] = []
+        let key = "sk-ant-" + String(repeating: "a1B2", count: 8)
+        run.menus = { reads.append($0); return "Format: Font > [Bold | Italic]\nEdit: Paste \(key)" }
+        var lines: [String] = []
+        _ = await run.run("Make it bold", job: job) { lines.append($0) }
+        XCTAssertEqual(reads, [FakeSurface.pid], "once per job and per app, not per step")
+        XCTAssertEqual(lines, ["Pressed Bold", "Picked Format > Font > Bold"])
+        let calls = provider.requests
+        XCTAssertEqual(calls.count, 3)
+        XCTAssertTrue(calls.allSatisfy { $0.text.contains("<menus>\nFormat: Font > [Bold | Italic]\nEdit: Paste \(SecretsFilter.keyMarker)\n</menus>") })
+        XCTAssertFalse(calls.contains { $0.text.contains(key) })
+        XCTAssertTrue(Doer.system.contains("prefer pick"))
+
+        // Never read: no menus read, no block.
+        var never = packet
+        never.neverRead = true
+        let (other, otherProvider, otherJob, _) = make([reply("stuck", text: "No.")], packet: never)
+        var neverRun = other
+        neverRun.menus = { reads.append($0); return "Made-up: Never" }
+        _ = await neverRun.run("Make it bold", job: otherJob) { _ in }
+        XCTAssertEqual(reads, [FakeSurface.pid])
+        XCTAssertFalse(otherProvider.requests.contains { $0.text.contains("<menus>") })
+    }
+
     func testStopsOnAHandEndWithoutRetry() async {
         fake.elements[0].seen.frame = bold.offsetBy(dx: 30, dy: 0)  // moved since the look
         let (run, provider, job, _) = make([reply("press", element: "e1"), reply("press", element: "e1")])

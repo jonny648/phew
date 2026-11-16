@@ -239,21 +239,54 @@ enum WindowReader {
 
     private static let fullTreeAsked = OSAllocatedUnfairLock(initialState: Set<pid_t>())
 
-    /// Some apps build their full tree only after an assistive client asks: Chromium and Electron their web content
-    /// (AXManualAccessibility), native apps such as Keynote their canvas (AXEnhancedUserInterface, which VoiceOver sets).
-    /// Returns true the first time per app process, when the tree may still be filling.
-    static func askForFullTree(pid: pid_t) -> Bool {
-        let app = AXUIElementCreateApplication(pid)
-        let enhanced = "AXEnhancedUserInterface"
-        // Native apps answer "unsupported" to the first. The second is set only where the app reports it off.
-        var asked = AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue) == .success
-        if !asked, attribute(app, enhanced) as? Bool == false {
-            // Keynote answers "not implemented" on macOS 26 yet takes the value: read it back.
-            AXUIElementSetAttributeValue(app, enhanced as CFString, kCFBooleanTrue)
-            asked = attribute(app, enhanced) as? Bool == true
-        }
-        return asked && fullTreeAsked.withLock { $0.insert(pid).inserted }
+    /// The two flags an app reads to build its full tree, as `askForFullTree` reads and sets them: the real app element
+    /// in Phew, a fake in tests. Setting one is a write to another app, but not an action (docs/13-hand.md 13.6): it
+    /// changes nothing the user made or sees, only how much the app tells Accessibility. So it is not in `Hand`.
+    struct TreeFlags {
+        /// Sets a flag; true when the app took it.
+        var set: (_ name: String, _ on: Bool) -> Bool
+        /// A flag as the app reports it; nil when it has none.
+        var get: (_ name: String) -> Bool?
     }
+
+    static let manual = "AXManualAccessibility"
+    static let enhanced = "AXEnhancedUserInterface"
+
+    /// Some apps build their full tree only after an assistive client asks (N2.7): Chromium and Electron their web
+    /// content and panels, native apps such as Keynote their canvas. First `AXManualAccessibility`, which Electron
+    /// documents for assistive tools and Chromium honours, with no side effect. Only where it is refused,
+    /// `AXEnhancedUserInterface`, VoiceOver's flag, and only when the app reports it off: that one slows window
+    /// animations and breaks window managers (Rectangle, Magnet), so `restore` says to set it back after the read.
+    /// Nothing for an app on the Never read list. `asked`: a flag was set, so the tree may still be filling.
+    static func askForFullTree(_ flags: TreeFlags, neverRead: Bool) -> (asked: Bool, restore: Bool) {
+        guard !neverRead else { return (false, false) }
+        if flags.set(manual, true) { return (true, false) }
+        // Already on (VoiceOver, another tool): not Phew's to touch or set back.
+        guard flags.get(enhanced) == false else { return (false, false) }
+        // Keynote answers "not implemented" on macOS 26 yet takes the value: read it back.
+        _ = flags.set(enhanced, true)
+        let on = flags.get(enhanced) == true
+        return (on, on)
+    }
+
+    /// The real flags of app `pid`. The only flags Phew ever sets on another app.
+    static func treeFlags(pid: pid_t) -> TreeFlags {
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, 0.5)
+        // Only those two flags, whatever name is passed.
+        return TreeFlags(set: { name, on in [manual, enhanced].contains(name) && AXUIElementSetAttributeValue(app, name as CFString, on ? kCFBooleanTrue : kCFBooleanFalse) == .success },
+                         get: { attribute(app, $0) as? Bool })
+    }
+
+    /// Before a read of app `pid`, only when Phew is called: asks for the full tree. `wait`: the first time per app
+    /// process, when the tree may still be filling. `restore`: call `setBack(pid:)` when the read is done.
+    static func askForFullTree(pid: pid_t, neverRead: Bool = false) -> (wait: Bool, restore: Bool) {
+        let (asked, restore) = askForFullTree(treeFlags(pid: pid), neverRead: neverRead)
+        return (asked && fullTreeAsked.withLock { $0.insert(pid).inserted }, restore)
+    }
+
+    /// Sets `AXEnhancedUserInterface` back off, after a read that turned it on.
+    static func setBack(pid: pid_t) { _ = treeFlags(pid: pid).set(enhanced, false) }
 
     #if DEBUG
     /// `--debug-point x,y` (Accessibility coordinates): the self-check reads that point instead of the mouse's,

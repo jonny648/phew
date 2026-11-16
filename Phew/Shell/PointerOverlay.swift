@@ -74,7 +74,8 @@ final class PointerOverlay: NSPanel {
     /// still travelling, it jumps.
     func act(on target: NSRect) {
         let goal = NSPoint(x: target.midX, y: target.midY)
-        if pointer.animation(forKey: "travel") != nil {
+        // A jump stays on this display; a target on another one goes through `go`, which moves the overlay there (N2.9).
+        if pointer.animation(forKey: "travel") != nil, Self.display(for: goal, among: [frame]) != nil {
             moves += 1
             pointer.removeAnimation(forKey: "travel")
             tip = onScreen(goal)
@@ -172,7 +173,8 @@ final class PointerOverlay: NSPanel {
         let move = moves
         hideRing()
         // A target on another display: the overlay moves there and the pointer sets off from that menu bar.
-        if let screen = NSScreen.screens.first(where: { $0.frame.contains(goal) }), screen.frame != frame {
+        if let display = Self.display(for: goal, among: NSScreen.screens.map(\.frame)), display != frame,
+           let screen = NSScreen.screens.first(where: { $0.frame == display }) {
             setFrame(screen.frame, display: false)
             tip = Self.home(on: screen)
             pointer.removeAllAnimations()
@@ -225,6 +227,12 @@ final class PointerOverlay: NSPanel {
         ring.opacity = 0
         ring.add(fade, forKey: "appear")
         CATransaction.commit()
+    }
+
+    /// The display (AppKit frame, bottom-left origin of the main display) holding `point`; nil when none does. A
+    /// point on the shared edge of two displays goes to the first listed.
+    nonisolated static func display(for point: NSPoint, among frames: [NSRect]) -> NSRect? {
+        frames.first { $0.contains(point) }
     }
 
     /// Keeps the whole arrow on screen when the target sits at an edge.

@@ -31,6 +31,9 @@ struct ContextPacket: Codable {
     /// The app is on the user's "Never read this app" list (`NeverReadList`): nothing of its screen was read, and
     /// every field but the app's name and bundle id is empty.
     var neverRead = false
+    /// The app's menu bar commands (`MenuReader`), read once per job and per app on the act route; empty otherwise.
+    /// App labels, but they live and go with the capture, and are left out of the JSON like the screenshot.
+    var menus = ""
 
     private enum CodingKeys: String, CodingKey {
         case appName, bundleID, windowTitle, documentPath, visibleText, cursor, windowFrame, pointables, mouse, screenshotFrame
@@ -59,6 +62,7 @@ struct ContextPacket: Codable {
         p.windowTitle = SecretsFilter.clean(windowTitle)
         p.documentPath = documentPath.map(SecretsFilter.clean)
         p.visibleText = SecretsFilter.clean(visibleText)
+        p.menus = SecretsFilter.clean(menus)
         p.cursor?.label = SecretsFilter.clean(cursor?.label ?? "")
         p.cursor?.value = SecretsFilter.clean(cursor?.value ?? "")
         for i in p.pointables.indices { p.pointables[i].label = SecretsFilter.clean(p.pointables[i].label) }

@@ -24,10 +24,16 @@ enum Senses {
         return Task.detached(priority: .userInitiated) {
             // An Electron tree was still empty 0.5 s after the first ask, and full on the next capture.
             // shortcut: one fixed 1 s wait, the first time per app process; poll until the text stops growing if too short.
-            if WindowReader.askForFullTree(pid: pid) { try? await Task.sleep(for: .seconds(1)) }
+            // The app is not on the Never read list (checked above), so the ask is never for one that is.
+            let tree = WindowReader.askForFullTree(pid: pid)
+            if tree.wait { try? await Task.sleep(for: .seconds(1)) }
             let walkStart = Date()
             let window = WindowReader.readWindow(pid: pid)
             let walkMS = ms(since: walkStart)
+            // VoiceOver's flag slows the app's window animations and window managers: off again once read.
+            // shortcut: the 1 s wait is only the first time per process; with the flag set back, a canvas tree
+            // (Keynote) may need it each time; wait each time if a live run shows a thin tree.
+            if tree.restore { WindowReader.setBack(pid: pid) }
             // Filter before trimming, so a cut cannot leave half a key behind.
             let texts = window.texts.map { WindowReader.Text(string: SecretsFilter.clean($0.string), frame: $0.frame) }
             var packet = ContextPacket(appName: name, bundleID: bundleID, windowTitle: window.title,

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.2, 17 November 2026
+## 0.2.2, 16 November 2026
 
 The serious findings of the developer review, fixed. Tested offline; the changed prompts and the real Notes, Reminders and Calendar scripts are not yet run live.
 
@@ -14,7 +14,7 @@ The serious findings of the developer review, fixed. Tested offline; the changed
 - The shortcut fires only with exactly its two keys; a hold ends by itself after 60 seconds.
 - The disk image is built without the debugger door.
 
-## 0.2.1, 17 November 2026
+## 0.2.1, 16 November 2026
 
 Phase N3, voice. Tested offline with the Mac's own voices; not yet with the model or a real voice.
 
@@ -23,7 +23,7 @@ Phase N3, voice. Tested offline with the Mac's own voices; not yet with the mode
 - A word you fix there is kept as "also heard as" on that name in your memory.
 - "Remind me to call…" makes a reminder.
 
-## 0.2.0, 17 November 2026
+## 0.2.0, 16 November 2026
 
 Phase N2, acting and agents second pass. Tested with stand-ins for the apps and for the model; not yet run live.
 

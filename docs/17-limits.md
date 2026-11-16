@@ -1,6 +1,6 @@
 # 17. Limits review (phase NA)
 
-Written 17 November 2026 from a read of the rules and the code. Nothing was built or run. The inventory (17.4) lists 103 limits and 20 places where a document and the code disagree. This page sorts them and gives a recommendation for each group. **You decide** (17.3); then `CLAUDE.md` is rewritten to your answers.
+Written 16 November 2026 from a read of the rules and the code. Nothing was built or run. The inventory (17.4) lists 103 limits and 20 places where a document and the code disagree. This page sorts them and gives a recommendation for each group. **You decide** (17.3); then `CLAUDE.md` is rewritten to your answers.
 
 Four kinds are used:
 
@@ -137,7 +137,7 @@ The project root is `the repository`. All paths below are relative to it. These 
 | L08 | Cursor read caps | 30 elements, depth 4, 15 ms, 300 characters; 0.1 s system-wide messaging timeout | code only / `WindowReader.swift:21-24,30` | SHAPE | A long cell under the mouse is cut at 300 characters | Larger caps |
 | L09 | Packet caps | 4,000 characters of text, nearest the cursor first; 80 controls; 60-character labels. A label at the cap is left out of an action's name | 4.4 (4,000 only) / `ContextPacket.swift:42-44`, `ActJob.swift:112` (SecretsFilterTests.testTrimKeepsNearestTextInReadingOrder; SensesRulesTests.testPointablesKeepNearestThenReadingOrder) | SHAPE (cost) | "Summarise this whole contract on screen": 4,000 characters only. Controls past the nearest 80 cannot be pointed at or pressed | More text with the Observer, or reading in pieces |
 | L10 | Picture rule | The front window when the mouse is inside it, else the whole display. 1 pixel per point. Phew's windows left out, cursor hidden | 7.1 #34 (12 Nov) / `ScreenCapture.swift:10,40-50` (SensesRulesTests.testPictureIsTheWindowOnlyWhenTheMouseIsInsideIt) | SHAPE; 1 px per point is TIGHT | Small text in a dense Excel sheet or Figma layer list is misread (half the Retina detail) | Capture at 2x and send a crop |
-| L11 | Whole-display picture cap | A whole display is sent at ≤1,950 tokens. The API's own cap is about 4,784 tokens | 7.4 (17 Nov, A3) / `ScreenshotSize.swift:12,20` (LimitsTests.testAWholeDisplayCostsAtMost1950Tokens, testThePictureGoesSmallerAndAPointMapsBack) | SHAPE (cost) + GIVEN (API cap) | On a 5K display, text in a whole-screen picture is unreadable | Crop to the area of interest |
+| L11 | Whole-display picture cap | A whole display is sent at ≤1,950 tokens. The API's own cap is about 4,784 tokens | 7.4 (16 Nov, A3) / `ScreenshotSize.swift:12,20` (LimitsTests.testAWholeDisplayCostsAtMost1950Tokens, testThePictureGoesSmallerAndAPointMapsBack) | SHAPE (cost) + GIVEN (API cap) | On a 5K display, text in a whole-screen picture is unreadable | Crop to the area of interest |
 | L12 | Follower look caps | 800×600 crop around the mouse, 30 elements, 1,000 characters, 3.5 s, 1,024 tokens, one retry | 4.4 (PS.4) / `Follower.swift:61-63,109-114` (BrainAgentsTests) | SHAPE (cost) | A dialog far from the mouse is seen only in the text, so the guide may not move on | Centre the crop on the step's target as well |
 | L13 | A task reads the screen once | The Runner has no tool to look again | C.md; 3.6; 4.4 / `Runner.swift:274-283` (RunnerTests.testTheRequestShape) | PROT | "Research each item as I scroll the list" | A look tool for agents, with a per-task count |
 | L14 | No capture reused for a follow-up | Every reply takes a fresh look; an earlier capture is never kept | C.md; 3.10; 7.2 #34 open / `WorkingMemory.swift:3-6` (ToolLoopTests.testFollowUpCarriesEarlierTurnsAsTextAndOnlyTheFreshLook) | PROT + cost | "What did the previous window say?" after switching | Decision 34: keep a capture for N minutes, in memory |
@@ -226,7 +226,7 @@ The project root is `the repository`. All paths below are relative to it. These 
 
 | ID | Name | Rule | Stated / enforced (test) | Kind | Blocks today | If removed or loosened, needs |
 |---|---|---|---|---|---|---|
-| L80 | Daily ceilings | $3.00 a day, 400 requests a day, 30 a minute; 0 means none. Checked before each new request from you. The panel offers $1, $3, $10 or none; the request counts cannot be changed there | 7.4 log of 17 Nov only / `Limits.swift:13,30-43,78-84`, `LimitsPanel.swift:10` (LimitsTests.testThe31stInAMinuteIsRefusedAndNothingIsSent, testTheDailySpendCeilingRefusesWithTheRightSentence, testZeroMeansNoLimit, testTheDayRollsOverAtLocalMidnight) | PROT (money) | A heavy day over $3; 31 quick questions in a minute | More panel options |
+| L80 | Daily ceilings | $3.00 a day, 400 requests a day, 30 a minute; 0 means none. Checked before each new request from you. The panel offers $1, $3, $10 or none; the request counts cannot be changed there | 7.4 log of 16 Nov only / `Limits.swift:13,30-43,78-84`, `LimitsPanel.swift:10` (LimitsTests.testThe31stInAMinuteIsRefusedAndNothingIsSent, testTheDailySpendCeilingRefusesWithTheRightSentence, testZeroMeansNoLimit, testTheDayRollsOverAtLocalMidnight) | PROT (money) | A heavy day over $3; 31 quick questions in a minute | More panel options |
 | L81 | Task reserve | A task sets aside its $0.50 from the day; under 1 cent left, it does not start | 7.4 (N2.12) / `Limits.swift:53-58,113-123` (LimitsTests.testTasksReserveTheirBudgetAndCannotPassTheCeilingTogether, testATaskIsRefusedWhenNothingIsLeftToday, testATaskEndsWithItsReportWhenTheDayCeilingIsPassed) | PROT | A task late in a $3 day | — |
 | L82 | One provider | Claude API only, through one interface; model names from the docs | C.md; 7.1 (11 Nov) / `ModelProvider.swift:122`, `ClaudeProvider.swift:10` | SHAPE | Your own subscription; an offline local model | L9 |
 | L83 | One network endpoint | api.anthropic.com only; web search and fetch run at Anthropic | 16-control row 18 / `ClaudeProvider.swift:10` | SHAPE | Intranet pages; MCP tools | L9 |
@@ -283,7 +283,7 @@ The project root is `the repository`. All paths below are relative to it. These 
 - **C16, Observer never runs.** C.md and 4.4 step 2 describe it, but `Observer.minChars` is 4,001 and the text cap is 4,000.
 - **C17, cost of a look, two numbers.** 13.7 #10 and 7.1 #38 say about 0.25 cents. 4.4 PS.4 measured 0.41 cents.
 - **C18, task limits stated only in part.** 3.6 has 5 searches, 8 pages and 50 cents. 12 rounds, 5 minutes and the 8,000-token page cap are only in the 7.4 log or the code.
-- **C19, money ceilings.** $3 a day, 400 a day and 30 a minute are stated only in the 7.4 log of 17 Nov, in no design doc.
+- **C19, money ceilings.** $3 a day, 400 a day and 30 a minute are stated only in the 7.4 log of 16 Nov, in no design doc.
 - **C20, browsing apps.** 5.10 says he lists every Claude Code project with memory for you to pick. The code reads only the folder you chose; 7.4 PB names this difference.
 
 ### Guards with no named test
@@ -303,4 +303,4 @@ Tested, but with no test of the number itself:
 
 Two things to know:
 - I did not read `docs/13-hand.md` 13.2 in full, `docs/05-map-storage.md`, or `docs/15-design.md`, so look rules stated only there may be missing.
-- The 7.4 log has entries dated 17 Nov, after today's date of 16 Nov. I took them as written.
+- The 7.4 log has entries dated 16 Nov, after today's date of 16 Nov. I took them as written.

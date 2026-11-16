@@ -133,8 +133,8 @@ final class NameMatchTests: XCTestCase {
     /// word took the name's place in 4 ("bride" twice and "bright" for Brightmoss, "Alice" for Odalys Venn), which
     /// the rule never replaces; one name was not heard at all; "quilt and" (two common words) is 0.71 from Quillfen;
     /// "il Fena" is 0.67 from Quillfen, under the threshold, and is unsure with the words marked.
-    /// Pinned to the exact numbers, so a change to the match shows here. The word lists are the system's: a new macOS
-    /// may move them.
+    /// Pinned to the exact numbers, so a change to the match shows here. The word list is the fixed one of
+    /// `CommonWords`, not this Mac's.
     func testTheRecordedHearingsMeasured() {
         XCTAssertEqual(Self.measure(context: true),
                        Measure(exact: 27, exactMatched: 28, named: 12, namesBefore: 3, namesAfter: 5, unsureBeforeRouting: 20, wrongSent: 0))
@@ -183,6 +183,30 @@ final class NameMatchTests: XCTestCase {
         let out = NameMatch.hearing(hearing("send it to Coreen Vail"), names: ["Corin Vale", "Karin Vale"])
         XCTAssertEqual(out.text, "send it to Coreen Vail")
         XCTAssertTrue(out.swaps.contains { $0.tied && !$0.replaced })
+    }
+
+    /// R45: the tests run on a fixed word list, set when the bundle loads, not on this Mac's lists.
+    func testTheWordListIsFixedForTests() {
+        XCTAssertEqual(NameMatch.fixedCommon, CommonWords.all)
+        XCTAssertTrue(NameMatch.common("Window"))
+        XCTAssertFalse(NameMatch.common("brightmoss"))
+    }
+
+    /// A Mac with no word lists: no word is common, so a name made of plain words is still matched, and nothing crashes.
+    func testWithNoWordListNoWordIsCommon() {
+        NameMatch.fixedCommon = []
+        defer { CommonWords.fix() }
+        XCTAssertFalse(NameMatch.common("window"))
+        XCTAssertEqual(NameMatch.names(["Track Changes", "Brightmoss"]), ["Track Changes", "Brightmoss"])
+    }
+
+    /// The Mac's own lists, when present: five plain words are in them and a made-up name is not.
+    func testTheMacsOwnWordLists() throws {
+        NameMatch.fixedCommon = nil
+        defer { CommonWords.fix() }
+        try XCTSkipUnless(NameMatch.common("window") && NameMatch.common("finestra"), "this Mac has no English or Italian word list")
+        for word in ["table", "color", "title", "colore", "testo"] { XCTAssertTrue(NameMatch.common(word), word) }
+        XCTAssertFalse(NameMatch.common("brightmoss"))
     }
 
     func testCommonWordsAreLeftAlone() {

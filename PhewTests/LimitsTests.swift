@@ -83,6 +83,28 @@ final class LimitsTests: XCTestCase {
         XCTAssertEqual(fake.requests.count, sent + 1)
     }
 
+    /// R38: at the day's ceiling none of the four import sorts sends anything.
+    func testAtTheCeilingNoImportSortIsSent() async {
+        let fake = FakeProvider(rounds: [:])
+        let spent = limits([line("2026-11-16T08:00:00Z", usd: 2.5), line("2026-11-16T09:00:00Z", usd: 0.6)])
+        let brain = ClaudeBrain(provider: fake, map: BrainMap(open: { throw MapError.underTests }, maintenance: false), limits: spent)
+        let sorts: [() async throws -> ImportSort] = [
+            { try await brain.sortImport("Made-up pasted memory.", source: .other) },
+            { try await brain.sortImport(ProjectMemory(projectName: "Orbit Lamp")) },
+            { try await brain.sortImport(ClaudeExport(), progress: { _, _ in }) },
+            { try await brain.sortReport("# Made-up report") },
+        ]
+        for (n, sort) in sorts.enumerated() {
+            do {
+                _ = try await sort()
+                XCTFail("sort \(n) went")
+            } catch {
+                XCTAssertEqual(error as? BrainError, .limited(.dayUSD(3)), "sort \(n)")
+            }
+        }
+        XCTAssertEqual(fake.requests.count, 0, "nothing is sent")
+    }
+
     @MainActor
     func testTheDailySpendCeilingRefusesWithTheRightSentence() throws {
         XCTAssertThrowsError(try limits([line("2026-11-16T08:00:00Z", usd: 2.5), line("2026-11-16T09:00:00Z", usd: 0.6)]).start()) {

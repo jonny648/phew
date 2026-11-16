@@ -1,6 +1,6 @@
 # 20. The language question: Swift, or TypeScript for the thinking part
 
-Written 17 November 2026, at your request. Research with sources (20.3) and a small trial with measured numbers (20.4). Nothing in the app was changed. The decision is yours (decision 48 in `07-decisions.md`).
+Written 16 November 2026, at your request. Research with sources (20.3) and a small trial with measured numbers (20.4). Nothing in the app was changed. The decision is yours (decision 48 in `07-decisions.md`).
 
 ## 20.1 In plain words
 

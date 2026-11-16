@@ -29,8 +29,8 @@ Start with `00-now.md`.
 | `docs/14-company.md` | CEO review, growth path, and what an investor reviews (L17) | current |
 | `docs/15-design.md` | The look and feel: principles, every surface and its states, colours, type, motion, as designed and as built (phase PH) | current |
 | `docs/16-control.md` | The last management control of the whole project on 16 November 2026: folder, online, docs, rules, ticks, open points, verdict | current |
-| `docs/costs.html` | What Phew costs: prices, cost per agent and per feature, a month of use with sliders, projections to 10,000 users, and the plan to cut the cost. 16 November 2026 |
-| `roadmap-next.html` | The phases after the MVP, N1 to N9. General, no task lists yet |
+| `docs/costs.html` | What Phew costs: prices, cost per agent and per feature, a month of use with sliders, projections to 10,000 users, and the plan to cut the cost. 16 November 2026 | current |
+| `roadmap-next.html` | The phases after the MVP, N1 to N9 with NR, NA, NB and NC, with their task lists | current |
 | `docs/direction.html` | The direction research as one page to read (phase PD) | current |
 | `docs/hand.html` | The acting design of `13-hand.md` as one page to read | current |
 | `docs/validation.html` | The validation of `12-validation.md` as one page to read | current |
@@ -41,7 +41,7 @@ Start with `00-now.md`.
 | `docs/17-limits.md` | Phase NA. Every limit Phew has, sorted, with a recommendation and the decisions for you | current |
 | `docs/18-capabilities.md` | Phase NB. How he acts through real doors: connections (MCP), the other doors, agents that start agents. The design in short, then the research notes with sources | current |
 | `docs/connections.html` | The same in plain words with drawings | current |
-| `docs/19-review.md` | The developer review of all the code, 17 November 2026: 56 findings in plain words, with where, a case, the fix, and what three checkers said of each | current |
+| `docs/19-review.md` | The developer review of all the code, 16 November 2026: 56 findings in plain words, with where, a case, the fix, and what three checkers said of each | current |
 | `docs/20-language.md` | Swift or TypeScript for the thinking part: the recommendation, four shapes compared, a measured trial, the research with sources | current |
 | `docs/review.html` | The code review as one page to read | current |
 | `docs/language.html` | The language question as one page to read | current |

@@ -35,7 +35,7 @@ Phew is a collaboration companion for people who create projects. He works with 
 
 Proven live on made-up data: acting in a practice window, clicking on a canvas, switching app and coming back, the scripting of Notes, Reminders, Calendar and Excel, a real research task, three at once with Stop, and two trick tests where no hidden text made him do something else.
 
-**Known to be weak, kept for after the MVP (L18):** acting in Dia, Figma and Fusion was never tried; changing, sending and deleting are not built; the research limits were never reached in a live run.
+**Known to be weak, kept for after the MVP (L18):** acting in Dia, Figma and Fusion was never tried; sending is not built (changing and deleting were built on 16 November, see below); the research limits were never reached in a live run.
 
 ## Closed on 15 November: PB Second brain
 
@@ -43,7 +43,7 @@ Under Memory in the menu: paste a memory list from Claude, ChatGPT or Gemini and
 
 ## Now: phase N2, acting and agents second pass
 
-Started 17 November 2026 (`roadmap-next.html`). Built and tested with stand-ins, not live: changing and deleting with Undo, the "cannot be undone" class, an agent's one confirm, menus read before acting, apps that draw their own interface, the exact window, two displays, deeper research, reports that teach the memory, two money guards. Open: the live checks (N2.L1 to N2.L3), only at your word. N1 (your real use, your notes) runs beside it. The installed app is 0.2.1 and holds this work and N3 Voice (names matched by sound; the bar of 10 names in 12 is not met).
+Started 16 November 2026 (`roadmap-next.html`). Built and tested with stand-ins, not live: changing and deleting with Undo, the "cannot be undone" class, an agent's one confirm, menus read before acting, apps that draw their own interface, the exact window, two displays, deeper research, reports that teach the memory, two money guards. Open: the live checks (N2.L1 to N2.L3), only at your word. N1 (your real use, your notes) runs beside it. The installed app is 0.2.1 and holds this work and N3 Voice (names matched by sound; the bar of 10 names in 12 is not met).
 
 ## The MVP is built: version 0.1.0, 16 November 2026
 

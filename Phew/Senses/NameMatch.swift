@@ -140,8 +140,12 @@ enum NameMatch {
     /// hold common words and no proper names).
     static func common(_ word: String) -> Bool {
         let word = word.lowercased()
+        if let fixed = fixedCommon { return fixed.contains(word) }
         return lexicons.contains { $0.contains(word) }
     }
+
+    /// Tests set a fixed list here, so they do not depend on the word lists of the Mac they run on (R45).
+    nonisolated(unsafe) static var fixedCommon: Set<String>?
 
     // shortcut: no word lists when the system has none for a language; then no word counts as common for it.
     private static let lexicons: [NLEmbedding] = [NLLanguage.english, .italian].compactMap { NLEmbedding.wordEmbedding(for: $0) }

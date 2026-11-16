@@ -264,7 +264,7 @@ input[type=number]{font:inherit;color:var(--ink);background:var(--paper);border:
 </section>
 <section class="sec">
 <h2>9. A "skin" for each user: what is possible</h2>
-<p class="meta">Research of 17 November 2026, on your question: can the model be changed, or given a lasting layer per user, so it does not have to load and understand the memory on every request? Nothing here is built.</p>
+<p class="meta">Research of 16 November 2026, on your question: can the model be changed, or given a lasting layer per user, so it does not have to load and understand the memory on every request? Nothing here is built.</p>
 
 <div class="box">
 <p><b>Short answer.</b> The model itself cannot be changed: Claude cannot be trained on a user through the API today. But the same effect exists, and Phew already uses half of it: a block of text that the model has <b>already read</b> and that is reused at one twentieth of the price. Your "skin" is that block, one per user. It is worth building, more for speed and quality than for money, because the memory is not where the money goes. The money goes to the screen.</p>
@@ -334,7 +334,7 @@ input[type=number]{font:inherit;color:var(--ink);background:var(--paper);border:
 <li>Holding the conversation at the provider: only if speed in guides and jobs still bothers you after the rest.</li>
 </ol>
 <p class="lab">One rule the skin must keep: nothing in a layer may change between two calls, or the reuse is lost and it costs more than today. So no time of day, no last question, no counter inside it. And layer 1 must never hold anything personal, because with a hosted key it would be shared by everyone.</p>
-<p class="lab">Sources: Anthropic's documentation on prompt caching, message threads, the memory tool and the Files API, read on 17 November 2026; prices from section 1; shares from the call log. Training availability: <a href="https://www.anthropic.com/news/fine-tune-claude-3-haiku-ga">Anthropic's 2024 announcement</a> and <a href="https://www.ertas.ai/blog/can-you-fine-tune-claude">a third-party summary of 2026</a>, not verified on Anthropic's current pages.</p>
+<p class="lab">Sources: Anthropic's documentation on prompt caching, message threads, the memory tool and the Files API, read on 16 November 2026; prices from section 1; shares from the call log. Training availability: <a href="https://www.anthropic.com/news/fine-tune-claude-3-haiku-ga">Anthropic's 2024 announcement</a> and <a href="https://www.ertas.ai/blog/can-you-fine-tune-claude">a third-party summary of 2026</a>, not verified on Anthropic's current pages.</p>
 </section>
 </main>
 

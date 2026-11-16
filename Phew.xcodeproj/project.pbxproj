@@ -387,6 +387,7 @@
 					"$(inherited)",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSPrincipalClass = PhewTestSetup;
 				MARKETING_VERSION = 0.2.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.gianlucatroietto.PhewTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -407,6 +408,7 @@
 					"$(inherited)",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSPrincipalClass = PhewTestSetup;
 				MARKETING_VERSION = 0.2.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.gianlucatroietto.PhewTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";

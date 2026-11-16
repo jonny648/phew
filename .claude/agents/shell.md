@@ -11,7 +11,7 @@ You own `Phew/Shell`. You do not edit Senses, Brain or Map. You reach the Brain 
 
 Rules that matter most for you:
 - No main window, no Dock icon.
-- Panels are non-activating. Phew never takes focus from the front app. One exception: the system folder window, while the user picks a folder.
+- Panels are non-activating. Phew never takes focus from the front app. Two exceptions: the system folder window, while the user picks a folder; and a job the user asked for that needs another app, where that app is brought to the front and the user is returned to where they were.
 - He never appears unasked. An agent's result waits in the menu bar until the user opens it.
 - The overlay is transparent, covers the screen and ignores the mouse.
 - Motion is gentle and short. No decoration beyond what the task asks. Character and animation polish come after the MVP.

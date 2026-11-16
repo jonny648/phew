@@ -68,9 +68,11 @@ final class FakeSurface: HandSurface, @unchecked Sendable {  // state under `loc
     func send(_ step: HandStep, to element: AnyObject?) -> HandEnd {
         if delay > 0 { Thread.sleep(forTimeInterval: delay) }
         lock.withLock { sent.append(step) }
-        if step.kind == .set, let element = element as? Element { element.seen.value = step.text }
+        if step.kind == .set, let element = element as? Element { element.seen.value = wrongSet ? "other made-up text" : step.text }
         return .done
     }
+    /// A field that takes the set and keeps another value (a formatter): the read-back must notice (R38).
+    var wrongSet = false
 
     /// The fake scripting surface: records each script; makes ids "made-1", "made-2"…; `append` and `cells` need what
     /// this job made, as the real one. `scriptEnd` stands in for how the app answered.
@@ -863,6 +865,18 @@ final class HandTests: XCTestCase {
     }
 
     /// Fails the build if any file under Phew/ other than Senses/Hand.swift can send an action.
+    /// R38: a typed value is read back; a field that kept something else ends the job as "check failed", not "done".
+    func testATypedValueThatDidNotLandIsNoticed() {
+        var step = fake.add("Title", role: "AXTextField", frame: frame(0))
+        step.text = "made up"
+        var hand = self.hand()
+        XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, .done)
+        fake.wrongSet = true
+        hand = self.hand()
+        let job = hand.begin(watchUser: false)
+        XCTAssertEqual(hand.act(step, in: job).end, .checkFailed)
+    }
+
     func testOnlyHandActs() throws {
         let root = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent().appending(path: "Phew")
         var files = 0, offenders: [String] = []

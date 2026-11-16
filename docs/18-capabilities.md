@@ -1,6 +1,6 @@
 # 18. Capabilities: how Phew acts through real doors (phase NB)
 
-Written 17 November 2026. Research only: nothing is built, no connection was made, no account was touched. The plain-words version with drawings is `docs/connections.html`. This file holds the design in short (18.1) and the two research notes in full, with a link for every claim (18.2, 18.3). What could not be verified is marked in the notes and gathered at the end of each.
+Written 16 November 2026. Research only: nothing is built, no connection was made, no account was touched. The plain-words version with drawings is `docs/connections.html`. This file holds the design in short (18.1) and the two research notes in full, with a link for every claim (18.2, 18.3). What could not be verified is marked in the notes and gathered at the end of each.
 
 ## 18.1 The design in short
 

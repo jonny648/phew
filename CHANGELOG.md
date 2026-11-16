@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.3, 16 November 2026
+
+The rest of the developer review. Tested offline; nothing run live.
+
+- Quicker jobs: the screen read from the shortcut serves the first step, no second look after writing a note, reminder, event or cells, and the picture is taken while the window is read.
+- Memory that could not be opened is tried again, and the menu says "Memory is off" meanwhile.
+- After you confirm an agent's change, the menu offers Undo until you open the result.
+- A hold to talk ends without sending when the Mac sleeps or the screen locks. A key already held no longer blocks the shortcut.
+- A project folder's files are read only while your memory holds that project.
+- A word you corrected after a mishearing no longer counts as another name of the project.
+- Links in a PDF report show their address only for web addresses.
+- The app no longer freezes while a slow script runs; Stop can always be pressed.
+- The Observer's code is removed. Debug files from an earlier test run are deleted at launch.
+
 ## 0.2.2, 16 November 2026
 
 The serious findings of the developer review, fixed. Tested offline; the changed prompts and the real Notes, Reminders and Calendar scripts are not yet run live.

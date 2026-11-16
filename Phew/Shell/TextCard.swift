@@ -426,6 +426,13 @@ final class CardModel: ObservableObject {
         if step.kind == .front, !step.name.isEmpty { actingApp = step.name }
     }
 
+    /// NC.9: a skill step ended: its row ticked with its line, or marked not done. Nothing to undo: it changed nothing.
+    func skilled(_ line: String, ok: Bool) {
+        guard let last = actions.indices.last else { return }
+        actions[last].line = line
+        actions[last].state = ok ? .done : .failed
+    }
+
     /// Undo ran: a plain line, or why not.
     @MainActor
     /// `lines`: what was left alone or cannot come back (fixed sentences of `HandUndo`). `again`: something was not

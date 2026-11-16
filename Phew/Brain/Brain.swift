@@ -39,6 +39,13 @@ protocol Brain: Sendable {
     func nextAction(_ request: String, packet: ContextPacket?, done: [String]) async throws -> NextAction
     /// The same for a job asked aloud: `spoken` as in `answer`.
     func nextAction(_ request: String, packet: ContextPacket?, done: [String], spoken: [Hearing]) async throws -> NextAction
+    /// NC.9: the same, with what the job's last skill run gave (`skillStep`, its `<skill>` block), for the model as
+    /// data. Nil: none ran.
+    func nextAction(_ request: String, packet: ContextPacket?, done: [String], spoken: [Hearing], skill: String?) async throws -> NextAction
+    /// NC.9: a skill step of a job on the act route, written or run in the closed box only: never through the Hand,
+    /// nothing on the Mac. `ok`: it worked. `line`: how it ended, for the next round; a run that worked gives its
+    /// result in its `<skill>` block. `stop` is asked while a skill runs. A Brain without skills says so.
+    func skillStep(_ step: SkillStep, stop: @escaping @Sendable () -> Bool) async -> (ok: Bool, line: String)
 
     /// Drops the earlier questions and answers of the conversation. The Shell calls it when the card closes and on Quit.
     func forgetTurns()
@@ -123,6 +130,10 @@ extension Brain {
     func nextAction(_ request: String, packet: ContextPacket?, done: [String], spoken: [Hearing]) async throws -> NextAction {
         try await nextAction(request, packet: packet, done: done)
     }
+    func nextAction(_ request: String, packet: ContextPacket?, done: [String], spoken: [Hearing], skill: String?) async throws -> NextAction {
+        try await nextAction(request, packet: packet, done: done, spoken: spoken)
+    }
+    func skillStep(_ step: SkillStep, stop: @escaping @Sendable () -> Bool) async -> (ok: Bool, line: String) { (false, SkillTools.none) }
     func recentlyDeleted() async -> [DeletedItem] { [] }
     func restore(_ id: Int64) async -> Bool { false }
     func deleteNow(_ id: Int64) async -> Bool { false }
@@ -166,10 +177,18 @@ enum NextAction: Sendable, Equatable {
     /// Another app to the front, to go on there (PH.7): its bundle id from the fixed list in `Doer.apps`, and its
     /// plain name for the card.
     case front(bundleID: String, name: String)
+    /// NC.9: a skill written or run, as a step of the job: it only computes, in the closed box, and acts on nothing.
+    case skill(SkillStep)
     /// The job is finished: one short line for the card, in the user's language.
     case done(String)
     /// The next action is not possible: one short plain reason for the card. Empty when there is none.
     case stuck(String)
+}
+
+/// NC.9: what the Doer asked of a skill, as the model gave it; `SkillStore` checks it.
+enum SkillStep: Sendable, Equatable {
+    case write(name: String, about: String, code: String, testInput: String, expected: String)
+    case run(name: String, input: String)
 }
 
 enum BrainEvent: Sendable, Equatable {

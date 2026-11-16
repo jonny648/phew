@@ -164,6 +164,7 @@ enum BrainVoiceCheck {
         case .act(let kind, _, _, _): kind.rawValue
         case .script: "script"
         case .front: "open app"
+        case .skill: "skill"
         case .done: "done"
         case .stuck: "stuck"
         }

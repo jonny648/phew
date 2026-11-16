@@ -61,6 +61,7 @@ extension TextCard {
         run.menus = { pid in await Task.detached { MenuReader.names(pid: pid) }.value }
         run.starting = { [weak self] line in self?.model.actions.append(CardModel.Action(line: line)) }
         run.landed = { [weak self] step, result in self?.model.landed(ActJob.line(step), step: step, result: result) }
+        run.skilled = { [weak self] line, ok in self?.model.skilled(line, ok: ok) }
         let outcome = await run.run(request, job: job) { _ in count += 1 }
         Hand.shared.close(job)
         handJob = nil

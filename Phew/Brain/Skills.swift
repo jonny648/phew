@@ -138,25 +138,41 @@ struct SkillTools: ToolRunner {
         switch name {
         case "write_skill":
             let write = try JSONDecoder().decode(Write.self, from: input)
-            do {
-                try await store.write(name: write.name, about: write.about, code: write.code, testInput: write.test_input, expected: write.expected)
-                return "Kept as \(write.name)."
-            } catch let problem as SkillProblem {
-                return "Not kept. " + Guide.inert(problem.sentence)
-            }
+            return try await step(.write(name: write.name, about: write.about, code: write.code, testInput: write.test_input,
+                                         expected: write.expected)).line
         case "run_skill":
             let run = try JSONDecoder().decode(Run.self, from: input)
-            // Only a skill that exists is listed as used.
-            if store.find(run.name) != nil { ran(run.name) }
-            switch await store.run(run.name, input: run.input, stop: stop) {
-            case .done(let text): return Guide.block("skill", text)
-            case .failed(let why): return "The skill failed: " + Guide.inert(why)
-            case .timeout: return "The skill ran longer than \(Int(SkillBox.seconds)) seconds and was ended."
-            case .stopped: return "Stopped."
-            case .noBox: return "Skills cannot run on this Mac right now."
-            }
+            return try await step(.run(name: run.name, input: run.input)).line
         default:
             throw BrainError.badOutput
+        }
+    }
+
+    /// For a Brain with no skills (NC.9).
+    static let none = "Skills are not available here."
+
+    /// One skill written or run, for a task's tool or a watched job's step (NC.9): whether it worked, and one line on
+    /// how it ended. A run that worked gives what the skill returned, in its `<skill>` block, as data. Throws only
+    /// when a skill that passed its test could not be saved.
+    func step(_ step: SkillStep, stop: (@Sendable () -> Bool)? = nil) async throws -> (ok: Bool, line: String) {
+        switch step {
+        case let .write(name, about, code, testInput, expected):
+            do {
+                try await store.write(name: name, about: about, code: code, testInput: testInput, expected: expected)
+                return (true, "Kept as \(name).")
+            } catch let problem as SkillProblem {
+                return (false, "Not kept. " + Guide.inert(problem.sentence))
+            }
+        case let .run(name, input):
+            // Only a skill that exists is listed as used.
+            if store.find(name) != nil { ran(name) }
+            switch await store.run(name, input: input, stop: stop ?? self.stop) {
+            case .done(let text): return (true, Guide.block("skill", text))
+            case .failed(let why): return (false, "The skill failed: " + Guide.inert(why))
+            case .timeout: return (false, "The skill ran longer than \(Int(SkillBox.seconds)) seconds and was ended.")
+            case .stopped: return (false, "Stopped.")
+            case .noBox: return (false, "Skills cannot run on this Mac right now.")
+            }
         }
     }
 
@@ -185,4 +201,10 @@ final class UsedSkills: @unchecked Sendable {
 extension ClaudeBrain {
     func skills() async -> [Skill] { skills?.store.all() ?? [] }
     func deleteSkill(_ name: String) async { skills?.store.delete(name) }
+
+    /// NC.9: a watched job's skill step, in the box only. Logs nothing.
+    func skillStep(_ step: SkillStep, stop: @escaping @Sendable () -> Bool) async -> (ok: Bool, line: String) {
+        guard let skills else { return (false, SkillTools.none) }
+        return (try? await skills.step(step, stop: stop)) ?? (false, "Not kept. It could not be saved.")
+    }
 }

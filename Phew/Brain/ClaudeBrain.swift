@@ -64,10 +64,16 @@ struct ClaudeBrain: Brain {
     }
 
     func nextAction(_ request: String, packet: ContextPacket?, done: [String], spoken: [Hearing]) async throws -> NextAction {
+        try await nextAction(request, packet: packet, done: done, spoken: spoken, skill: nil)
+    }
+
+    func nextAction(_ request: String, packet: ContextPacket?, done: [String], spoken: [Hearing], skill: String?) async throws -> NextAction {
         do {
-            // The packet was filtered by Senses; the words and the lines of done actions are filtered here.
+            // The packet was filtered by Senses; the words, the lines of done actions and the last skill's result are
+            // filtered here. NC.9: the kept skills are listed as data, read again each round (a few small files).
             return try await Doer.next(SecretsFilter.clean(request), packet: packet, done: done.map(SecretsFilter.clean),
-                                       spoken: spoken, provider: provider)
+                                       spoken: spoken, skills: skills.map { $0.block() ?? Doer.noSkillsYet },
+                                       skill: skill.map(SecretsFilter.clean), provider: provider)
         } catch {
             throw BrainError(error)
         }

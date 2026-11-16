@@ -21,6 +21,8 @@ struct ActJob {
     var spoken: [Hearing] = []
     /// Each action that landed, with how: the card ticks its row, tags it, and follows a switch (N2.5).
     var landed: (HandStep, HandResult) -> Void = { _, _ in }
+    /// NC.9: a skill step ended, its line and whether it worked: the card ticks its row or marks it not done.
+    var skilled: (String, Bool) -> Void = { _, _ in }
     /// The names of an app's menu commands (`MenuReader.names(pid:)`), read once per job and per app (N2.6).
     var menus: (pid_t) async -> String = { _ in "" }
     /// The look taken at the shortcut, of the app the job starts in: round 1 uses it instead of a second screen read
@@ -50,6 +52,11 @@ struct ActJob {
         // R54: after a step behind the app, the last look again without its picture: the step does not show on the
         // screen, and the Hand already read it back. Each is used for one round only.
         var reuse = firstLook
+        // NC.9: when each step of the job ran, a skill step's too, so the Hand's ceilings count them all; the last
+        // skill result, for the next rounds; and the skill steps that failed. Gone with the job.
+        var ran: [Date] = []
+        var skill: String?
+        var skillsFailed = 0
         while true {
             if let end = job.end { return .ended(end) }
             let app = job.app
@@ -64,16 +71,41 @@ struct ActJob {
             if let end = job.end { return .ended(end) }
             let next: NextAction
             do {
-                next = try await brain.nextAction(request, packet: packet, done: done, spoken: spoken)
+                next = try await brain.nextAction(request, packet: packet, done: done, spoken: spoken, skill: skill)
             } catch {
                 return job.end.map(Outcome.ended) ?? .failed(BrainError(error))
             }
             // Stop or the user's own input during the call: nothing is sent.
             if let end = job.end { return .ended(end) }
+            // NC.9: a skill step only computes, in the Brain's closed box: it never goes to the Hand.
+            if case .skill(let step) = next {
+                let same = "skill \(step)"
+                repeats = same == last ? repeats + 1 : 0
+                last = same
+                guard repeats < 2 else { return .stuck(Self.noChange) }
+                if let end = Hand.ceiling(actedInJob: ran.count, recent: ran, now: Date()) { return .ended(end) }
+                ran.append(Date())
+                starting(Self.line(step, doing: true))
+                let (ok, said) = await brain.skillStep(step, stop: { job.end != nil })  // Stop ends a running skill
+                if let end = job.end { return .ended(end) }
+                let line = Self.line(step)
+                skilled(line, ok)
+                if ok, case .run = step {
+                    skill = said
+                    done.append("\(line): done")
+                } else {
+                    done.append("\(line): \(said)")
+                }
+                if !ok { skillsFailed += 1 }
+                guard skillsFailed < 3 else { return .stuck(Self.skillsFailed) }
+                reuse = Self.withoutPicture(packet)  // nothing changed on the screen
+                continue
+            }
             let step: HandStep
             switch next {
             case .done(let line): return .done(line)
             case .stuck(let line): return .stuck(line)
+            case .skill: continue  // handled above
             case .script(let script):
                 step = HandStep(kind: .script, pid: 0, script: script)  // behind the app: nothing on screen to move aside from
             case let .front(app, name):
@@ -90,20 +122,37 @@ struct ActJob {
             repeats = same == last ? repeats + 1 : 0
             last = same
             guard repeats < 2 else { return .stuck(Self.noChange) }
+            // The Hand counts only its own steps; this counts the job's skill steps too.
+            if let end = Hand.ceiling(actedInJob: ran.count, recent: ran, now: Date()) { return .ended(end) }
             starting(Self.line(step, doing: true))
             let hand = hand
             // Off the main thread: an app that hangs blocks for at most `Hand.timeout`.
             let result = await Task.detached { hand.act(step, in: job) }.value
+            ran.append(Date())
             let line = Self.line(step)
             done.append("\(line): \(result.end.rawValue)")
             guard result.end == .done else { return .ended(result.end) }
             listed(line)
             landed(step, result)
-            if step.kind == .script, var last = packet {
-                last.screenshot = nil
-                last.image = nil  // the raw pixels go with the picture
-                reuse = last
-            }
+            if step.kind == .script { reuse = Self.withoutPicture(packet) }
+        }
+    }
+
+    /// The last look without its picture, for one more round (R54).
+    private static func withoutPicture(_ packet: ContextPacket?) -> ContextPacket? {
+        guard var last = packet else { return nil }
+        last.screenshot = nil
+        last.image = nil  // the raw pixels go with the picture
+        return last
+    }
+
+    static let skillsFailed = "My skills failed three times, so I stopped."
+
+    /// NC.9: a skill step's line on the card, by the name the model gave. Memory only, never logged.
+    static func line(_ step: SkillStep, doing: Bool = false) -> String {
+        switch step {
+        case .write(let name, _, _, _, _): return "\(doing ? "Writing" : "Wrote") the skill \(name.prefix(40))"
+        case .run(let name, _): return "\(doing ? "Running" : "Ran") the skill \(name.prefix(40))"
         }
     }
 

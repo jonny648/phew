@@ -39,7 +39,7 @@ final class BreakingGateTests: XCTestCase {
     func testPlainReadNamesStillRead() {
         for name in ["get-page", "search-pages", "list-recent-files", "getPageContent", "get_file_metadata", "list_calendars",
                      "fetch", "SEARCH", "madeup-query-database", "find-users-by-id", "list-events-in-calendar", "lookup",
-                     "describe-teams", "count-items", "get-thread-messages", "get-self", "check-status", "showProjectDetails"] {
+                     "describe-teams", "count-items", "get-thread-messages", "get-self", "showProjectDetails"] {
             XCTAssertEqual(Connections.access(ConnectorTool(name: name), on: Self.server), .read, name)
         }
         XCTAssertEqual(Connections.nameWords("fetchANDDelete"), ["fetch", "and", "delete"])

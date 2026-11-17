@@ -29,8 +29,7 @@ final class CheckerPass2Tests: XCTestCase {
         let writes = everyday.filter { access($0) == .write }
         // Fail-safe cost of the allow-list: on a server outside Phew's table these ask for a confirm. Not a hole.
         XCTAssertEqual(Set(writes).subtracting(["notion-get-users", "notion-get-teams", "notion-list-recent-pages", "notion-get-self", "notion-search", "notion-fetch"]),
-                       ["get_message", "list_drafts", "get_draft", "list_labels", "get_spreadsheet", "download_file_content", "get_file_permissions",
-                        "list_file_revisions", "list_shared_drives", "read_presentation", "suggest_time", "search_contracts", "get_profile"])
+                       ["suggest_time", "search_contracts"])
     }
 
     func testPublicWebMore() {
@@ -43,5 +42,18 @@ final class CheckerPass2Tests: XCTestCase {
             XCTAssertFalse(ClaudeCodeDoor.publicWeb(shut), shut)
         }
         for open in ["http://xn--bcher-kva.example/", "https://example.com./x"] { XCTAssertTrue(ClaudeCodeDoor.publicWeb(open), open) }
+    }
+}
+
+/// After the second pass: one loose word closed, everyday reads of mail and files opened.
+final class ReadWordTests: XCTestCase {
+    func testCheckInWritesAndMailReadsRead() {
+        let server = ConnectorServer.notion
+        for name in ["check_in_user", "check_out_item", "get_in_touch"] { XCTAssertEqual(Connections.byName(name, server: server), .write, name) }
+        for name in ["get_message", "list_drafts", "get_draft", "list_labels", "get_spreadsheet", "download_file_content",
+                     "get_file_permissions", "list_file_revisions", "list_shared_drives", "read_presentation", "get_profile"] {
+            XCTAssertEqual(Connections.byName(name, server: server), .read, name)
+        }
+        for name in ["message_user", "comment_page", "draft_message", "label_thread", "get_and_message", "check-status", "get-comment"] { XCTAssertEqual(Connections.byName(name, server: server), .write, name) }
     }
 }

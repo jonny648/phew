@@ -170,13 +170,16 @@ final class Connections: @unchecked Sendable {  // state under `lock`
 
     /// The verbs that only read. A name needs at least one.
     static let readVerbs: Set = ["get", "list", "search", "read", "fetch", "query", "find", "view", "show", "describe", "count",
-                                 "check", "lookup", "status"]
-    /// Nouns and joiners that change nothing. No verb that could write ("comment", "message" as verbs are left out).
+                                 "lookup", "status", "download"]
+    /// Nouns and joiners that change nothing. A read verb is still needed beside them. "check" is not a read verb, so "check_in_user" writes;
+    /// "comment" alone is left out, so "get-comment" asks.
     static let harmlessWords: Set = ["page", "pages", "file", "files", "user", "users", "comments", "event", "events", "item",
                                      "items", "by", "id", "ids", "info", "details", "metadata", "recent", "all", "of", "for",
                                      "in", "the", "my", "self", "content", "document", "doc", "docs", "sheet", "values", "thread",
                                      "threads", "messages", "calendar", "calendars", "team", "teams", "project", "projects",
-                                     "database", "data", "source", "sources", "results", "logs"]
+                                     "database", "data", "source", "sources", "results", "logs", "message", "draft",
+                                     "drafts", "label", "labels", "spreadsheet", "permissions", "revisions", "shared",
+                                     "drive", "drives", "presentation", "profile"]
 
     /// Read or write, decided by Phew's code: the server's table first, else the name; the server's own marks can only
     /// make it stricter. A tool it cannot judge writes.

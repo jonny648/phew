@@ -48,6 +48,9 @@ final class TextCard: EditPanel {
     var consent = ActConsent()
     /// The task route (PA.2): starts the task with the words and this turn's capture; returns the card's one line.
     var onTask: ((String, ContextPacket?, [Hearing]) -> String)?
+    /// The watch route (NA.15): starts the watcher on the thing under the pointer in this turn's capture, or says why
+    /// not; returns the card's one line.
+    var onWatch: ((ContextPacket?) -> String)?
     /// P6.3: a spoken question where neither hearing made sense. The card has closed; this gets the best hearing and
     /// the turn's capture, to show them in the ask panel, ready to fix. Nothing was answered and nothing acted.
     var onUnclear: ((String, ContextPacket?) -> Void)?
@@ -96,16 +99,17 @@ final class TextCard: EditPanel {
     }
 
     /// A task's result, opened by the user from the menu (PA.2): shown as a finished answer they can reply to, with
-    /// where the PDF is. Never called by a task itself.
+    /// where the PDF is. Never called by a task itself. `keep` false (NA.15, a watch's result): the text is not kept
+    /// as a turn, so a reply never sends it to the model.
     func showResult(_ question: String, text: String, problem: String?, saved: URL?, at point: NSPoint, brain: any Brain,
-                    onKeyProblem: @escaping (BrainError) -> Void) {
+                    keep: Bool = true, onKeyProblem: @escaping (BrainError) -> Void) {
         open(at: point, brain: brain, onKeyProblem: onKeyProblem)
         model.begin(question)
         model.thinking = false
         model.text = text
         model.problem = problem
         model.saved = saved
-        if problem == nil { brain.keepTurn(question, answer: text) }
+        if problem == nil && keep { brain.keepTurn(question, answer: text) }
         restartIdle()
     }
 
@@ -174,6 +178,7 @@ final class TextCard: EditPanel {
                         if case .route(let route) = event { given = route }
                         if case .route(.act) = event, !state.acting { self?.model.note = Self.actingOff }  // with acting off, a guide
                         if case .route(.task) = event { self?.model.text = self?.onTask?(question, packet, spoken) ?? "" }
+                        if case .route(.watch) = event { self?.model.text = self?.onWatch?(packet) ?? "" }
                         if case .steps(let steps) = event, !steps.isEmpty {
                             self?.startGuide(steps, targets: steps.map { Self.rect(for: $0.target, in: packet) })
                         }

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Understands the request and chooses who works: explain, guide, remember, act or task. Small model, a few lines of
+/// Understands the request and chooses who works: explain, guide, remember, act, task or watch. Small model, a few lines of
 /// context (not the whole packet), an answer bound to a schema.
 enum Conductor {
     /// act against guide (PH.4, docs/13-hand.md 13.4): asked to do, he does; asked how, he shows; unsure, he shows.
@@ -23,6 +23,9 @@ enum Conductor {
         "find out…", "look into … and write me a report", "ricerca … e fammi un report", "scopri…". A question about \
         what is on screen stays explain or guide; asking Phew to do something in the app now stays act. When you are \
         unsure between task and explain, choose explain.
+        watch: they ask Phew to tell them later when the thing under the mouse pointer, or this window, changes, \
+        finishes or is done: "tell me when this changes", "let me know when the export is done", "avvisami quando \
+        cambia", "dimmi quando ha finito". A question about it now stays explain.
         unclear: only when the request is followed by a <spoken> block and neither hearing reads as a request about \
         this screen, about Phew's memory or for a task. Never for a request without a <spoken> block.
         heard: only when the request is followed by a <spoken> block: the request as you understood it, one line, in \
@@ -35,7 +38,7 @@ enum Conductor {
 
         """ + Spoken.rule
 
-    static let schema = #"{"type":"object","properties":{"route":{"type":"string","enum":["explain","guide","remember","act","task","unclear"]},"heard":{"type":"string"},"about_phew":{"type":"boolean"}},"required":["route","about_phew"],"additionalProperties":false}"#
+    static let schema = #"{"type":"object","properties":{"route":{"type":"string","enum":["explain","guide","remember","act","task","unclear","watch"]},"heard":{"type":"string"},"about_phew":{"type":"boolean"}},"required":["route","about_phew"],"additionalProperties":false}"#
 
     /// The route, and for a spoken question the request as the model understood it (P6.3): the card shows that line
     /// as the question, so the user sees what he understood. Never logged.

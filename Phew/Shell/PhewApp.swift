@@ -7,6 +7,9 @@ struct PhewApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     /// The "Let Phew act" switch: on unless turned off here.
     @AppStorage(Hand.allowedKey) private var allowed = true
+    /// NA.15, NA.16: off until switched on here.
+    @AppStorage(Watching.key) private var watchOn = false
+    @AppStorage(Notices.key) private var notify = false
 
     // No main window (hard rule): the menu bar item is the only scene.
     var body: some Scene {
@@ -18,8 +21,12 @@ struct PhewApp: App {
             }
             Divider()
             TaskEntries(tasks: delegate.tasks) { delegate.openTask($0) }
+            WatchEntries(watching: delegate.watching) { delegate.openWatched() }
             // Off: he guides instead.
             Toggle("Let Phew act", isOn: $allowed)
+            Toggle("Let Phew watch one thing", isOn: Binding(get: { watchOn }, set: { delegate.watching.allow($0) }))
+            Toggle("Notify me", isOn: Binding(get: { notify }, set: { on in Task { await delegate.notices.set(on) } }))
+            NoticesLine(notices: delegate.notices)
             NeverReadEntry(front: delegate.front) { delegate.neverReadFrontApp() }
             Divider()
             MemoryOffEntry(undo: delegate.importUndo)
@@ -45,7 +52,7 @@ struct PhewApp: App {
             Button("About Phew") { delegate.menuPanel.show(title: "About Phew", AboutView()) }
             Button("Quit Phew") { NSApp.terminate(nil) }
         } label: {
-            MenuIcon(model: delegate.card.model, tasks: delegate.tasks)
+            MenuIcon(model: delegate.card.model, tasks: delegate.tasks, watching: delegate.watching)
         }
     }
 }
@@ -89,6 +96,27 @@ private struct TaskEntries: View {
             Button("Undo the change confirmed for “\(item.title)”") { Task { await tasks.undo(item.id) } }
         }
         if !tasks.running.isEmpty || !tasks.queue.isEmpty || !tasks.waiting.isEmpty || !tasks.confirms.isEmpty || !tasks.undos.isEmpty { Divider() }
+    }
+}
+
+/// NA.15: while a watch runs, its Stop; when it ended by itself, one row that opens it on the card.
+private struct WatchEntries: View {
+    @ObservedObject var watching: Watching
+    let open: () -> Void
+
+    var body: some View {
+        if let app = watching.app { Button("Watching one thing in \(app)… Stop") { watching.stop() } }
+        if let result = watching.result { Button(result.row, action: open) }
+        if watching.app != nil || watching.result != nil { Divider() }
+    }
+}
+
+/// NA.16: one plain line when the system did not allow notifications.
+private struct NoticesLine: View {
+    @ObservedObject var notices: Notices
+
+    var body: some View {
+        if notices.refused { Text(Notices.refusedLine) }
     }
 }
 
@@ -164,9 +192,10 @@ final class FrontApp: ObservableObject {
 private struct MenuIcon: View {
     @ObservedObject var model: CardModel
     @ObservedObject var tasks: TaskList
+    @ObservedObject var watching: Watching
 
     var body: some View {
-        let running = tasks.running.count, waiting = !tasks.waiting.isEmpty
+        let running = tasks.running.count, waiting = !tasks.waiting.isEmpty || watching.result != nil
         HStack(spacing: 2) {
             Image(systemName: model.acting ? "cursorarrow.motionlines" : "cursorarrow.rays")
             if running > 0 { Text(verbatim: "\(running)") }
@@ -198,6 +227,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let front = FrontApp()
     /// The research tasks of this run (PA.2).
     lazy var tasks = TaskList(brain: brain)
+    /// "Notify me" (NA.16) and the watcher for one thing (NA.15), both off until switched on in the menu.
+    let notices = Notices.shared
+    lazy var watching = Watching(watcher: .shared, notices: notices)
     /// The menu's "Undo last import" (PB.3).
     lazy var importUndo = ImportUndo(brain: brain)
     /// The context read at the shortcut, kept only until the question is asked or the panel closes without one.
@@ -233,6 +265,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setup.askMicrophone = { Task { _ = await ListenPermissions.askMicrophone() } }
         card.onTask = { [unowned self] in tasks.start($0, packet: $1, spoken: $2) }
         card.onUnclear = { [unowned self] in unclear($0, packet: $1) }
+        card.onWatch = { [unowned self] in watching.start($0) }
+        tasks.onEnd = { [unowned self] in notices.task($0.title, ended: $0.state) }
+        if notices.on { SystemNotices.shared.listen() }  // a click on an earlier notification is handled, by doing nothing
         card.onUnsure = { [unowned self] heard, doubtful, packet in showFirst(heard, doubtful: doubtful, capture: Task { packet }) }
         importUndo.watchMenus()
         #if DEBUG
@@ -247,6 +282,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         brain.forgetTurns()
         tasks.stopAll()
+        watching.stop()
         shellLog("quit: turns dropped")
     }
 
@@ -262,6 +298,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         card.showResult(item.words, text: (item.report?.markdown ?? "") + unsaved, problem: failure.map(TextCard.sentence(for:)),
                         saved: item.report?.saved?.pdf, at: NSPoint(x: visible.maxX - Design.Size.width - 16, y: visible.maxY - 8),
                         brain: brain) { [unowned self] error in setup.showKey(rejected: error == .badKey) }
+    }
+
+    /// A watch's result, opened from the menu (NA.15): on the card near the menu bar. Not kept as a turn: the watched
+    /// text is never sent to the model.
+    func openWatched() {
+        let mouse = NSEvent.mouseLocation
+        guard let visible = (NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.screens.first)?.visibleFrame,
+              let result = watching.open() else { return }
+        card.showResult(result.row, text: result.text, problem: nil, saved: nil,
+                        at: NSPoint(x: visible.maxX - Design.Size.width - 16, y: visible.maxY - 8), brain: brain, keep: false) { [unowned self] error in
+            setup.showKey(rejected: error == .badKey)
+        }
     }
 
     /// The system folder window, the one focus exception (CLAUDE.md): Phew is active only while it is open, then the

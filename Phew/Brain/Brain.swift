@@ -176,6 +176,9 @@ enum Route: String, Sendable, CaseIterable {
     /// the stream ends after `.route`, and the Shell shows what was heard in the ask panel, ready to fix. Never for a
     /// typed question.
     case unclear
+    /// `watch` (NA.15, D4): tell the user when the thing under the pointer changes. The stream ends after `.route`; the
+    /// Shell starts the watcher, only while "Let Phew watch one thing" is on, else it says in one line that it is off.
+    case watch
 }
 
 /// The next step of a job on the act route, as the Brain chose it from a fresh look (PH.5).

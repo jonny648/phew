@@ -85,6 +85,8 @@ final class TaskList: ObservableObject {
     private var acted: [Int: Int] = [:]
     private var last = 0
     private var lastWait = 0
+    /// NA.16: a task ended by itself (ready or failed, never stopped), for "Notify me".
+    var onEnd: ((Item) -> Void)?
 
     init(brain: any Brain, hand: Hand = .shared, folder: @escaping () -> URL? = TaskList.chosenFolder) {
         self.brain = brain
@@ -185,6 +187,7 @@ final class TaskList: ObservableObject {
             $0.state = report != nil ? .ready : .failed(failure ?? .badOutput)
         }
         shellLog("task \(number): \(report != nil ? "ready" : "failed"), waiting in the menu, $\(String(format: "%.4f", cost))")
+        if let item = items.first(where: { $0.id == number }) { onEnd?(item) }
         startNext()
     }
 

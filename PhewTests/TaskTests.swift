@@ -111,7 +111,7 @@ final class TaskTests: XCTestCase {
 
     func testTheTaskRouteInTheConductorRequest() {
         let request = Conductor.request("Research kerning tools and write me a report", packet: nil)
-        XCTAssertTrue(request.schema?.contains(#""act","task","unclear"]"#) == true)
+        XCTAssertTrue(request.schema?.contains(#""act","task","unclear","watch"]"#) == true)
         XCTAssertTrue(request.system.contains("task: they hand Phew work"))
         XCTAssertTrue(request.system.contains("unsure between task and explain, choose explain"))
         XCTAssertEqual(Conductor.decode(#"{"route":"Task"}"#), .task)

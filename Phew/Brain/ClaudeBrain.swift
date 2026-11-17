@@ -166,6 +166,7 @@ struct ClaudeBrain: Brain {
         if SendOrShow.held(route, acting: state.acting, spoken: spoken) != nil { return }
         if route == .remember { return try await remember(question, packet: packet, emit: emit) }
         if route == .task { return }  // PA.2: the Shell starts the task through `runTask`
+        if route == .watch { return }  // NA.15: the Shell starts the watcher, on the Mac; nothing more is sent
         // PH.4: the Shell runs an act job through `nextAction`. With acting off it is shown as a guide.
         if route == .act && state.acting { return }
         if route == .act { route = .guide }

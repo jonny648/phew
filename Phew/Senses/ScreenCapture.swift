@@ -68,12 +68,13 @@ enum ScreenCapture {
     }
 
     /// Whether a whole-display picture leaves out the app `pid` (`bundleID`), when Phew was called on `front` (R1):
-    /// Phew, every app on the Never read list, and the Never list's password managers and terminals, wherever their
-    /// windows lie. Not the app Phew was called on: its window picture shows it too.
+    /// Phew, every app never read (the Never read list, Keychain Access and the password managers, D9), and the
+    /// Never list's terminals, wherever their windows lie. Not a terminal Phew was called on: its window picture
+    /// shows it too.
     static func hides(pid: pid_t, bundleID: String?, front: pid_t, list: NeverReadList) -> Bool {
-        if pid == getpid() || list.contains(bundleID) { return true }
+        if pid == getpid() || list.refuses(bundleID) { return true }
         guard pid != front, let bundleID else { return false }
-        return NeverList.passwordApps.contains(bundleID) || NeverList.terminals.contains(bundleID)
+        return NeverList.terminals.contains(bundleID)
     }
 
     private static func gap(_ a: CGRect, _ b: CGRect) -> CGFloat {

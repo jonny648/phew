@@ -48,7 +48,7 @@ final class ScreenWatch: NSObject, SCStreamOutput, SCStreamDelegate {
     func start(markFirst: Bool) {
         guard !running else { return }
         // Never while an app on the never-read list is in front; an action in another app starts it again.
-        guard !list.contains(front()) else { return shellLog("watch: not started, front app on the never-read list") }
+        guard !list.refuses(front()) else { return shellLog("watch: not started, front app on the never-read list") }
         running = true
         generation += 1
         lastAction = Date()

@@ -55,6 +55,8 @@ final class TextCard: EditPanel {
     /// gets the best hearing, the words to mark and the turn's capture, for the ask panel. Nothing was done.
     var onUnsure: ((String, [String], ContextPacket?) -> Void)?
     var lookPending: Bool { waitTask != nil || lookTask != nil }
+    /// The words of the turn on the card as the user gave them, for "Send as it is" (D7). Memory only; gone on close.
+    private var lastQuestion = ""
     /// True while an answer streams in.
     var answering: Bool { task != nil }
 
@@ -73,6 +75,7 @@ final class TextCard: EditPanel {
             onStep: { [weak self] in self?.jump(to: $0) },
             onStop: { [weak self] in self?.handJob?.stop() },
             onUndo: { [weak self] in self?.undo() },
+            onSendAsItIs: { [weak self] in self?.sendAsItIs() },
             // Next turn of the run loop: resizing the window inside SwiftUI's layout pass would nest layouts.
             onHeight: { [weak self] height in DispatchQueue.main.async { self?.fit(height: height) } }))
         host.sizingOptions = []  // the card sets its own frame, top-left fixed
@@ -123,8 +126,11 @@ final class TextCard: EditPanel {
 
     /// One turn: the question on the card, the capture awaited, the Brain's answer played in. The packet goes when
     /// this task ends; only the targets' rects stay for the guide.
-    func answer(_ question: String, spoken: [Hearing] = [], capture: Task<ContextPacket?, Never>?, guiding: Bool = false) {
+    /// `asItIs` (D7): the user pressed "Send as it is"; the Brain sends these words to the Guide unfiltered, once.
+    func answer(_ question: String, spoken: [Hearing] = [], capture: Task<ContextPacket?, Never>?, guiding: Bool = false,
+                asItIs: Bool = false) {
         guard let brain else { return }
+        lastQuestion = question
         let consent = consent
         // PS.14: Phew's own state for questions about himself. States only, never words.
         let state = ShellState(accessibility: AXIsProcessTrusted(), screenRecording: CGPreflightScreenCaptureAccess(), guideRunning: guiding,
@@ -136,16 +142,18 @@ final class TextCard: EditPanel {
         let asked = NSWorkspace.shared.frontmostApplication  // the app the user asked in: a job works there only
         task = Task { [weak self] in
             let start = Date()
-            var failure: BrainError?
+            var failure: BrainError?, answered = false
             do {
                 // A fast typist can press Return before the first capture in an app is ready (about 1 s).
                 let packet = await capture?.value
                 guard !Task.isCancelled else { return }
                 if let packet, packet.neverRead { self?.model.note = CardModel.neverReadNote(packet.appName) }
-                /// Plays one answer into the card; true when it is on the act route.
-                @MainActor func play(_ state: ShellState) async throws -> Bool {
-                    var acts = false
-                    for try await event in brain.answer(question, packet: packet, state: state, spoken: spoken) {
+                /// Plays one answer into the card; its route, nil when the card handed the question back.
+                @MainActor func play(_ state: ShellState) async throws -> Route? {
+                    var given: Route?
+                    let stream = asItIs ? brain.answerAsItIs(question, packet: packet, state: state)
+                        : brain.answer(question, packet: packet, state: state, spoken: spoken)
+                    for try await event in stream {
                         self?.model.apply(event)
                         if case .route(let route) = event, let self,
                            let doubtful = SendOrShow.held(route, acting: state.acting, spoken: spoken) {
@@ -154,30 +162,32 @@ final class TextCard: EditPanel {
                             let unsure = onUnsure
                             dismiss()
                             unsure?(question, doubtful, packet)
-                            return false
+                            return nil
                         }
                         if case .route(.unclear) = event, let self {
                             // Nothing answered, nothing acts: the card goes and the ask panel shows what was heard.
                             let unclear = onUnclear
                             dismiss()
                             unclear?(question, packet)
-                            return false
+                            return nil
                         }
-                        if case .route(.act) = event {
-                            acts = true
-                            if !state.acting { self?.model.note = Self.actingOff }  // with acting off, a guide
-                        }
+                        if case .route(let route) = event { given = route }
+                        if case .route(.act) = event, !state.acting { self?.model.note = Self.actingOff }  // with acting off, a guide
                         if case .route(.task) = event { self?.model.text = self?.onTask?(question, packet, spoken) ?? "" }
                         if case .steps(let steps) = event, !steps.isEmpty {
                             self?.startGuide(steps, targets: steps.map { Self.rect(for: $0.target, in: packet) })
                         }
                     }
-                    return acts
+                    return given
                 }
                 // With acting off the Brain gave a guide with the fixed line; with it on, he does the job.
-                if try await play(state), state.acting, !Task.isCancelled {
+                let route = try await play(state)
+                if route == .act, state.acting, !Task.isCancelled {
                     await self?.act(question, spoken: spoken, in: asked, first: packet)
                 }
+                // D7: only an answer by the Guide (an explanation, a guide) went with the question's words; a job, a
+                // task and a memory keep the filtered words whatever is pressed, so they offer nothing.
+                answered = route == .explain || route == .guide || (route == .act && !state.acting)
             } catch {
                 failure = BrainError(error)
             }
@@ -194,6 +204,8 @@ final class TextCard: EditPanel {
                 }
                 model.problem = Self.sentence(for: failure)
             }
+            // D7: the filter changed the user's own words; never after a send as it is, so one press is one message.
+            model.leftOut = failure == nil && answered && !asItIs && SecretsFilter.clean(question) != question
             restartIdle()
             if model.queued { sendReply() }  // typed and sent while he answered
         }
@@ -212,6 +224,16 @@ final class TextCard: EditPanel {
         endGuide()  // a guide of the turn before stops; this reply may start its own
         shellLog("card: reply sent, \(reply.count) characters, turn \(model.history.count + 2), phew front \(phewIsFront)")
         answer(reply, capture: Senses.capture(), guiding: guiding)
+    }
+
+    /// D7 "Send as it is", the user's own press: the question on the card goes once more, its words past the secrets
+    /// filter for this one message, with a fresh look as for a reply (`capture`). The next question is filtered again.
+    func sendAsItIs(capture: @MainActor () -> Task<ContextPacket?, Never>? = { Senses.capture() }) {
+        guard model.leftOut, !answering else { return }
+        let question = lastQuestion, guiding = !steps.isEmpty
+        endGuide()
+        shellLog("card: sent as it is, \(question.count) characters")
+        answer(question, capture: capture(), guiding: guiding, asItIs: true)
     }
 
     /// A click on the closed card: the same panel grows into the thread, with the cursor in the reply field.
@@ -259,6 +281,7 @@ final class TextCard: EditPanel {
         idleTask = nil
         endGuide()
         brain?.forgetTurns()  // 3.10: closing ends the conversation; the next call starts fresh
+        lastQuestion = ""
         escapeMonitor.map(NSEvent.removeMonitor)
         escapeMonitor = nil
         guard isVisible else { return }
@@ -410,7 +433,11 @@ final class CardModel: ObservableObject {
     @Published var saved: URL?
     /// The "To undo" line (N2.5): the job ended with changes it can put back. Gone with the turn.
     @Published var canUndo = false
+    /// D7: the secrets filter changed the user's own words of this turn: one line, and "Send as it is". Gone with the turn.
+    @Published var leftOut = false
     private(set) var pieces = 0
+
+    static let leftOutLine = "Something that looked like a key or password was left out of what was sent."
 
     static let toUndo = "To undo: Undo puts back what I changed or deleted."
     static let putBack = "Put back as it was."
@@ -464,7 +491,7 @@ final class CardModel: ObservableObject {
         started = true
         self.question = question
         thinking = true; text = ""; steps = []; current = 0; problem = nil; note = nil; pieces = 0
-        acting = false; actions = []; actingApp = ""; ended = nil; saved = nil; canUndo = false
+        acting = false; actions = []; actingApp = ""; ended = nil; saved = nil; canUndo = false; leftOut = false
     }
 
     func startActing(in app: String) {
@@ -472,13 +499,13 @@ final class CardModel: ObservableObject {
     }
 
     static func neverReadNote(_ app: String) -> String {
-        "\(app.isEmpty ? "This app" : app) is on your Never read list, so Phew did not look at the screen."
+        "\(app.isEmpty ? "This app" : app) is never read, so Phew did not look at the screen."
     }
 
     func reset() {
         question = ""; thinking = true; text = ""; steps = []; current = 0; problem = nil; note = nil; pieces = 0
         history = []; open = false; draft = ""; queued = false; started = false
-        acting = false; actions = []; actingApp = ""; ended = nil; saved = nil; canUndo = false
+        acting = false; actions = []; actingApp = ""; ended = nil; saved = nil; canUndo = false; leftOut = false
     }
 }
 
@@ -489,6 +516,7 @@ private struct CardView: View {
     let onStep: (Int) -> Void
     let onStop: () -> Void
     let onUndo: () -> Void
+    let onSendAsItIs: () -> Void
     let onHeight: (CGFloat) -> Void
     @State private var bodyHeight: CGFloat = 0
     @State private var footerHeight: CGFloat = 0
@@ -739,6 +767,13 @@ private struct CardView: View {
         }
         if let ended = model.ended {
             Text(verbatim: ended).font(Design.Text.body).foregroundStyle(Design.Ink.secondary)
+        }
+        if model.leftOut {
+            HStack(alignment: .firstTextBaseline, spacing: Design.Space.s8) {
+                Text(verbatim: CardModel.leftOutLine).font(Design.Text.small).foregroundStyle(Design.Ink.secondary)
+                Spacer(minLength: 0)
+                Button("Send as it is", action: onSendAsItIs).buttonStyle(QuietButton())
+            }
         }
         if model.canUndo && !model.acting {
             HStack(alignment: .firstTextBaseline, spacing: Design.Space.s8) {

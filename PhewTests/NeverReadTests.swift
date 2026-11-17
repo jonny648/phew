@@ -82,6 +82,56 @@ final class NeverReadTests: XCTestCase {
         XCTAssertTrue(guide.text.contains("Window: \n"))
     }
 
+    // MARK: D9 (F2): never read by default
+
+    /// Keychain Access and the password managers are never read with nothing on the user's list; any other app is.
+    func testPasswordManagersAreNeverReadByDefault() {
+        XCTAssertTrue(list.apps.isEmpty)
+        for bundleID in ["com.apple.keychainaccess", "com.apple.Passwords", "com.1password.1password"] {
+            XCTAssertTrue(list.refuses(bundleID), bundleID)
+            XCTAssertEqual(list.packet(appName: "Made Up", bundleID: bundleID)?.neverRead, true, "the capture: text, cursor, picture")
+            XCTAssertTrue(ScreenCapture.hides(pid: 700, bundleID: bundleID, front: 700, list: list), "left out even when called on")
+            let watch = ScreenWatch(screen: false, list: list, front: { bundleID })
+            watch.start(markFirst: true)
+            XCTAssertFalse(watch.running, bundleID)
+        }
+        XCTAssertFalse(list.refuses("com.apple.Safari"))
+        XCTAssertNil(list.packet(appName: "Safari", bundleID: "com.apple.Safari"))
+        XCTAssertFalse(list.refuses("com.apple.Terminal"), "a terminal is never acted in, not never read")
+        let watch = ScreenWatch(screen: false, list: list, front: { "com.apple.Safari" })
+        watch.start(markFirst: true)
+        XCTAssertTrue(watch.running)
+        watch.stop("test")
+    }
+
+    /// The real reads of an app never read by default, with the test host standing in for a password manager:
+    /// the capture (window text, cursor element, picture), the menu names and the guide's element give nothing.
+    func testEveryReadOfAnAppNeverReadByDefaultGivesNothing() async throws {
+        let app = NSRunningApplication.current
+        let bundleID = try XCTUnwrap(app.bundleIdentifier)
+        var refusing: NeverReadList = list
+        refusing.always = [bundleID]
+        XCTAssertTrue(refusing.apps.isEmpty, "not on the user's list")
+        let captured = await Senses.capture(app: app, list: refusing).value
+        let packet = try XCTUnwrap(captured)
+        XCTAssertTrue(packet.neverRead)
+        XCTAssertEqual(packet.visibleText, "")
+        XCTAssertNil(packet.cursor)
+        XCTAssertNil(packet.screenshot)
+        XCTAssertEqual(MenuReader.names(pid: getpid(), list: refusing), "")
+        XCTAssertNil(WindowReader.element(at: .zero, pid: getpid(), list: refusing))
+        XCTAssertTrue(refusing.refuses(pid: getpid()))
+        XCTAssertFalse(list.refuses(pid: getpid()), "the same app is read when not refused")
+    }
+
+    func testThePanelDoesNotListTheDefaults() {
+        list.add(name: "Passwords", bundleID: "com.apple.Passwords")
+        list.add(name: "Keychain Access", bundleID: "com.apple.keychainaccess")
+        XCTAssertTrue(list.apps.isEmpty, "a default is never a row")
+        XCTAssertTrue(NeverReadModel(list: list).apps.isEmpty)
+        XCTAssertTrue(NeverReadView.help.contains("Keychain Access and password managers are always left out"))
+    }
+
     func testTheWatchDoesNotStartOnAListedApp() {
         list.add(name: madeUp.name, bundleID: madeUp.bundleID)
         let watch = ScreenWatch(screen: false, list: list, front: { self.madeUp.bundleID })

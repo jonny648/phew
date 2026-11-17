@@ -23,9 +23,12 @@ final class NeverReadModel: ObservableObject {
 struct NeverReadView: View {
     @ObservedObject var model: NeverReadModel
 
+    /// D9: Keychain Access and the password managers are never read and are not rows here.
+    static let help = "Phew never reads the screen of these apps. Use “Never read” in the menu to add the app in front. "
+        + "Keychain Access and password managers are always left out."
+
     var body: some View {
-        PanelList(isEmpty: model.apps.isEmpty, emptyLine: "No apps on the list.",
-                  help: "Phew never reads the screen of these apps. Use “Never read” in the menu to add the app in front.") {
+        PanelList(isEmpty: model.apps.isEmpty, emptyLine: "No apps on the list.", help: Self.help) {
             ForEach(model.apps) { app in
                 Row(title: app.name) {
                     Button("Remove") { model.remove(app.bundleID) }.buttonStyle(QuietButton())

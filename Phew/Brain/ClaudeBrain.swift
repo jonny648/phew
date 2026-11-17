@@ -34,13 +34,23 @@ struct ClaudeBrain: Brain {
     }
 
     func answer(_ question: String, packet: ContextPacket?, state: ShellState, spoken: [Hearing]) -> AsyncThrowingStream<BrainEvent, Error> {
+        answer(question, packet: packet, state: state, spoken: spoken, asItIs: false)
+    }
+
+    func answerAsItIs(_ question: String, packet: ContextPacket?, state: ShellState) -> AsyncThrowingStream<BrainEvent, Error> {
+        answer(question, packet: packet, state: state, spoken: [], asItIs: true)
+    }
+
+    private func answer(_ question: String, packet: ContextPacket?, state: ShellState, spoken: [Hearing],
+                        asItIs: Bool) -> AsyncThrowingStream<BrainEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
                     try limits?.start()  // a question or a reply: a new request
                     // The packet was filtered by Senses; the typed question is filtered here, before any call (the
-                    // hearings in `Spoken.block`).
-                    try await run(SecretsFilter.clean(question), packet: packet, state: state, spoken: spoken) { continuation.yield($0) }
+                    // hearings in `Spoken.block`). D7: as it is, the Guide alone gets the words unfiltered.
+                    try await run(SecretsFilter.clean(question), asTyped: asItIs ? question : nil, packet: packet, state: state,
+                                  spoken: spoken) { continuation.yield($0) }
                     continuation.yield(.done)
                     continuation.finish()
                 } catch {
@@ -113,8 +123,12 @@ struct ClaudeBrain: Brain {
 
     // MARK: One request
 
-    private func run(_ question: String, packet: ContextPacket?, state: ShellState, spoken: [Hearing], emit: (BrainEvent) -> Void) async throws {
+    /// `question` is filtered. `asTyped` (D7): the user's own words, sent to the Guide in its place; everything else
+    /// (the Conductor, the Map, the turn kept, the Librarian) has the filtered `question`.
+    private func run(_ question: String, asTyped: String? = nil, packet: ContextPacket?, state: ShellState, spoken: [Hearing],
+                     emit: (BrainEvent) -> Void) async throws {
         let start = Date()
+        let sent = asTyped ?? question
         // The Conductor and the Map side by side. The Map is read by code, no model call.
         // P6.3: for a spoken question, the words the recogniser had (screen and memory), so a misheard name can be put right.
         let mapNames = spoken.isEmpty ? [] : await map.spokenNames()
@@ -130,7 +144,7 @@ struct ClaudeBrain: Brain {
             do {
                 let (store, lines) = await recalled.value
                 let project = await projectMemoryBlock(question, packet: packet, store: store)
-                try await Guide.answer(question, packet: packet, route: .explain, earlier: earlier, recall: lines, aboutPhew: false,
+                try await Guide.answer(sent, packet: packet, route: .explain, earlier: earlier, recall: lines, aboutPhew: false,
                                        projectMemory: project, tools: tools ?? store.map(MapSearch.init), provider: provider) { out.yield($0) }
                 out.finish()
             } catch { out.finish(throwing: error) }
@@ -172,7 +186,7 @@ struct ClaudeBrain: Brain {
             let held = await store?.counts()
             let about = SelfKnowledge.live(state, turn: earlier.count + 1, projects: held?.projects, facts: held?.facts)
             let project = route == .explain ? await projectMemoryBlock(question, packet: packet, store: store) : nil
-            try await Guide.answer(question, packet: packet, route: route, earlier: earlier, recall: lines, about: about,
+            try await Guide.answer(sent, packet: packet, route: route, earlier: earlier, recall: lines, about: about,
                                    aboutPhew: aboutPhew, projectMemory: project, spoken: spoken, tools: tools ?? store.map(MapSearch.init),
                                    provider: provider, emit: take)
         }

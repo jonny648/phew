@@ -15,6 +15,12 @@ protocol Brain: Sendable {
     /// spoken question can come back `.route(.unclear)`.
     func answer(_ question: String, packet: ContextPacket?, state: ShellState, spoken: [Hearing]) -> AsyncThrowingStream<BrainEvent, Error>
 
+    /// D7 "Send as it is": a typed `answer` whose `question` goes to the Guide as the user wrote it, past the secrets
+    /// filter, for this one request. Only after the user pressed the card's button, never on the model's word. The
+    /// screen, the Map, project memory and tool results are filtered as always; the turn kept for follow-ups and what
+    /// the Librarian learns hold the filtered words. A Brain without it filters as usual.
+    func answerAsItIs(_ question: String, packet: ContextPacket?, state: ShellState) -> AsyncThrowingStream<BrainEvent, Error>
+
     /// Names from the Map for the recogniser (P6.3): Projects, People, Tools and Organizations, the most recently
     /// changed first, at most 30. Names only, never a fact; nothing sensitive. Empty without a Map.
     func spokenNames() async -> [String]
@@ -120,6 +126,9 @@ extension Brain {
     }
     /// A Brain that does not read hearings answers the best one as if typed.
     func answer(_ question: String, packet: ContextPacket?, state: ShellState, spoken: [Hearing]) -> AsyncThrowingStream<BrainEvent, Error> {
+        answer(question, packet: packet, state: state)
+    }
+    func answerAsItIs(_ question: String, packet: ContextPacket?, state: ShellState) -> AsyncThrowingStream<BrainEvent, Error> {
         answer(question, packet: packet, state: state)
     }
     func spokenNames() async -> [String] { [] }

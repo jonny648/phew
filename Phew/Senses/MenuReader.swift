@@ -53,10 +53,10 @@ enum MenuReader {
         return text
     }
 
-    /// The real read: the menu bar of app `pid`, two levels under it, then `names`. Empty for an app on the Never
-    /// read list, or when the app gives no menu bar. Reads titles and the enabled flag only, never opens a menu.
+    /// The real read: the menu bar of app `pid`, two levels under it, then `names`. Empty for an app never read
+    /// (`NeverReadList.refuses`), or when the app gives no menu bar. Reads titles and the enabled flag only, never opens a menu.
     static func names(pid: pid_t, list: NeverReadList = .shared) -> String {
-        guard !list.contains(NSRunningApplication(processIdentifier: pid)?.bundleIdentifier) else { return "" }
+        guard !list.refuses(pid: pid) else { return "" }
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, Hand.timeout)
         var bar: CFTypeRef?

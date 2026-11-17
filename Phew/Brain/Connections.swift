@@ -256,6 +256,33 @@ final class Connections: @unchecked Sendable {  // state under `lock`
         return ToolSpec(name: name, description: "\(server.name): \(cut)\(writes)", schema: tool.schema)
     }
 
+    /// A call's arguments as they may leave the Mac: every string in them (keys too) through the secrets filter, keys
+    /// sorted. Not JSON: the text, filtered.
+    static func filtered(_ arguments: Data) -> Data {
+        func clean(_ value: Any) -> Any {
+            switch value {
+            case let text as String: SecretsFilter.clean(text)
+            case let list as [Any]: list.map(clean)
+            case let object as [String: Any]:
+                Dictionary(object.map { (SecretsFilter.clean($0.key), clean($0.value)) }, uniquingKeysWith: { a, _ in a })
+            default: value
+            }
+        }
+        guard let value = try? JSONSerialization.jsonObject(with: arguments, options: .fragmentsAllowed),
+              let data = try? JSONSerialization.data(withJSONObject: clean(value), options: [.sortedKeys, .fragmentsAllowed])
+        else { return Data(SecretsFilter.clean(String(decoding: arguments, as: UTF8.self)).utf8) }
+        return data
+    }
+
+    /// A JSON object written one way only: keys sorted, `true` never equal to `1`. Nil for anything else.
+    static func canonical(_ arguments: Data) -> Data? {
+        guard let object = (try? JSONSerialization.jsonObject(with: arguments)) as? [String: Any] else { return nil }
+        return try? JSONSerialization.data(withJSONObject: object, options: .sortedKeys)
+    }
+
+    /// The secrets filter would change something in these arguments.
+    static func holdsSecret(_ arguments: Data) -> Bool { canonical(arguments).map { $0 != filtered(arguments) } ?? true }
+
     /// A tool's answer for the model: cut to `answerCap`, filtered, in its `<connector>` block, as data.
     static func answer(_ answer: ConnectorAnswer) -> String {
         let cut = answer.text.count > answerCap ? String(answer.text.prefix(answerCap)) + "\n[cut: the answer was longer]" : answer.text
@@ -357,7 +384,7 @@ final class Connections: @unchecked Sendable {  // state under `lock`
     func read(_ tool: ConnectorTool, on server: ConnectorServer, arguments: Data) async -> String {
         guard let permit = ConnectorPermit(reading: tool, on: server) else { return AddItemTool.refused }
         do {
-            return Self.answer(try await door(server).call(permit, arguments: arguments))
+            return Self.answer(try await door(server).call(permit, arguments: Self.filtered(arguments)))
         } catch {
             return "The tool failed. Write the report with what you have."  // no error text: it could carry the request
         }
@@ -388,7 +415,7 @@ extension Connections: HandConnector {
             do {
                 // The tool must still be the one remembered: a list that changed stops it.
                 guard try await check(server).contains(where: { $0.name == call.tool }) else { ended.withLock { $0 = .gone }; return }
-                end = try await door(server).call(permit, arguments: call.arguments).isError ? .failed : .done
+                end = try await door(server).call(permit, arguments: Self.filtered(call.arguments)).isError ? .failed : .done
             } catch ConnectorError.changed {
                 end = .surprise
             } catch {
@@ -437,6 +464,8 @@ struct ConnectorTools: ToolRunner {
     func run(_ name: String, input: Data) async throws -> String {
         guard let hit = offered.first(where: { $0.spec.name == name }),
               (try? JSONSerialization.jsonObject(with: input)) is [String: Any] else { return AddItemTool.refused }
+        // The model wrote the arguments: they leave filtered, and the confirm row shows them as they will leave.
+        let input = Connections.filtered(input)
         let (server, tool) = (hit.server, hit.tool)
         used.add(server.name)
         if Connections.access(tool, on: server) == .read { return await connections.read(tool, on: server, arguments: input) }

@@ -50,7 +50,7 @@ final class BreakingGateTests: XCTestCase {
         XCTAssertEqual(Connections.access(ConnectorTool(name: "notion-create-comment"), on: .notion), .write)
     }
 
-    /// OPEN (guard 6). A connector call's arguments, written by the model, reach the server with no secrets filter.
+    /// CLOSED (guard 6). A connector call's arguments, written by the model, reach the server through the secrets filter.
     func testConnectorArgumentsAreNotFilteredBeforeTheyLeave() async throws {
         final class Recording: ConnectorTransport, @unchecked Sendable {
             private let lock = NSLock()
@@ -72,17 +72,21 @@ final class BreakingGateTests: XCTestCase {
         _ = try await tools.run("madeup__made-search", input: Data(#"{"query":"\#(secret)"}"#.utf8))
         let sent = door.arguments.map { String(decoding: $0, as: UTF8.self) }
         XCTAssertEqual(sent.count, 1)
-        XCTExpectFailure("the answer is filtered, the arguments are not (Connections.read, ConnectorTools.run)") {
-            XCTAssertFalse(sent.joined().contains(secret))
-        }
+        XCTAssertFalse(sent.joined().contains(secret))
+        XCTAssertTrue(sent.joined().contains(#""query""#), "the call still goes, with the key taken out")
+        // Nested, in a list, in a key: every string. A plain call is unchanged and holds no secret.
+        let nested = Data(#"{"a":[{"b":"\#(secret)"}],"\#(secret)":1,"n":true}"#.utf8)
+        XCTAssertFalse(String(decoding: Connections.filtered(nested), as: UTF8.self).contains(secret))
+        XCTAssertTrue(Connections.holdsSecret(nested))
+        XCTAssertFalse(Connections.holdsSecret(Data(#"{"query":"made-up plan","n":1,"on":true}"#.utf8)))
     }
 }
 
 // MARK: Door 1 (guards 3, 7, 10, 11)
 
 extension ClaudeCodeDoorTests {
-    /// OPEN (guard 10). The "ran without asking Phew" net counts only SUCCESSFUL results against Phew's allows: an
-    /// allowed call that fails pays for one tool that Claude Code ran by the user's own settings, with no ask.
+    /// CLOSED (guard 10). Every result is matched by its tool_use id to a call Phew allowed: a result, worked or
+    /// failed, for any other call ends the run.
     func testBreak_anUnaskedToolAfterAnErroredAllowedCallIsNotNoticed() async throws {
         let body = "say '\(Self.initLine)'\n"
             + "ask '\(Self.request("mcp__claude_ai_Notion__notion-search", id: "r1", use: "t1"))'\n"
@@ -91,13 +95,47 @@ extension ClaudeCodeDoorTests {
             + "say '\(Self.result("Done."))'\n"
         let d = door(try fake(body))
         let step = await d.step("Search the made-up launch plan", task: 21, ask: nil)
-        XCTExpectFailure("results (1) is not more than allows (1): ClaudeCodeDoor.swift:729-730") {
-            XCTAssertEqual(step.end, .unasked)
-        }
+        XCTAssertEqual(step.end, .unasked)
+        // A failed tool nobody asked about ends it too.
+        let failed = door(try fake("say '\(Self.initLine)'\nsay '\(Self.toolResult("t9", error: true))'\nexec sleep 30\n"))
+        let ended = await failed.step("Search the made-up launch plan", task: 23, ask: nil)
+        XCTAssertEqual(ended.end, .unasked)
+        // A call Phew refused that then worked anyway ends it.
+        let ran = door(try fake("say '\(Self.initLine)'\n" + "ask '\(Self.request("Bash", #"{"command":"ls"}"#, id: "r1", use: "t1"))'\n"
+                                 + "say '\(Self.toolResult("t1", error: false))'\nexec sleep 30\n"))
+        let refusedRan = await ran.step("Search the made-up launch plan", task: 24, ask: nil)
+        XCTAssertEqual(refusedRan.end, .unasked)
     }
 
-    /// OPEN (guard 7). A research run lets WebFetch go to ANY address the model names: a local one, a private network
-    /// one, a file one. Phew's gate counts the page and says yes; Door 2's server-side fetch cannot reach the Mac.
+    /// A request with no tool_use id: its result is matched by the assistant's tool call, by tool and input in order.
+    func testAResultIsMatchedByToolAndInputWhenTheRequestHasNoId() async throws {
+        let tool = "mcp__claude_ai_Notion__notion-search"
+        let noID = #"{"type":"control_request","request_id":"r1","request":{"subtype":"can_use_tool","tool_name":"\#(tool)","input":{"query":"made-up plan"}}}"#
+        let use = #"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t7","name":"\#(tool)","input":{"query":"made-up plan"}}]}}"#
+        let other = #"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t8","name":"\#(tool)","input":{"query":"another plan"}}]}}"#
+        let matched = door(try fake("say '\(Self.initLine)'\nsay '\(use)'\nask '\(noID)'\nsay '\(Self.toolResult("t7", error: false))'\nsay '\(Self.result("Found."))'\n"))
+        let step = await matched.step("Search the made-up launch plan", task: 25, ask: nil)
+        XCTAssertEqual(step.end, .done)
+        // The same allow cannot cover a second call with other input.
+        let twice = door(try fake("say '\(Self.initLine)'\nsay '\(use)'\nsay '\(other)'\nask '\(noID)'\n"
+                                  + "say '\(Self.toolResult("t7", error: false))'\nsay '\(Self.toolResult("t8", error: false))'\nexec sleep 30\n"))
+        let ended = await twice.step("Search the made-up launch plan", task: 26, ask: nil)
+        XCTAssertEqual(ended.end, .unasked)
+    }
+
+    /// Door 1's input passes the secrets filter: a call that would change is refused with a plain line, never sent.
+    func testACallWithASecretInItsInputIsRefused() async throws {
+        let secret = "sk-" + "ant-api03-" + String(repeating: "Ab3dEf6hIj", count: 4)
+        let d = door(try fake("say '\(Self.initLine)'\n" + Self.ask("mcp__claude_ai_Notion__notion-search", #"{"query":"\#(secret)"}"#)
+                              + "say '\(Self.result("Nothing."))'\n"))
+        let step = await d.step("Search the made-up launch plan", task: 27, ask: nil)
+        XCTAssertEqual(step.end, .done)
+        XCTAssertEqual(answers.count, 1)
+        XCTAssertTrue(answers[0].contains(#""behavior":"deny""#) && answers[0].contains("secrets filter"))
+        XCTAssertFalse(answers[0].contains(secret))
+    }
+
+    /// CLOSED (guard 7). A research run's WebFetch goes only to a public web address, checked by Phew's code.
     func testBreak_researchWebFetchReachesLocalAndPrivateAddresses() async throws {
         let report = #"# Made-up\n\nShort.\n\n## Not checked\n\nNothing."#
         let body = "say '\(Self.initLine)'\n"
@@ -113,15 +151,32 @@ extension ClaudeCodeDoorTests {
         defer { try? FileManager.default.removeItem(at: reports) }
         for try await _ in d.research("Research the made-up plan", number: 31, folder: reports, connector: nil) {}
         let allowed = answers.filter { $0.contains(#""behavior":"allow""#) }.count
-        XCTExpectFailure("ClaudeCodeDoor.swift:441-447 allows every WebFetch that is within the page count") {
-            XCTAssertEqual(allowed, 0, "a local, private, link-local or file address was allowed")
+        XCTAssertEqual(allowed, 0, "a local, private, link-local or file address was allowed")
+        XCTAssertEqual(answers.count, 4)
+        XCTAssertTrue(answers.allSatisfy { $0.contains("only public web pages") })
+    }
+
+    /// The one check of a WebFetch address, both ways.
+    func testOnlyPublicWebAddressesPass() {
+        for open in ["https://example.com/made-up", "http://made-up.test/a?b=c", "https://8.8.8.8/", "https://[2606:4700::1111]/",
+                     "https://sub.example.co.uk:8443/x#y", "https://172.32.0.1/", "https://192.169.0.1/"] {
+            XCTAssertTrue(ClaudeCodeDoor.publicWeb(open), open)
+        }
+        for shut in ["http://127.0.0.1:8080/admin", "file:///etc/hosts", "http://192.168.1.1/", "http://169.254.169.254/latest/meta-data/",
+                     "http://localhost/", "http://LOCALHOST./", "http://made-up.local/", "http://app.localhost/", "http://10.1.2.3/",
+                     "http://172.16.0.1/", "http://172.31.255.255/", "http://0.0.0.0/", "http://0/", "http://2130706433/",
+                     "http://0x7f.1/", "http://0177.0.0.1/", "http://127.1/", "http://0x7f000001/", "http://[::1]/",
+                     "http://[::ffff:127.0.0.1]/", "http://[::ffff:7f00:1]/", "http://[fe80::1]/", "http://[fd00::1]/",
+                     "http://[fc12::1]/", "http://[::]/", "http://[64:ff9b::a00:1]/", "http://[2002:c0a8:101::]/",
+                     "ftp://example.com/", "javascript:alert(1)", "data:text/html,x", "gopher://example.com/",
+                     "http://user:pass@example.com/", "http://example.com@127.0.0.1/", "http://example.com\\@127.0.0.1/",
+                     "http://intranet/", "http://300.1.1.1/", "http://exa mple.com/", "http://exämple.com/", "", "example.com"] {
+            XCTAssertFalse(ClaudeCodeDoor.publicWeb(shut), shut)
         }
     }
 
-    /// LOW (guard 11). SIGTERM reaches the program's whole process group (`Process.terminate`), so a child dies with
-    /// it: that held (a first version of this test showed it). The SIGKILL half a second later is aimed at one pid: a
-    /// program that ignores SIGTERM (and so does its child) leaves the child behind. A real Claude Code stops its tool
-    /// servers when its input closes, which `Run.end` does; this only shows the fallback is not group-wide.
+    /// CLOSED (guard 11). The SIGKILL fallback goes to the program's whole process group: a child that ignored
+    /// SIGTERM goes with it.
     func testBreak_theKillFallbackLeavesAChildThatIgnoredTerm() async throws {
         let d = door(try fake("trap '' TERM\nsay '\(Self.initLine)'\nsleep 60 &\necho $! > \"$d/child\"\nwait\nwait\n"))
         let stop = Flag()
@@ -134,16 +189,14 @@ extension ClaudeCodeDoorTests {
         let alive = pid > 0 && kill(pid, 0) == 0
         if alive { kill(pid, SIGKILL) }
         XCTAssertLessThan(Date().timeIntervalSince(stoppedAt), 3)
-        XCTExpectFailure("Run.end sends SIGKILL to one pid, not its group (ClaudeCodeDoor.swift:632-633)") {
-            XCTAssertFalse(alive, "a child that ignored SIGTERM outlived the run")
-        }
+        XCTAssertFalse(alive, "a child that ignored SIGTERM outlived the run")
     }
 
-    /// OPEN (nit, guard 3). The fresh run after a confirm compares the input as Foundation objects: `true` equals `1`.
+    /// CLOSED (nit, guard 3). The fresh run after a confirm compares the input written one way: `true` is not `1`.
     func testBreak_theFreshRunsInputCheckTakesTrueForOne() {
-        XCTExpectFailure("ClaudeCodeDoor.same uses NSDictionary.isEqual (ClaudeCodeDoor.swift:400-404)") {
-            XCTAssertFalse(ClaudeCodeDoor.same(Data(#"{"archive":true}"#.utf8), Data(#"{"archive":1}"#.utf8)))
-        }
+        XCTAssertFalse(ClaudeCodeDoor.same(Data(#"{"archive":true}"#.utf8), Data(#"{"archive":1}"#.utf8)))
+        XCTAssertTrue(ClaudeCodeDoor.same(Data(#"{"a":1,"b":[true,"x"]}"#.utf8), Data(#"{"b":[true,"x"],"a":1}"#.utf8)))
+        XCTAssertFalse(ClaudeCodeDoor.same(Data("[]".utf8), Data("[]".utf8)), "an object only")
     }
 }
 

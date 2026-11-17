@@ -243,9 +243,12 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
     /// Ticked servers whose tools are as remembered: only the tools that fit the task's words; every other tool and
     /// every other server (plugins too) refused by name.
     // shortcut: Claude Code applies the allow rules in the user's own settings before asking Phew, and Phew does not
-    // read that file. Deny beats allow, so every tool not chosen here is refused by name; only a chosen tool that the
-    // user's settings allow could run without asking. That run is noticed (`unasked`) and ends the run at once, but
-    // after the call. Close it for good if Claude Code gains a way to ignore the settings' allow rules alone.
+    // read that file. Deny beats allow, so every tool not chosen here is refused by name. Every tool result is matched
+    // to a call Phew allowed by its tool_use id (by tool and input, in order, when a request carries no id); any other
+    // result, worked or failed, ends the run at once (`unasked`). What remains: a chosen write tool that the user's own
+    // settings allow can run once without asking Phew, and several calls made in parallel can all run before the run
+    // ends, because Phew sees them only by their results. Close it for good if Claude Code gains a way to ignore the
+    // settings' allow rules alone.
     func plan(for words: String) -> Plan {
         let pins = pins()
         var plan = Plan()
@@ -265,6 +268,10 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
     }
 
     static let refused = "Phew refuses this tool here."
+    /// A WebFetch to an address on this Mac or its network.
+    static let notPublic = "Phew opens only public web pages, never an address on this Mac or its network. Do not ask for it again."
+    /// A call whose input holds what the secrets filter takes out (a key, a card number, a password): never sent.
+    static let secret = "Phew's secrets filter found a key, a card number or a password in this call's input, so it was not sent. Do not ask for it again."
 
     /// The plain line Claude Code's model gets for a write that did not run now.
     static func refusal(_ word: String) -> String {
@@ -397,10 +404,52 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
         return holder.pending?.end ?? (out.end == .stopped ? .stopped : .failed)
     }
 
+    /// The same JSON object, compared written one way (keys sorted): `true` is not `1`.
     static func same(_ a: Data, _ b: Data) -> Bool {
-        guard let a = (try? JSONSerialization.jsonObject(with: a)) as? NSDictionary,
-              let b = (try? JSONSerialization.jsonObject(with: b)) as? NSDictionary else { return false }
-        return a.isEqual(b)
+        guard let a = Connections.canonical(a) else { return false }
+        return a == Connections.canonical(b)
+    }
+
+    // MARK: Addresses a research run may open
+
+    /// A WebFetch address Phew lets through: http or https, a public name or address. Never a loopback, local,
+    /// private, link-local or unique-local address in any spelling (decimal, hex, octal, short, IPv4 inside IPv6), a
+    /// name with no dot, user info, or any sign a URL parser could read two ways.
+    static func publicWeb(_ address: String) -> Bool {
+        guard address.unicodeScalars.allSatisfy({ $0.isASCII && $0.value > 32 && $0.value < 127 && $0 != "\\" }),
+              let parts = URLComponents(string: address), let scheme = parts.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              parts.user == nil, parts.password == nil, var host = parts.host?.lowercased(), !host.isEmpty else { return false }
+        if host.hasPrefix("[") && host.hasSuffix("]") { host = String(host.dropFirst().dropLast()) }
+        if host.contains(":") {
+            var v6 = in6_addr()
+            guard inet_pton(AF_INET6, host, &v6) == 1 else { return false }
+            return !privateV6(withUnsafeBytes(of: v6) { Array($0) })
+        }
+        while host.hasSuffix(".") { host.removeLast() }
+        guard host.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" }) else { return false }
+        var v4 = in_addr()
+        // `inet_aton` reads every spelling a URL parser might: 2130706433, 0x7f.1, 0177.0.0.1, 127.1.
+        if inet_aton(host, &v4) == 1 { return !privateV4(UInt32(bigEndian: v4.s_addr)) }
+        if host.split(separator: ".").last?.allSatisfy({ $0.isNumber || $0 == "x" }) == true { return false }  // a number Phew cannot read
+        return host.contains(".") && host != "localhost" && !host.hasSuffix(".localhost") && !host.hasSuffix(".local")
+            && !host.hasSuffix(".internal") && !host.hasSuffix(".home.arpa")
+    }
+
+    private static func privateV4(_ a: UInt32) -> Bool {
+        let ranges: [(UInt32, Int)] = [(0x0000_0000, 8), (0x0A00_0000, 8), (0x6440_0000, 10), (0x7F00_0000, 8), (0xA9FE_0000, 16),
+                                       (0xAC10_0000, 12), (0xC000_0000, 24), (0xC0A8_0000, 16), (0xC612_0000, 15), (0xE000_0000, 3)]
+        return ranges.contains { base, bits in a >> (32 - bits) == base >> (32 - bits) }
+    }
+
+    private static func privateV6(_ b: [UInt8]) -> Bool {
+        let v4 = { (i: Int) in UInt32(b[i]) << 24 | UInt32(b[i + 1]) << 16 | UInt32(b[i + 2]) << 8 | UInt32(b[i + 3]) }
+        if b[0..<10].allSatisfy({ $0 == 0 }) {
+            if b[10] == 0xFF && b[11] == 0xFF { return privateV4(v4(12)) }       // ::ffff:a.b.c.d
+            if b[10] == 0 && b[11] == 0 { return true }                          // ::, ::1, ::a.b.c.d
+        }
+        if b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xFF && b[3] == 0x9B { return privateV4(v4(12)) }  // 64:ff9b::/96
+        if b[0] == 0x20 && b[1] == 0x02 { return privateV4(v4(2)) }              // 2002::/16
+        return b[0] & 0xFE == 0xFC || (b[0] == 0xFE && b[1] & 0xC0 == 0x80) || b[0] == 0xFF  // fc00::/7, fe80::/10, ff00::/8
     }
 
     // MARK: Research through the user's plan (NB.10)
@@ -440,6 +489,10 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
                     switch question.tool {
                     case "WebSearch", "WebFetch":
                         let search = question.tool == "WebSearch"
+                        if !search {
+                            let url = ((try? JSONSerialization.jsonObject(with: question.input)) as? [String: Any])?["url"] as? String
+                            guard let url, Self.publicWeb(url) else { return .deny(Self.notPublic) }
+                        }
                         guard let n = counts.next(search, within: search ? limits.searches : limits.pages) else {
                             return .deny("Phew's limit for this task was reached. Write the report now with what you have.")
                         }
@@ -568,12 +621,22 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
     final class Run: @unchecked Sendable {
         let process: Process
         private let input: FileHandle
+        /// The program leads its own process group (`Process` starts one): the kill fallback reaches its children.
+        private let group: Bool
         private let lock = NSLock()
-        private var closed = false, allowed = 0, why: DoorEnd?, writing: Pending?, saw = false, sent = false
+        private var closed = false, why: DoorEnd?, writing: Pending?, saw = false, sent = false
+        /// What Phew answered each tool call, by its tool_use id: true allowed, false refused.
+        private var verdicts: [String: Bool] = [:]
+        /// Answers to calls whose request carried no tool_use id, in order, matched later by tool and input.
+        private var loose: [(tool: String, input: Data?, allowed: Bool)] = []
+        /// The tool calls the assistant's messages named, by id: their tool and input, for that match.
+        private var uses: [String: (tool: String, input: Data?)] = [:]
 
-        init(process: Process, input: FileHandle) { (self.process, self.input) = (process, input) }
+        init(process: Process, input: FileHandle) {
+            (self.process, self.input) = (process, input)
+            group = getpgid(process.processIdentifier) == process.processIdentifier
+        }
 
-        var allows: Int { lock.withLock { allowed } }
         var reason: DoorEnd? { lock.withLock { why } }
         var sawLine: Bool { lock.withLock { saw } }
         var asked: Bool { lock.withLock { sent } }
@@ -594,13 +657,47 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
             send(["type": "control_response", "response": ["subtype": "success", "request_id": id, "response": body]])
         }
 
-        /// Counted before it is sent, so a result can never come before its allow.
+        /// Kept before it is sent, so a result can never come before its allow.
         func allow(_ ask: Ask, pending: Pending? = nil) {
-            lock.withLock { allowed += 1; if let pending { writing = pending } }
+            lock.withLock { said(ask, true); if let pending { writing = pending } }
             answer(ask.id, ["behavior": "allow", "updatedInput": (try? JSONSerialization.jsonObject(with: ask.input)) ?? [String: Any]()])
         }
 
-        func deny(_ id: String, _ message: String) { answer(id, ["behavior": "deny", "message": message]) }
+        func deny(_ ask: Ask, _ message: String) {
+            lock.withLock { said(ask, false) }
+            answer(ask.id, ["behavior": "deny", "message": message])
+        }
+
+        /// Under `lock`.
+        private func said(_ ask: Ask, _ allowed: Bool) {
+            if let use = ask.useID { verdicts[use] = allowed } else { loose.append((ask.tool, Connections.canonical(ask.input), allowed)) }
+        }
+
+        /// The tool calls of an assistant message, by id, for a request that carries no id.
+        func named(_ line: [String: Any]) {
+            let blocks = (line["message"] as? [String: Any])?["content"] as? [[String: Any]] ?? []
+            lock.withLock {
+                for block in blocks where block["type"] as? String == "tool_use" {
+                    guard let id = block["id"] as? String, let tool = block["name"] as? String else { continue }
+                    let input = (block["input"] as? [String: Any]).flatMap { try? JSONSerialization.data(withJSONObject: $0) }
+                    uses[id] = (tool, input.flatMap(Connections.canonical))
+                }
+            }
+        }
+
+        /// A tool's result is one Phew asked about: allowed, or refused and an error. Matched by its tool_use id, or,
+        /// when the request carried none, by tool and input in order. Each answer counts for one result only.
+        func asked(_ id: String?, error: Bool) -> Bool {
+            lock.withLock {
+                guard let id else { return false }
+                if verdicts[id] == nil, let use = uses[id],
+                   let i = loose.firstIndex(where: { $0.tool == use.tool && $0.input != nil && $0.input == use.input }) {
+                    verdicts[id] = loose.remove(at: i).allowed
+                }
+                guard let allowed = verdicts.removeValue(forKey: id) else { return false }
+                return allowed || error
+            }
+        }
 
         /// Any request but a tool call: refused, never acted on.
         func refuse(_ id: String) {
@@ -617,7 +714,8 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
             pending?.finish(error ? .failed : .done)
         }
 
-        /// SIGTERM, then SIGKILL half a second later if it is still there. The first reason given stays.
+        /// SIGTERM, then SIGKILL half a second later if it is still there, to its whole process group when it leads
+        /// one, so a child that ignored SIGTERM goes too. The first reason given stays.
         func end(_ reason: DoorEnd? = nil) {
             let pending: Pending? = lock.withLock {
                 if why == nil { why = reason }
@@ -629,8 +727,13 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
             pending?.finish(.failed)
             guard process.isRunning else { return }
             process.terminate()
-            let process = process
-            DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) { if process.isRunning { kill(process.processIdentifier, SIGKILL) } }
+            let (process, group) = (process, group)
+            // While the leader runs its pid cannot be reused, so its group is still the program's own.
+            // shortcut: a child that ignored SIGTERM after the leader itself exited is not reached; a real Claude Code
+            // stops its tool servers when its input closes. Track the children if that ever shows.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
+                if process.isRunning { kill(group ? -process.processIdentifier : process.processIdentifier, SIGKILL) }
+            }
         }
     }
 
@@ -692,7 +795,7 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
             feed.finish()
         }
         if let message { run.user(message) }
-        var out = Outcome(), sofar = "", results = 0
+        var out = Outcome(), sofar = ""
         await withTaskCancellationHandler {
             loop: for await data in lines {
                 guard run.reason == nil else { break }
@@ -710,24 +813,27 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
                         continue
                     }
                     out.calls += 1
-                    guard out.calls <= mostCalls else { run.deny(id, Self.refused); run.end(.tooMany); break loop }
                     let input = (request["input"] as? [String: Any]).flatMap { try? JSONSerialization.data(withJSONObject: $0) } ?? Data("{}".utf8)
                     let ask = Ask(id: id, tool: tool, input: input, useID: request["tool_use_id"] as? String)
+                    guard out.calls <= mostCalls else { run.deny(ask, Self.refused); run.end(.tooMany); break loop }
+                    // Nothing leaves that the secrets filter would change: refused, never rewritten silently.
+                    if Connections.holdsSecret(input) { run.deny(ask, Self.secret); continue }
                     switch await gate(ask, run) {
                     case .allow: run.allow(ask)
-                    case .deny(let message): run.deny(id, message)
+                    case .deny(let message): run.deny(ask, message)
                     case .answered: break
                     }
                 case "assistant":
+                    run.named(line)
                     let blocks = (line["message"] as? [String: Any])?["content"] as? [[String: Any]] ?? []
                     for case let text? in blocks.map({ $0["type"] as? String == "text" ? $0["text"] as? String : nil }) {
                         if out.msFirst == nil { out.msFirst = Int(Date().timeIntervalSince(started) * 1000); onText() }
                         sofar += text
                     }
                 case "user":
-                    // A tool that ran with no allow from Phew: the user's own settings let it. Ended at once.
-                    results += Self.results(data).filter { !$0.error }.count
-                    if results > run.allows { run.end(.unasked); break loop }
+                    // A result, worked or failed, for a call Phew did not allow (an error for one it refused is
+                    // Claude Code's own refusal): the user's own settings let it run. Ended at once.
+                    if Self.results(data).contains(where: { !run.asked($0.id, error: $0.error) }) { run.end(.unasked); break loop }
                     if until?() == true { run.end(.done); break loop }
                 case "result":
                     out.text = line["result"] as? String ?? sofar

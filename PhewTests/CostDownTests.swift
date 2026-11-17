@@ -6,6 +6,62 @@ import XCTest
 final class CostDownTests: XCTestCase {
     typealias FakeProvider = BrainAgentsTests.FakeProvider
 
+    // MARK: N4.6: remembering once per conversation
+
+    private func conversation(end: TimeInterval = 600) throws -> (ClaudeBrain, FakeProvider, MapStore) {
+        let store = try MapStore()
+        let fake = FakeProvider(rounds: [
+            "conductor": [.init(pieces: [#"{"route":"explain"}"#])],
+            "guide": [.init(pieces: [#"{"explanation":"Made-up answer.","steps":[]}"#])],
+            "librarian": [.init(pieces: [Made.reply(things: [Made.thing("t1", "Topic", "Quokka grammar")], summary: "Asked about it.")])],
+        ])
+        return (ClaudeBrain(provider: fake, map: BrainMap(open: { store }, maintenance: false, conversationEnd: end)), fake, store)
+    }
+
+    private func ask(_ brain: ClaudeBrain, _ question: String) async throws {
+        for try await _ in brain.answer(question, packet: nil) {}
+    }
+
+    private func librarians(_ fake: FakeProvider) -> [ModelRequest] { fake.requests.filter { $0.agent == "librarian" } }
+
+    /// Three answers, no Librarian; the card closes: one Librarian call carries all three, and its facts are stored.
+    func testTheLibrarianRunsOnceWhenTheConversationEnds() async throws {
+        let (brain, fake, store) = try conversation()
+        for question in ["What is quokka grammar?", "And its plural?", "Who made it up?"] { try await ask(brain, question) }
+        XCTAssertTrue(librarians(fake).isEmpty, "nothing learned while the conversation goes on")
+        brain.forgetTurns()  // the card closes
+        _ = await brain.map.ready()
+        let calls = librarians(fake)
+        XCTAssertEqual(calls.count, 1)
+        XCTAssertTrue(calls[0].text.contains("What is quokka grammar?\nAnd its plural?\nWho made it up?"))
+        let nodes = await store.visibleNodes()
+        XCTAssertTrue(nodes.contains { $0.name == "Quokka grammar" })
+        // Ended once: closing again learns nothing more.
+        brain.forgetTurns()
+        _ = await brain.map.ready()
+        XCTAssertEqual(librarians(fake).count, 1)
+    }
+
+    /// No reply for the conversation's 10 minutes (here a fraction of a second): learned without the card closing.
+    func testTheLibrarianRunsWhenTheConversationTimesOut() async throws {
+        let (brain, fake, _) = try conversation(end: 0.2)
+        try await ask(brain, "What is quokka grammar?")
+        try await ask(brain, "And its plural?")
+        XCTAssertTrue(librarians(fake).isEmpty)
+        try await Task.sleep(for: .seconds(0.6))
+        _ = await brain.map.ready()
+        XCTAssertEqual(librarians(fake).count, 1)
+    }
+
+    /// What must see the facts (remember, forget, export, Recently deleted) learns them first.
+    func testWhatReadsTheFactsLearnsThemFirst() async throws {
+        let (brain, fake, _) = try conversation()
+        try await ask(brain, "What is quokka grammar?")
+        let map = await brain.exportMap(includeSensitive: false) ?? ""
+        XCTAssertEqual(librarians(fake).count, 1)
+        XCTAssertTrue(map.contains("Quokka grammar"))
+    }
+
     // MARK: N4.4: a click step checked by code
 
     private let steps = [GuideStep(instruction: "Click Format", target: .element("e1"), click: true),

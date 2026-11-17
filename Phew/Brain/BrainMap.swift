@@ -14,9 +14,11 @@ actor BrainMap {
     /// `maintenance`: the real delete of what was forgotten over 30 days ago, now and then once a day (5.5). Off
     /// under tests, so a test never opens the real Map.
     init(open: @escaping @Sendable () throws -> MapStore = { try MapStore.openOnMac() },
-         maintenance: Bool = NSClassFromString("XCTestCase") == nil, retryAfter: TimeInterval = 30) {
+         maintenance: Bool = NSClassFromString("XCTestCase") == nil, retryAfter: TimeInterval = 30,
+         conversationEnd: TimeInterval = WorkingMemory.lifetime) {
         self.open = open
         self.retryAfter = retryAfter
+        self.conversationEnd = conversationEnd
         guard maintenance else { return }
         // Lives as long as the app: the Brain is made once, at launch.
         Task {
@@ -30,6 +32,7 @@ actor BrainMap {
     /// The Map, once every Librarian run started before has finished. Nil when it cannot be opened. For what must
     /// see the last answer's facts: remember and forget, Recently deleted, the export.
     func ready() async -> MapStore? {
+        endConversation()  // N4.6: what is still to learn is learned first
         while let task = learning {
             await task.value
             if learning == task { learning = nil }
@@ -57,16 +60,46 @@ actor BrainMap {
     /// True while the Map cannot be opened; asking tries again once the wait is over.
     func off() -> Bool { opened() == nil }
 
-    /// After an answer: the Librarian in the background, after any run still going. The card does not wait for it.
-    /// It gets the labels of the packet only, so the capture is not kept past the answer. A failure writes nothing
+    /// N4.6: the answers of this conversation not yet learned from, as text, with the labels of their packet only, so
+    /// the capture is not kept past the answer. In memory only.
+    private var pending: [(question: String, answer: String, route: Route, labels: ContextPacket?)] = []
+    private var pendingProvider: (any ModelProvider)?
+    private var noted = 0
+    /// N4.6: a conversation is over this long after its last answer, as the working memory's turns are (10 minutes).
+    private let conversationEnd: TimeInterval
+    /// N4.6: a long conversation is learned from every this many answers, so one call never carries too much.
+    static let mostPending = WorkingMemory.maxTurns
+
+    /// After an answer (N4.6): kept until the conversation ends (the card closes, 10 minutes pass with no reply, or Phew
+    /// quits), then the Librarian learns from all its answers in one call, in the background. Anything that must see
+    /// the facts (`ready`) learns them first, so nothing waits to be learned when it is read. A failure writes nothing
     /// and leaves one fixed line.
     func learn(question: String, answer: String, route: Route, packet: ContextPacket?, provider: any ModelProvider) {
-        guard let store else { return }
-        let previous = learning, labels = Self.labels(packet)
+        guard store != nil else { return }
+        pending.append((question, answer, route, Self.labels(packet)))
+        pendingProvider = provider
+        noted += 1
+        guard pending.count < Self.mostPending else { return endConversation() }
+        let mark = noted, wait = conversationEnd
+        Task {
+            try? await Task.sleep(for: .seconds(wait))
+            await self.endConversation(after: mark)
+        }
+    }
+
+    /// N4.6: the conversation is over: its answers go to the Librarian in one call, after any run still going.
+    /// `after`: only when no answer came since that one (the 10-minute timer).
+    func endConversation(after mark: Int? = nil) {
+        guard mark.map({ $0 == noted }) ?? true, let store, let provider = pendingProvider, let last = pending.last else { return }
+        let turns = pending
+        pending = []
+        let previous = learning
+        let question = turns.map(\.question).joined(separator: "\n"), answer = turns.map(\.answer).joined(separator: "\n\n")
+        shellLog("librarian: conversation of \(turns.count) answers")
         learning = Task {
             await previous?.value
             do {
-                _ = try await store.learn(question: question, answer: answer, route: route, packet: labels, provider: provider)
+                _ = try await store.learn(question: question, answer: answer, route: last.route, packet: last.labels, provider: provider)
             } catch {
                 shellLog("librarian: failed, nothing written")
             }

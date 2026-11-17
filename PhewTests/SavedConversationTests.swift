@@ -405,6 +405,25 @@ final class SavedConversationTests: XCTestCase {
         XCTAssertFalse(left.map(\.id).contains(accented))
     }
 
+    /// The cases of the last check: an unaccented name against an accented conversation, a name split by a line
+    /// break, two spaces or a non-breaking space, and names holding a slash, a quote or a backslash.
+    func testForgetFindsANameHoweverTheConversationWroteIt() async throws {
+        let cases: [(name: String, said: String)] = [
+            ("Zoe Unal", "Zoë Ünal wrote it."), ("Marta Rossi", "Ask Marta\nRossi."), ("Marta Rossi", "Ask Marta  Rossi."),
+            ("Marta Rossi", "Ask Marta\u{A0}Rossi."), ("AC/DC Fans", "The AC/DC Fans list."), ("Say \"Hi\" Inc", "From Say \"Hi\" Inc today."),
+            ("Back\\slash Co", "By Back\\slash Co."), ("O'Neil", "Call O’Neil."),
+        ]
+        for (name, said) in cases {
+            let store = try MapStore()
+            let person = try await store.add(MapNode(mapClass: .person, name: name, origin: .told))
+            _ = try await store.saveThread(id: nil, turns: [Turn(question: "Question: who?", answer: said)], project: nil)
+            let kept = try await store.saveThread(id: nil, turns: [Turn(question: "Question: else?", answer: "Nobody made up.")], project: nil)
+            _ = try await store.forget([person])
+            let left = await store.threads()
+            XCTAssertEqual(left.map(\.id), [try XCTUnwrap(kept)], "\(name) / \(said)")
+        }
+    }
+
     func testTheCaps() async throws {
         let many = (1...45).map { Turn(question: "Question: q\($0)", answer: "a\($0)") }
         XCTAssertEqual(MapStore.capped(many).map(\.answer), (6...45).map { "a\($0)" }, "the last 40 turns")

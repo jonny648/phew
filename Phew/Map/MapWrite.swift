@@ -563,14 +563,25 @@ extension MapStore {
             // not searched for: they would take unrelated conversations.
             // Matched here, not in SQL: any case and accents ("ÉMILE" is "émile"), and whole words only ("Ann" is not in
             // "planning"). At most 200 threads are kept, so reading them all is small.
-            func fold(_ s: String) -> String { s.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil) }
+            // Folded the same way on both sides: case, accents, curly apostrophes, and any run of white space
+            // (a line break, two spaces, a non-breaking space) as one space.
+            func fold(_ s: String) -> String {
+                s.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+                    .replacing(/[‘’‚‛′]/, with: "'").replacing(/[\s\p{Z}]+/, with: " ")
+            }
+            // The words of a thread as they were said, not as JSON stores them (a quote, a slash and a line break are
+            // written with a backslash there, and a name holding one would not be found).
+            func said(_ turns: String) -> String {
+                let stored = (try? JSONSerialization.jsonObject(with: Data(turns.utf8))) as? [[String: Any]] ?? []
+                return stored.flatMap { $0.values.compactMap { $0 as? String } }.joined(separator: "\n")
+            }
             let names = roots.map(\.name).filter { $0.count >= 3 }
                 .compactMap { try? NSRegularExpression(pattern: "(?<![\\p{L}\\p{N}])" + NSRegularExpression.escapedPattern(for: fold($0)) + "(?![\\p{L}\\p{N}])") }
             var threads = try db.query("SELECT id FROM all_threads WHERE project \(inSet)", [set]).compactMap { $0.int("id") }
             if !names.isEmpty {
                 for row in try db.query("SELECT id, turns FROM all_threads") {
                     guard let id = row.int("id"), !threads.contains(id), let turns = row.text("turns") else { continue }
-                    let text = fold(turns)
+                    let text = fold(said(turns))
                     let whole = NSRange(text.startIndex..., in: text)
                     if names.contains(where: { $0.firstMatch(in: text, range: whole) != nil }) { threads.append(id) }
                 }

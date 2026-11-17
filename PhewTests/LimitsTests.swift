@@ -474,6 +474,12 @@ final class LimitsTests: XCTestCase {
         XCTAssertEqual(http.value(forHTTPHeaderField: "anthropic-beta"), ClaudeProvider.fallbackBeta, "no beta for the hour cache")
         let short = try ClaudeProvider.urlRequest(request, key: "test-key-not-real")
         XCTAssertFalse(String(decoding: try XCTUnwrap(short.httpBody), as: UTF8.self).contains("\"ttl\""))
+        // N4.2: a look's system prompt holds that guide's steps, so it is never written for an hour.
+        let look = Follower.request(steps: [GuideStep(instruction: "Click Made-up", target: nil, click: true)], current: 0,
+                                    packet: ContextPacket(appName: "Practice", bundleID: "com.example.practice", windowTitle: "", visibleText: "", cursor: nil),
+                                    shot: nil)
+        let followed = try ClaudeProvider.urlRequest(look, key: "test-key-not-real", hour: true)
+        XCTAssertFalse(String(decoding: try XCTUnwrap(followed.httpBody), as: UTF8.self).contains("\"ttl\""))
     }
 
     /// A one-hour write costs 2x the input price, a five-minute one 1.25x; usage says which is which.

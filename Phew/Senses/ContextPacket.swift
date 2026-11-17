@@ -51,8 +51,9 @@ struct ContextPacket: Codable {
     static let readCap = 20000
     static let pointableCap = 80
     static let labelCap = 60
-    /// R9: the most the sharp crop covers, in points, and never more than the window.
-    static let cropCap = CGSize(width: 800, height: 600)
+    /// R9: the most the sharp crop covers, in points, and never more than the window. N4.3: was 800 by 600 (about
+    /// 2,500 tokens at 2 pixels per point, half a cent on the main model); 560 by 420 is about 1,200.
+    static let cropCap = CGSize(width: 560, height: 420)
 
     /// R9: a close-up around the element under the mouse (around the mouse when there is none, or when the element is
     /// larger than `cropCap`), cut from the captured pixels at the screen's full sharpness. Only for a window picture

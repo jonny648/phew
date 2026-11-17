@@ -170,7 +170,8 @@ struct ClaudeProvider: ModelProvider {
             "model": request.tier.model.id,
             "max_tokens": request.maxTokens,
             "stream": true,
-            "system": [["type": "text", "text": request.system, "cache_control": hour ? hourLong : ephemeral]],
+            // N4.2: never on the Follower's, which holds one guide's steps and so is never read again after that guide.
+            "system": [["type": "text", "text": request.system, "cache_control": hour && request.agent != "follower" ? hourLong : ephemeral]],
             "messages": messages,
             "output_config": output,
         ]

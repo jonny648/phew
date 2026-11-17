@@ -47,17 +47,20 @@ final class ReadingTests: XCTestCase {
 
     func testTheCropIsAroundTheElementAtFullSharpness() throws {
         let packet = try sharpWindow()
-        // Centred on the element's middle (650, 490): 800 by 600 points, every captured pixel kept.
+        // Centred on the element's middle (650, 490): 560 by 420 points (N4.3), every captured pixel kept.
         XCTAssertEqual(ContextPacket.cropRect(frame: packet.screenshotFrame!, mouse: packet.mouse!, element: packet.cursor?.frame),
-                       CGRect(x: 150, y: 140, width: 800, height: 600))
-        XCTAssertEqual(size(packet.sharpCrop()), [1600, 1200])
+                       CGRect(x: 270, y: 230, width: 560, height: 420))
+        XCTAssertEqual(size(packet.sharpCrop()), [1120, 840])
+        // About 1,200 visual tokens, under half of the 2,494 the 800 by 600 crop cost.
+        let seen = try XCTUnwrap(packet.sharpCrop().flatMap(ScreenshotSize.init(png:)))
+        XCTAssertLessThanOrEqual(((seen.seenWidth + 27) / 28) * ((seen.seenHeight + 27) / 28), 1200)
         let frame = try XCTUnwrap(packet.screenshotFrame)
         // An element larger than the cap (a whole sheet): around the mouse.
         XCTAssertEqual(ContextPacket.cropRect(frame: frame, mouse: CGPoint(x: 700, y: 500), element: frame),
-                       CGRect(x: 200, y: 150, width: 800, height: 600))
+                       CGRect(x: 320, y: 240, width: 560, height: 420))
         // No element, the mouse by a corner: kept inside the picture.
         XCTAssertEqual(ContextPacket.cropRect(frame: frame, mouse: CGPoint(x: 110, y: 60), element: nil),
-                       CGRect(x: 0, y: 0, width: 800, height: 600))
+                       CGRect(x: 0, y: 0, width: 560, height: 420))
     }
 
     func testTheCropIsNeverLargerThanTheWindow() throws {
@@ -95,7 +98,7 @@ final class ReadingTests: XCTestCase {
         var plain = sent
         plain.image = nil
         let without = Guide.request("What is in B7?", packet: plain, route: .guide, shot: shot)
-        XCTAssertEqual(size(with.crop), [1600, 1200])
+        XCTAssertEqual(size(with.crop), [1120, 840])
         XCTAssertNil(without.crop)
         XCTAssertEqual(with.image, packet.screenshot)
         XCTAssertTrue(with.text.contains(Guide.cropLine))
@@ -111,7 +114,7 @@ final class ReadingTests: XCTestCase {
         let content = try XCTUnwrap(messages.last?["content"] as? [[String: Any]])
         let images = content.filter { $0["type"] as? String == "image" }.compactMap { ($0["source"] as? [String: Any])?["data"] as? String }
         XCTAssertEqual(images, [with.image, with.crop].compactMap { $0?.base64EncodedString() })
-        XCTAssertGreaterThan(ClaudeProvider.promptTokens(with), ClaudeProvider.promptTokens(without) + 2400, "the crop's tokens counted")
+        XCTAssertGreaterThan(ClaudeProvider.promptTokens(with), ClaudeProvider.promptTokens(without) + 1200, "the crop's tokens counted (N4.3: 40 by 30 blocks)")
     }
 
     /// An explanation and a job's first round get the crop; a job's later rounds and a guide's later looks do not.

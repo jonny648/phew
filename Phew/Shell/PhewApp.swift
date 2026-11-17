@@ -39,6 +39,7 @@ struct PhewApp: App {
                 ReportFactsEntries(tasks: delegate.tasks) { delegate.reportFacts($0) }
             }
             Button("Limits…") { delegate.showLimits() }
+            Button("Shortcut…") { delegate.showShortcut() }
             Divider()
             Button("API Key…") { delegate.setup.showKey() }
             Button("About Phew") { delegate.menuPanel.show(title: "About Phew", AboutView()) }
@@ -370,6 +371,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await model.refresh() }
     }
 
+    func showShortcut() {
+        let model = ShortcutModel(current: hotKey.shortcut)
+        model.apply = { [unowned self] in hotKey.use($0) }
+        model.pause = { [unowned self] in hotKey.paused = $0 }
+        model.keyboard = { [unowned self] in menuPanel.fit(keyboard: $0) }
+        menuPanel.show(title: "Shortcut", ShortcutView(model: model), onClose: { model.closed() })
+    }
+
     /// The shortcut, and "Ask Phew" in the menu.
     func shortcut() {
         // The panel is already open: a second capture would read Phew's own panel.
@@ -397,7 +406,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: Hold to talk (P6)
 
     private func makeHotKey() -> HotKey {
-        let key = HotKey { [unowned self] in shortcut() }
+        let key = HotKey(shortcut: .stored()) { [unowned self] in shortcut() }
         key.holdStart = { [unowned self] in holdStart() }
         key.holdEnd = { [unowned self] in talk.holdEnd() }
         key.holdCancel = { [unowned self] in talk.holdCancel() }

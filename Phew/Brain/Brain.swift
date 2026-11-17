@@ -118,6 +118,9 @@ protocol Brain: Sendable {
     func limitsToday() async -> LimitsToday?
     /// The daily dollar ceiling, from the next request on. 0: no limit.
     func setDayLimit(usd: Double)
+    /// NA.13: the request ceilings, from the next request on, kept within `Limits.dayBounds` and `minuteBounds`.
+    func setDayLimit(requests: Int)
+    func setMinuteLimit(requests: Int)
 }
 
 extension Brain {
@@ -312,4 +315,6 @@ extension Brain {
 
     func limitsToday() async -> LimitsToday? { nil }
     func setDayLimit(usd: Double) {}
+    func setDayLimit(requests: Int) {}
+    func setMinuteLimit(requests: Int) {}
 }

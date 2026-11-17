@@ -302,6 +302,14 @@ extension ClaudeBrain {
         limits?.defaults.set(max(0, usd), forKey: Limits.usdKey)
     }
 
+    func setDayLimit(requests: Int) {
+        limits?.defaults.set(Limits.bounded(requests, Limits.dayBounds), forKey: Limits.requestsKey)
+    }
+
+    func setMinuteLimit(requests: Int) {
+        limits?.defaults.set(Limits.bounded(requests, Limits.minuteBounds), forKey: Limits.minuteKey)
+    }
+
     func keepTurn(_ question: String, answer: String) {
         memory.add(Guide.turn(question, explanation: answer, steps: []))
     }

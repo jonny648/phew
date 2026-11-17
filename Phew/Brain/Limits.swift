@@ -3,7 +3,8 @@ import Foundation
 /// Phew's own ceilings on what the user's key spends: requests a minute, requests a day and dollars a day. Checked
 /// before each new request from the user (a question, a reply, a task, an import sort), never inside one already
 /// started: a guide's looks and a job's actions keep their own brakes, and their cost counts in the day's sum anyway,
-/// since it comes from calls.log. Ceilings live in UserDefaults, so they change without a rebuild; 0 means no limit.
+/// since it comes from calls.log. Ceilings live in UserDefaults, so they change without a rebuild; 0 dollars means no
+/// limit. The two request counts always have one, kept within `minuteBounds` and `dayBounds` whatever is stored (NA.13).
 /// Reads only numbers: the times of started requests, and `ts` and `usd` from calls.log. calls.log is read once at
 /// launch and again when the day changes; between, `Spend` keeps the running total (N2.12).
 struct Limits: @unchecked Sendable {  // UserDefaults is thread-safe
@@ -20,8 +21,12 @@ struct Limits: @unchecked Sendable {  // UserDefaults is thread-safe
     var spend: Spend = CallLog.spend
 
     var usdPerDay: Double { defaults.object(forKey: Self.usdKey) as? Double ?? Self.usdDefault }
-    var requestsPerDay: Int { defaults.object(forKey: Self.requestsKey) as? Int ?? Self.requestsDefault }
-    var requestsPerMinute: Int { defaults.object(forKey: Self.minuteKey) as? Int ?? Self.minuteDefault }
+    var requestsPerDay: Int { Self.bounded(defaults.object(forKey: Self.requestsKey) as? Int ?? Self.requestsDefault, Self.dayBounds) }
+    var requestsPerMinute: Int { Self.bounded(defaults.object(forKey: Self.minuteKey) as? Int ?? Self.minuteDefault, Self.minuteBounds) }
+
+    /// NA.13: what the Limits panel may set the request counts to, decided here and never by what is stored.
+    static let minuteBounds = 5...60, dayBounds = 50...2000
+    static func bounded(_ value: Int, _ bounds: ClosedRange<Int>) -> Int { min(max(value, bounds.lowerBound), bounds.upperBound) }
 
     private static let lock = NSLock()
 
@@ -65,7 +70,7 @@ struct Limits: @unchecked Sendable {  // UserDefaults is thread-safe
         let now = now()
         return LimitsToday(spentUSD: spend.today(now, calendar: calendar, log: log).usd,
                            requests: recent(now).filter { calendar.isDate($0, inSameDayAs: now) }.count,
-                           usdPerDay: usdPerDay, requestsPerDay: requestsPerDay)
+                           usdPerDay: usdPerDay, requestsPerDay: requestsPerDay, requestsPerMinute: requestsPerMinute)
     }
 
     /// The stored start times still needed: today's, and those of the last minute (which may be yesterday's).
@@ -154,6 +159,7 @@ struct LimitsToday: Sendable, Equatable {
     var requests = 0
     var usdPerDay = 0.0
     var requestsPerDay = 0
+    var requestsPerMinute = 0
 }
 
 /// D1: how long the fixed part of a request stays in the cache, from the times of this Mac's recent main-model calls.

@@ -52,12 +52,69 @@ final class LimitsTests: XCTestCase {
         return Limits(defaults: defaults, now: { clock.now }, calendar: rome, log: { lines }, spend: Spend())
     }
 
+    /// `count` requests started earlier today, at 08:00 UTC.
+    private func startedEarlier(_ count: Int) {
+        defaults.set(Array(repeating: date("2026-11-16T08:00:00Z").timeIntervalSince1970, count: count), forKey: Limits.startsKey)
+    }
+
     // MARK: Limits
+
+    /// NA.13: the stored request ceilings count, kept within 5 to 60 a minute and 50 to 2,000 a day whatever is stored.
+    func testTheRequestCeilingsHonourTheStoredValuesWithinTheBounds() throws {
+        let limits = limits()
+        for (stored, minute, day) in [(nil, 30, 400), (12, 12, 120), (0, 5, 50), (-3, 5, 50), (61, 60, 610), (5000, 60, 2000)] as [(Int?, Int, Int)] {
+            if let stored {
+                defaults.set(stored, forKey: Limits.minuteKey)
+                defaults.set(stored * 10, forKey: Limits.requestsKey)
+            }
+            XCTAssertEqual(limits.requestsPerMinute, minute, "\(String(describing: stored))")
+            XCTAssertEqual(limits.requestsPerDay, day, "\(String(describing: stored))")
+        }
+        // Stored 12 a minute: the 13th in the minute is refused.
+        defaults.set(12, forKey: Limits.minuteKey)
+        defaults.set(2000, forKey: Limits.requestsKey)
+        for _ in 0..<12 { try limits.start() }
+        XCTAssertThrowsError(try limits.start()) { XCTAssertEqual($0 as? BrainError, .limited(.minute)) }
+        // Stored 0 a minute is no longer "no limit": the floor, 5, holds.
+        defaults.set(0, forKey: Limits.minuteKey)
+        defaults.removeObject(forKey: Limits.startsKey)
+        for _ in 0..<5 { try limits.start() }
+        XCTAssertThrowsError(try limits.start()) { XCTAssertEqual($0 as? BrainError, .limited(.minute)) }
+        XCTAssertEqual(limits.today().requestsPerMinute, 5)
+    }
+
+    /// NA.13: the panel offers only counts within the bounds, and what it sets reaches `Limits` through the Brain,
+    /// kept within the bounds even if asked for more.
+    @MainActor
+    func testTheLimitsPanelSetsTheRequestCeilingsWithinTheBounds() async {
+        XCTAssertTrue(LimitsModel.minutePresets.allSatisfy(Limits.minuteBounds.contains))
+        XCTAssertTrue(LimitsModel.dayPresets.allSatisfy(Limits.dayBounds.contains))
+        XCTAssertTrue(LimitsModel.minutePresets.contains(Limits.minuteDefault) && LimitsModel.dayPresets.contains(Limits.requestsDefault))
+        let limits = limits()
+        let brain = ClaudeBrain(provider: FakeProvider(rounds: [:]), map: BrainMap(open: { throw MapError.underTests }, maintenance: false),
+                                limits: limits)
+        let model = LimitsModel(brain: brain)
+        await model.refresh()
+        XCTAssertEqual(model.today?.requestsPerMinute, 30)
+        XCTAssertEqual(model.today?.requestsPerDay, 400)
+        model.set(perMinute: 10)
+        model.set(perDay: 100)
+        await model.refresh()
+        XCTAssertEqual(model.today?.requestsPerMinute, 10)
+        XCTAssertEqual(model.today?.requestsPerDay, 100)
+        XCTAssertEqual(defaults.integer(forKey: Limits.minuteKey), 10, "stored like the dollar ceiling")
+        model.set(perMinute: 500)
+        model.set(perDay: 1)
+        await model.refresh()
+        XCTAssertEqual(model.today?.requestsPerMinute, 60)
+        XCTAssertEqual(model.today?.requestsPerDay, 50)
+        XCTAssertEqual(defaults.integer(forKey: Limits.requestsKey), 50)
+    }
 
     func testUnderTheCeilingsARequestGoesAndIsCounted() throws {
         let limits = limits([line("2026-11-16T09:00:00Z", usd: 1.20)])
         try limits.start()
-        XCTAssertEqual(limits.today(), LimitsToday(spentUSD: 1.20, requests: 1, usdPerDay: 3, requestsPerDay: 400))
+        XCTAssertEqual(limits.today(), LimitsToday(spentUSD: 1.20, requests: 1, usdPerDay: 3, requestsPerDay: 400, requestsPerMinute: 30))
     }
 
     /// 30 questions in one minute go; the 31st is refused and the Brain sends nothing.
@@ -115,14 +172,18 @@ final class LimitsTests: XCTestCase {
         XCTAssertEqual(TextCard.sentence(for: .limited(.minute)), "That is a lot at once. Try again in a moment.")
         defaults.set(10.0, forKey: Limits.usdKey)
         XCTAssertNoThrow(try limits([line("2026-11-16T08:00:00Z", usd: 3.1)]).start())
-        defaults.set(1, forKey: Limits.requestsKey)  // one request went today, just above
-        XCTAssertThrowsError(try limits().start()) { XCTAssertEqual($0 as? BrainError, .limited(.dayRequests(1))) }
+        defaults.set(50, forKey: Limits.requestsKey)
+        startedEarlier(50)
+        XCTAssertThrowsError(try limits().start()) { XCTAssertEqual($0 as? BrainError, .limited(.dayRequests(50))) }
         XCTAssertEqual(TextCard.sentence(for: .limited(.dayRequests(2))),
                        "Today's limit is reached (2 requests). It starts again tomorrow. You can change it in the menu: Limits.")
     }
 
+    /// No dollar limit; the request counts at their highest (NA.13: they always have one).
     func testZeroMeansNoLimit() throws {
-        for key in [Limits.usdKey, Limits.requestsKey, Limits.minuteKey] { defaults.set(0, forKey: key) }
+        defaults.set(0, forKey: Limits.usdKey)
+        defaults.set(60, forKey: Limits.minuteKey)
+        defaults.set(2000, forKey: Limits.requestsKey)
         let limits = limits([line("2026-11-16T08:00:00Z", usd: 500)])
         for _ in 0..<50 { try limits.start() }
         XCTAssertNil(Limits.refusal(starts: Array(repeating: clock.now, count: 1000), spent: 1e6, now: clock.now, calendar: rome,
@@ -132,7 +193,8 @@ final class LimitsTests: XCTestCase {
 
     /// The day is the local day: it rolls over at midnight in Rome, not in UTC.
     func testTheDayRollsOverAtLocalMidnight() throws {
-        defaults.set(2, forKey: Limits.requestsKey)
+        defaults.set(50, forKey: Limits.requestsKey)
+        startedEarlier(48)
         // 23:58 and 23:59 in Rome are 22:58 and 22:59 UTC; 00:00:30 in Rome is still the 16th in UTC.
         let spent = [line("2026-11-16T22:00:00Z", usd: 3.5)]
         clock.now = date("2026-11-16T22:58:00Z")
@@ -141,7 +203,7 @@ final class LimitsTests: XCTestCase {
         try none.start()
         clock.now = date("2026-11-16T22:59:00Z")
         try none.start()
-        XCTAssertThrowsError(try none.start()) { XCTAssertEqual($0 as? BrainError, .limited(.dayRequests(2))) }
+        XCTAssertThrowsError(try none.start()) { XCTAssertEqual($0 as? BrainError, .limited(.dayRequests(50))) }
         clock.now = date("2026-11-16T23:00:30Z")
         XCTAssertNoThrow(try limits(spent).start(), "yesterday's dollars and requests no longer count")
         XCTAssertEqual(limits(spent).today().spentUSD, 0)

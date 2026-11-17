@@ -8,6 +8,8 @@ final class LimitsModel: ObservableObject {
 
     /// The daily dollar ceilings offered; 0 is no limit.
     static let presets: [Double] = [1, 3, 10, 0]
+    /// NA.13: the request ceilings offered, each within `Limits.minuteBounds` and `dayBounds`; there is no "no limit".
+    static let minutePresets = [10, 30, 60], dayPresets = [100, 400, 2000]
 
     init(brain: any Brain) { self.brain = brain }
 
@@ -16,6 +18,18 @@ final class LimitsModel: ObservableObject {
     func set(_ usd: Double) {
         brain.setDayLimit(usd: usd)
         shellLog("limits: daily dollar ceiling changed")
+        Task { await refresh() }
+    }
+
+    func set(perMinute: Int) {
+        brain.setMinuteLimit(requests: perMinute)
+        shellLog("limits: requests a minute changed")
+        Task { await refresh() }
+    }
+
+    func set(perDay: Int) {
+        brain.setDayLimit(requests: perDay)
+        shellLog("limits: requests a day changed")
         Task { await refresh() }
     }
 
@@ -41,6 +55,20 @@ struct LimitsView: View {
                     Button(usd == 0 ? "No limit" : String(format: "$%.0f", usd)) { model.set(usd) }
                         .buttonStyle(QuietButton())
                         .opacity(today.usdPerDay == usd ? 1 : 0.6)
+                }
+            }
+            Row(title: "Requests a day") {
+                ForEach(LimitsModel.dayPresets, id: \.self) { count in
+                    Button("\(count)") { model.set(perDay: count) }
+                        .buttonStyle(QuietButton())
+                        .opacity(today.requestsPerDay == count ? 1 : 0.6)
+                }
+            }
+            Row(title: "Requests a minute") {
+                ForEach(LimitsModel.minutePresets, id: \.self) { count in
+                    Button("\(count)") { model.set(perMinute: count) }
+                        .buttonStyle(QuietButton())
+                        .opacity(today.requestsPerMinute == count ? 1 : 0.6)
                 }
             }
         }

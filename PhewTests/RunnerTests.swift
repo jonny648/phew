@@ -294,6 +294,57 @@ final class RunnerTests: XCTestCase {
         XCTAssertEqual(Runner.request("Compare kerning tools", packet: nil, number: 3, limits: limits).serverTools, [])
     }
 
+    // MARK: R8: the deep size
+
+    /// Deep only from a small fixed list of words, in English and Italian; a phrase that only looks like one is not.
+    func testDeepIsAskedOnlyByAFixedListOfWords() {
+        for words in ["Do a deep research on made-up lamps", "An in-depth look at made-up fonts", "Be thorough about kerning",
+                      "Fai una ricerca approfondita sui caratteri", "Studia a fondo il tema", "Un approfondimento sul kerning",
+                      "Ricerca in profondità", "DEEP dive into made-up tools"] {
+            XCTAssertTrue(TaskLimits.asksDeep(words), words)
+        }
+        for words in ["Find sources on kerning", "Compare deep learning frameworks", "Bandi a fondo perduto per startup",
+                      "A deeply made-up topic", "Profondità di campo in fotografia"] {
+            XCTAssertFalse(TaskLimits.asksDeep(words), words)
+        }
+        let deep = TaskLimits.deep
+        XCTAssertEqual([deep.searches, deep.pages, deep.rounds], [15, 25, 30])
+        XCTAssertEqual(deep.usd, 2.00)
+        XCTAssertEqual(deep.seconds, 900)
+        XCTAssertEqual(deep.size, .deep)
+        XCTAssertEqual(TaskLimits().size, .normal)
+    }
+
+    /// The R9 and R31 guards hold for the deep size: its full counts fit its cap in one request, the rounds' check
+    /// does not force the report at the start, and a deep task can start above the minimum.
+    func testTheSizingGuardsHoldForTheDeepSize() throws {
+        let request = Runner.request("Compare kerning tools in depth", packet: nil, number: 3, limits: .deep)
+        let uses = try request.serverTools.map { try XCTUnwrap((JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any])?["max_uses"] as? Int) }
+        XCTAssertEqual(uses, [15, 25])
+        XCTAssertLessThanOrEqual(Runner.worstUSD(prompt: ClaudeProvider.promptTokens(request), searches: 15, pages: 25), TaskLimits.deep.capUSD)
+        XCTAssertLessThan(Runner.worstUSD(prompt: 4000, searches: 15, pages: 25), TaskLimits.deep.capUSD * Runner.overCap)
+        XCTAssertLessThan(Runner.minimumUSD, TaskLimits.deep.usd)
+        XCTAssertEqual(Runner.line(.cost, .deep), "Phew stopped here: the limit of $2.00 for a task was reached.")
+        XCTAssertEqual(Runner.line(.time, .deep), "Phew stopped here: the limit of 15 minutes for a task was reached.")
+    }
+
+    /// A deep task says so first; one that asked for deep with no room left says so at the end of its report.
+    func testADeepTaskSaysItsSizeAndARefusedOneSaysWhy() async throws {
+        let deep = try await run(Script([.init(text: report)]), limits: .deep)
+        XCTAssertEqual(deep.first, .deep)
+        XCTAssertEqual(try done(deep).markdown, report)
+        var refused = TaskLimits()
+        refused.deepRefused = true
+        let normal = try await run(Script([.init(text: report)]), limits: refused)
+        XCTAssertFalse(normal.contains(.deep))
+        XCTAssertEqual(try done(normal).markdown, report + "\n\n---\n\n" + Runner.notDeep)
+    }
+
+    /// D8: names go into a search only when the task itself names them.
+    func testNamesGoIntoASearchOnlyWhenTheTaskNamesThem() {
+        XCTAssertTrue(Runner.system.contains("Put the user's own name, or names from memory (search_map, the project notes), into a search only when the task itself names them."))
+    }
+
     // MARK: Stop
 
     func testStopEndsTheTaskAndSendsNothingAfter() async throws {

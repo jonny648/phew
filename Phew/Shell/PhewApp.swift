@@ -58,12 +58,12 @@ private struct TaskEntries: View {
     let open: (Int) -> Void
 
     var body: some View {
-        if !tasks.running.isEmpty {
+        if !tasks.running.isEmpty || !tasks.queue.isEmpty {
             Text("Working")
-            ForEach(tasks.running) { item in
+            ForEach(tasks.running + tasks.queue) { item in
                 Button { tasks.stop(item.id) } label: {
                     Text("Stop “\(item.title)”")
-                    Text(item.progress)
+                    Text(item.line)
                 }
             }
         }
@@ -71,18 +71,24 @@ private struct TaskEntries: View {
             Text("Ready")
             ForEach(tasks.waiting) { item in Button(item.title) { open(item.id) } }
         }
-        // N2.4: one row per task whose action waits; Confirm runs exactly that action, Dismiss drops it.
+        // N2.4, R7: one row per waiting action; Confirm runs exactly that action, Dismiss drops it. Confirm all, for a
+        // task with more than one waiting, runs them one after another.
         ForEach(tasks.confirms) { item in
-            Menu(item.waits.map(TaskList.asks) ?? "") {
-                Button("Confirm") { Task { await tasks.confirm(item.id) } }
-                Button("Dismiss") { tasks.dismiss(item.id) }
+            ForEach(item.waits) { wait in
+                Menu(TaskList.asks(wait.script)) {
+                    Button("Confirm") { Task { await tasks.confirm(item.id, only: wait.id) } }
+                    Button("Dismiss") { tasks.dismiss(item.id, only: wait.id) }
+                }
+            }
+            if item.waits.count > 1 {
+                Button("Confirm all \(item.waits.count) for “\(item.title)”") { Task { await tasks.confirm(item.id) } }
             }
         }
         // R29: a change the user confirmed can be put back until the task's result is opened.
         ForEach(tasks.undos) { item in
             Button("Undo the change confirmed for “\(item.title)”") { Task { await tasks.undo(item.id) } }
         }
-        if !tasks.running.isEmpty || !tasks.waiting.isEmpty || !tasks.confirms.isEmpty || !tasks.undos.isEmpty { Divider() }
+        if !tasks.running.isEmpty || !tasks.queue.isEmpty || !tasks.waiting.isEmpty || !tasks.confirms.isEmpty || !tasks.undos.isEmpty { Divider() }
     }
 }
 

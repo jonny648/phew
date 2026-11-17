@@ -258,9 +258,16 @@ extension ClaudeBrain {
         // The task was counted when its words were routed. N2.12: it sets aside its budget out of today's ceiling, so
         // tasks side by side cannot pass it together; a smaller reserve caps its cost, and past it the task ends
         // through its own cost limit, with its report so far. Nothing left: it does not start.
-        var taskLimits = TaskLimits()
+        var taskLimits = TaskLimits.asksDeep(words) ? TaskLimits.deep : TaskLimits()
         if let limits {
             taskLimits.dayLeft = limits.reserve(task: number, usd: taskLimits.usd)
+            // R8: deep only when today's ceiling has room for all of it; else the normal size, and the report says so.
+            if taskLimits.size == .deep, taskLimits.dayLeft < taskLimits.usd {
+                limits.release(task: number)
+                taskLimits = TaskLimits()
+                taskLimits.deepRefused = true
+                taskLimits.dayLeft = limits.reserve(task: number, usd: taskLimits.usd)
+            }
             taskLimits.dayCeiling = limits.usdPerDay
             // R31: too little left for one search, one page and a report: the money would go for no report.
             guard taskLimits.dayLeft >= Runner.minimumUSD else {

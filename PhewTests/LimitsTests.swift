@@ -398,6 +398,42 @@ final class LimitsTests: XCTestCase {
         XCTAssertLessThan(Runner.minimumUSD, TaskLimits().usd)
     }
 
+    /// R8: deep from the task's own words, only when today's ceiling has room for all of it; otherwise the normal
+    /// size, its report says so, and only the normal budget is held. Depth asked on the screen does not count.
+    func testDeepOnlyFromTheTasksWordsAndInsideTheCeiling() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "phew-deep-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        func run(_ words: String, spent: Double, packet: ContextPacket? = nil) async throws -> (ModelRequest, [TaskEvent], Limits) {
+            let script = RunnerTests.Script([.init(text: "# Made-up\n\nA made-up answer.\n\n## Not checked\n\nNothing.")])
+            let ceiling = self.limits([line("2026-11-16T08:00:00Z", usd: spent)])
+            let brain = ClaudeBrain(provider: script, map: BrainMap(open: { throw MapError.underTests }, maintenance: false), limits: ceiling)
+            var events: [TaskEvent] = []
+            for try await event in brain.runTask(words, packet: packet, number: 1, folder: folder, add: nil) { events.append(event) }
+            return (try XCTUnwrap(script.requests.first), events, ceiling)
+        }
+        func maxUses(_ request: ModelRequest) -> [String] { request.serverTools.compactMap { $0.firstMatch(of: #/"max_uses":\d+/#).map { String($0.output) } } }
+        // $1.00 spent of $3.00: room for $2.00.
+        let (deep, deepEvents, _) = try await run("Research made-up lamps in depth", spent: 1.00)
+        XCTAssertEqual(maxUses(deep), [#""max_uses":15"#, #""max_uses":25"#])
+        XCTAssertEqual(deepEvents.first, .deep)
+        // $1.50 spent: no room for $2.00, so the normal size, and the report says so.
+        let (normal, events, limits) = try await run("Research made-up lamps in depth", spent: 1.50)
+        XCTAssertEqual(maxUses(normal), [#""max_uses":5"#, #""max_uses":8"#])
+        XCTAssertFalse(events.contains(.deep))
+        guard case .done(let report)? = events.last else { return XCTFail("no report") }
+        XCTAssertTrue(report.markdown.hasSuffix(Runner.notDeep), report.markdown)
+        try await waitUntil {  // nothing of either reserve is left held once the task ended
+            defer { limits.release(task: 2) }
+            return abs(limits.reserve(task: 2, usd: 2.00) - 1.50) < 1e-9
+        }
+        // The word on the screen, not in the task: the normal size.
+        let screen = ContextPacket(appName: "TextEdit", bundleID: "com.apple.TextEdit", windowTitle: "Made-up deep notes",
+                                   visibleText: "A thorough, in-depth, deep made-up page", cursor: nil, documentPath: nil)
+        let (fromScreen, screenEvents, _) = try await run("Research made-up lamps", spent: 0, packet: screen)
+        XCTAssertEqual(maxUses(fromScreen), [#""max_uses":5"#, #""max_uses":8"#])
+        XCTAssertFalse(screenEvents.contains(.deep))
+    }
+
     // MARK: D1: the one-hour cache
 
     func testCacheLifeFollowsTheGapsBetweenCalls() {

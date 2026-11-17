@@ -158,7 +158,8 @@ enum BrainTaskCheck {
         let lines = threeWords.map { list.start($0, packet: nil) }
         let fourth = list.start("A made-up fourth task.", packet: nil)
         let ids = list.items.map(\.id)
-        shellLog("three check: started \(lines.filter { $0 == TaskList.started }.count), fourth refused \(fourth == TaskList.full), running \(list.running.count)")
+        shellLog("three check: started \(lines.filter { $0 == TaskList.started }.count), fourth waits \(fourth == TaskList.queued), running \(list.running.count)")
+        list.queue.forEach { list.stop($0.id) }  // R8: the fourth would start when one ends; this check runs three
         try? await Task.sleep(for: .seconds(5))
         let stopped = ids[1], stopAt = Date()
         list.stop(stopped)

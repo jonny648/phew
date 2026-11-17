@@ -130,11 +130,10 @@ final class TaskTests: XCTestCase {
 
     // MARK: Three at once, Stop
 
-    func testThreeRunTogetherAFourthIsRefusedAndStopEndsOne() async throws {
+    func testThreeRunTogetherAndStopEndsOne() async throws {
         let provider = Hanging()
         let list = list(provider)
         for n in 1...3 { XCTAssertEqual(list.start("Research made-up topic \(n)", packet: nil), TaskList.started) }
-        XCTAssertEqual(list.start("A fourth made-up task", packet: nil), TaskList.full)
         XCTAssertEqual(list.running.count, 3)
         XCTAssertEqual(Set(list.items.map(\.id)).count, 3, "each task has its own number")
         try await waitUntil { provider.started == 3 }
@@ -152,6 +151,70 @@ final class TaskTests: XCTestCase {
         try await waitUntil(2) { provider.ended == 4 }
         try await Task.sleep(for: .milliseconds(200))
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), [], "nothing saved after Stop")
+    }
+
+    /// Every request waits until `finishOldest` answers it with a report. Keeps the requests made.
+    final class Held: ModelProvider, @unchecked Sendable {
+        private let lock = NSLock()
+        private var made: [ModelRequest] = []
+        private var open: [AsyncThrowingStream<ModelEvent, Error>.Continuation] = []
+        var requests: [ModelRequest] { lock.withLock { made } }
+
+        func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+            AsyncThrowingStream { continuation in
+                self.lock.withLock { made.append(request); open.append(continuation) }
+            }
+        }
+
+        func finishOldest(_ text: String) {
+            guard let next = lock.withLock({ open.isEmpty ? nil : open.removeFirst() }) else { return }
+            next.yield(.text(text))
+            next.yield(.content(Data("[]".utf8)))
+            next.yield(.stop("end_turn"))
+            next.finish()
+        }
+    }
+
+    /// R8: a fourth task waits for a free place with its one screen read held, and starts by itself when one ends;
+    /// at most five wait, the sixth is refused; Stop removes a waiting one and drops its screen read.
+    func testAFourthWaitsAndStartsWhenOneEnds() async throws {
+        let provider = Held()
+        let list = list(provider)
+        for n in 1...3 { XCTAssertEqual(list.start("Research made-up topic \(n)", packet: nil), TaskList.started) }
+        try await waitUntil { provider.requests.count == 3 }
+        let screen = ContextPacket(appName: "TextEdit", bundleID: "com.apple.TextEdit", windowTitle: "Made-up notes",
+                                   visibleText: "Quillmarrow made-up line", cursor: nil, documentPath: nil)
+        XCTAssertEqual(list.start("A fourth made-up task", packet: screen), TaskList.queued)
+        let fourth = try XCTUnwrap(list.items.last)
+        XCTAssertEqual(fourth.state, .queued)
+        XCTAssertEqual(fourth.line, TaskList.queuedProgress)
+        XCTAssertNotNil(list.held[fourth.id], "the screen read waits with it, in memory")
+        for n in 5...8 { XCTAssertEqual(list.start("Made-up task \(n)", packet: screen), TaskList.queued) }
+        XCTAssertEqual(list.start("A ninth made-up task", packet: nil), TaskList.full, "at most five wait")
+        XCTAssertEqual(list.queue.count, 5)
+        XCTAssertTrue(list.waiting.isEmpty, "a waiting task is not a result")
+        // Stop removes a waiting one before it starts: its screen read is dropped and nothing is sent for it.
+        let eighth = list.queue[4].id
+        list.stop(eighth)
+        XCTAssertNil(list.held[eighth])
+        XCTAssertEqual(list.queue.count, 4)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(provider.requests.count, 3, "nothing starts while three run")
+        // One of the three ends: the oldest waiting one starts by itself, with the screen read it was given.
+        provider.finishOldest(report)
+        try await waitUntil { provider.requests.count == 4 }
+        XCTAssertEqual(list.items.first?.state, .ready)
+        XCTAssertEqual(list.items.first { $0.id == fourth.id }?.state, .running)
+        XCTAssertNil(list.held[fourth.id], "the task holds it now, and drops it when it ends")
+        XCTAssertTrue(try XCTUnwrap(provider.requests.last).text.contains("Quillmarrow made-up line"))
+        XCTAssertEqual(list.running.count, 3)
+        XCTAssertEqual(list.queue.count, 3)
+        // Stop all: the waiting ones go first, so none starts; nothing more is sent.
+        list.stopAll()
+        XCTAssertTrue(list.held.isEmpty)
+        XCTAssertTrue(list.running.isEmpty && list.queue.isEmpty)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(provider.requests.count, 4)
     }
 
     /// N2.11: a finished task proposes nothing by itself; the one small-model call comes when the user opens its list.
@@ -295,36 +358,71 @@ final class TaskTests: XCTestCase {
         XCTAssertTrue(ToolSpec.addItem.schema.contains(#""enum":["add","rename","edit","complete","move","delete"]"#))
     }
 
-    func testABackgroundDeleteStopsAndShowsOneConfirmRow() async throws {
+    /// R7: three changes wait, each in its own row, none done before the confirm; Confirm all runs the three through
+    /// the Hand, one after another.
+    func testThreeWaitingChangesAreConfirmedAtOnceAndNoneBefore() async throws {
         fake.apps.add("Made-up plan", ["A made-up line"])
-        fake.items.entries[.reminder] = [HandEntry(id: "r1", title: "Made-up call")]
+        fake.items.entries[.reminder] = [HandEntry(id: "r1", title: "Made-up call"), HandEntry(id: "r2", title: "Made-up review")]
         let script = Script([
             call(#"{"kind":"note","title":"Made-up plan","action":"delete"}"#),
             call(#"{"kind":"reminder","title":"Made-up call","action":"delete"}"#, id: "toolu_2"),
-            call(#"{"kind":"reminder","title":"Made-up call","action":"rename","new_title":"Made-up call later"}"#, id: "toolu_3"),
+            call(#"{"kind":"reminder","title":"Made-up review","action":"rename","new_title":"Made-up review later"}"#, id: "toolu_3"),
             .init(text: report),
         ])
         let list = list(script)
         _ = list.start("Research a made-up topic and tidy my notes", packet: nil)
         let item = try await finished(list)
-        XCTAssertEqual(try result(script, 1), HandEnd.needsConfirm.rawValue)
-        XCTAssertEqual(try result(script, 2), AddItemTool.refused, "one waits at a time")
-        XCTAssertEqual(try result(script, 3), AddItemTool.refused, "an agent's change waits too: it has no Undo")
+        for n in 1...3 { XCTAssertEqual(try result(script, n), HandEnd.needsConfirm.rawValue, "an agent's change waits: it has no Undo") }
         XCTAssertEqual(fake.apps.notes.count, 1, "not deleted")
         XCTAssertEqual(fake.changed, [], "nothing changed before the confirm")
-        XCTAssertEqual(list.confirms.map(\.id), [item.id], "one confirm row")
-        XCTAssertEqual(item.waits, .delete(.note, title: "Made-up plan"))
-        XCTAssertEqual(TaskList.asks(try XCTUnwrap(item.waits)), "Waiting for you: Delete the note “Made-up plan”?")
+        XCTAssertEqual(list.confirms.map(\.id), [item.id])
+        XCTAssertEqual(item.waits.map(\.script), [.delete(.note, title: "Made-up plan"), .delete(.reminder, title: "Made-up call"),
+                                                  .rename(.reminder, title: "Made-up review", to: "Made-up review later")])
+        XCTAssertEqual(Set(item.waits.map(\.id)).count, 3, "a row each")
+        XCTAssertEqual(TaskList.asks(item.waits[0].script), "Waiting for you: Delete the note “Made-up plan”?")
         let markdown = try XCTUnwrap(item.report?.markdown)
-        XCTAssertTrue(markdown.contains("## Waiting for your confirm in Phew's menu\n\n- Deleted note “Made-up plan”"), markdown)
-        // Confirm runs exactly that one action, through the Hand, as the user's own: tagged, not waiting again.
+        XCTAssertTrue(markdown.contains("## Waiting for your confirm in Phew's menu\n\n- Deleted note “Made-up plan”\n- Deleted reminder “Made-up call”\n- Renamed reminder “Made-up review”"), markdown)
+        // Confirm all runs exactly those actions, in order, through the Hand, as the user's own.
         let confirmed = await list.confirm(item.id)
         XCTAssertEqual(confirmed, .done)
         XCTAssertTrue(fake.apps.notes.isEmpty)
-        XCTAssertEqual(fake.changed.last, .delete(.note, title: "Made-up plan"))
+        XCTAssertEqual(fake.changed, [.delete(.note, title: "Made-up plan"), .delete(.reminder, title: "Made-up call"),
+                                      .rename(.reminder, title: "Made-up review", to: "Made-up review later")], "the three, in order")
         XCTAssertTrue(list.confirms.isEmpty)
         let again = await list.confirm(item.id)
         XCTAssertEqual(again, .stopped, "once")
+    }
+
+    /// R7: one row confirmed alone leaves the others waiting; the first that fails ends the run, is dropped, and the
+    /// ones after it stay waiting; at most 20 wait, the next is refused.
+    func testOneRowAloneAFailureAndTheCeiling() async throws {
+        for n in 1...21 { fake.apps.add("Made-up note \(n)") }
+        let deletes = (1...21).map { #"{"type":"tool_use","id":"toolu_\#($0)","name":"add_item","input":{"kind":"note","title":"Made-up note \#($0)","action":"delete"}}"# }
+        let script = Script([.init(blocks: "[" + deletes.joined(separator: ",") + "]", stop: "tool_use"), .init(text: report)])
+        let list = list(script)
+        _ = list.start("Research a made-up topic and tidy my notes", packet: nil)
+        var item = try await finished(list)
+        let results = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(script.requests[1].after.last).content) as? [[String: Any]])
+        XCTAssertEqual(results.compactMap { $0["content"] as? String },
+                       Array(repeating: HandEnd.needsConfirm.rawValue, count: TaskList.mostWaits) + [AddItemTool.refused])
+        XCTAssertEqual(item.waits.count, 20)
+        XCTAssertEqual(fake.apps.notes.count, 21, "nothing deleted before a confirm")
+        // The second row alone.
+        let second = await list.confirm(item.id, only: item.waits[1].id)
+        XCTAssertEqual(second, .done)
+        XCTAssertEqual(fake.apps.notes.map(\.name).contains("Made-up note 2"), false)
+        XCTAssertEqual(fake.apps.notes.count, 20)
+        item = try XCTUnwrap(list.items.first)
+        XCTAssertEqual(item.waits.count, 19)
+        // Note 3 is gone before Confirm all: it fails, is dropped, and the 17 after it still wait. Notes 1 went.
+        fake.apps.notes.removeAll { $0.name == "Made-up note 3" }
+        let all = await list.confirm(item.id)
+        XCTAssertNotEqual(all, .done)
+        item = try XCTUnwrap(list.items.first)
+        XCTAssertEqual(item.waits.map(\.script), (4...20).map { .delete(.note, title: "Made-up note \($0)") })
+        XCTAssertFalse(fake.apps.notes.map(\.name).contains("Made-up note 1"))
+        list.dismiss(item.id, only: item.waits[0].id)
+        XCTAssertEqual(list.items.first?.waits.count, 16)
     }
 
     /// NR.60: in the PDF a link's address follows its words only for a web address, as on the card.
@@ -363,6 +461,41 @@ final class TaskTests: XCTestCase {
         XCTAssertTrue(other.undos.isEmpty)
     }
 
+    /// R7 with R29: two rows confirmed one at a time can each be put back, the newest first.
+    func testEachConfirmedRowCanBeUndone() async throws {
+        fake.apps.add("Made-up plan", ["A made-up line"])
+        fake.apps.add("Made-up list", ["Another made-up line"])
+        let script = Script([call(#"{"kind":"note","title":"Made-up plan","action":"delete"}"#),
+                             call(#"{"kind":"note","title":"Made-up list","action":"delete"}"#, id: "toolu_2"), .init(text: report)])
+        let list = list(script)
+        _ = list.start("Research a made-up topic and tidy my notes", packet: nil)
+        let item = try await finished(list)
+        for wait in item.waits { await list.confirm(item.id, only: wait.id) }
+        XCTAssertTrue(fake.apps.notes.isEmpty)
+        XCTAssertEqual(list.undos.map(\.id), [item.id], "one Undo row for the task")
+        XCTAssertEqual(list.items.first?.undo.count, 2)
+        _ = await list.undo(item.id)
+        XCTAssertEqual(fake.apps.notes.map(\.name), ["Made-up list"], "the newest first")
+        _ = await list.undo(item.id)
+        XCTAssertEqual(Set(fake.apps.notes.map(\.name)), ["Made-up plan", "Made-up list"])
+        XCTAssertTrue(list.undos.isEmpty)
+    }
+
+    /// R8: a task asking for depth runs at the deep size (no ceiling here), and the menu's line says so.
+    func testADeepTaskShowsItsSizeInTheMenu() async throws {
+        let script = Script([.init(text: report)])
+        let list = list(script)
+        _ = list.start("Do a deep research on a made-up topic", packet: nil)
+        let item = try await finished(list)
+        XCTAssertTrue(item.deep)
+        XCTAssertTrue(item.line.hasPrefix("Deep task."), item.line)
+        XCTAssertTrue(try XCTUnwrap(script.requests.first).serverTools.first?.contains(#""max_uses":15"#) == true)
+        _ = list.start("Research a made-up topic", packet: nil)
+        try await waitUntil { list.items.last?.state != .running }
+        XCTAssertEqual(list.items.last?.deep, false)
+        XCTAssertFalse(try XCTUnwrap(list.items.last).line.contains("Deep"))
+    }
+
     /// R29: the confirm row says what the change writes, not only which item it touches.
     func testTheConfirmRowShowsWhatTheChangeWrites() {
         XCTAssertEqual(TaskList.asks(.noteBody(title: "Made-up ideas", body: "\n  Made-up first line  \nA second line")),
@@ -388,7 +521,7 @@ final class TaskTests: XCTestCase {
         _ = list.start("Research a made-up topic", packet: nil)
         let item = try await finished(list)
         XCTAssertEqual(list.confirms.count, 1)
-        list.dismiss(item.id)
+        list.dismiss(item.id, only: item.waits[0].id)
         XCTAssertTrue(list.confirms.isEmpty)
         XCTAssertEqual(fake.changed, [])
         XCTAssertEqual(fake.apps.notes.count, 1)

@@ -36,8 +36,9 @@ final class FakeScripts: @unchecked Sendable {
             ran.append("find")
             found.append(args[0])
             // Notes matches names without case: the exact one is picked in Swift.
-            let found = notes.filter { $0.name.lowercased() == args[0].lowercased() }
-            return (.done, found.map { "\($0.id)\u{1E}\($0.name)" }.joined(separator: "\u{1F}"))
+            // With its folder's name and the seconds since it changed: a day per note made before it.
+            let found = notes.enumerated().filter { $0.element.name.lowercased() == args[0].lowercased() }
+            return (.done, found.map { "\($1.id)\u{1E}\($1.name)\u{1E}\($1.folder)\u{1E}\((notes.count - $0) * 86_400)" }.joined(separator: "\u{1F}"))
         case HandChanges.readNote:
             ran.append("read")
             guard let note = notes.first(where: { $0.id == args[0] }) else { return (.done, "") }
@@ -54,6 +55,8 @@ final class FakeScripts: @unchecked Sendable {
                     var lines = old.text.components(separatedBy: "\n")
                     lines[0] = wrongWrite ? "Something else" : args[2]
                     set(i, AXSurface.html(lines))
+                } else if args[1] == "append" {
+                    set(i, old.body + (wrongWrite ? AXSurface.html(["Something else"]) : args[2]))
                 } else {
                     set(i, wrongWrite ? AXSurface.html(["Something else"]) : args[2])
                 }
@@ -403,6 +406,96 @@ final class HandChangeTests: XCTestCase {
             XCTAssertEqual(json["kind"] as? String, "script")
         }
         XCTAssertEqual(text.split(separator: "\n").count, 4, "two changes, two put back")
+    }
+
+    // MARK: NA.8: what the user already has (R6)
+
+    /// Lines added to a note already there, named by its exact title: read back, kept, and Undo puts the note back.
+    func testAppendToANoteByItsExactTitleAndUndo() {
+        fake.apps.add("Made-up groceries", ["Made-up milk"])
+        fake.apps.add("made-up groceries", ["Not this one"])  // the same but for case: not a match
+        let hand = hand(), job = hand.begin(watchUser: false)
+        let append = HandScript.append(text: "Made-up eggs\nMade-up bread", title: "Made-up groceries")
+        XCTAssertTrue(append.changes)
+        XCTAssertEqual(hand.act(step(append), in: job), HandResult(end: .done))
+        XCTAssertEqual(fake.apps.notes.map(\.text), ["Made-up groceries\nMade-up milk\nMade-up eggs\nMade-up bread",
+                                                     "made-up groceries\nNot this one"])
+        XCTAssertEqual(fake.changed, [append], "a change, not an add: never `run`")
+        XCTAssertEqual(job.kept.count, 1)
+        XCTAssertEqual(hand.undo(job), .done)
+        XCTAssertEqual(fake.apps.notes.map(\.text), ["Made-up groceries\nMade-up milk", "made-up groceries\nNot this one"])
+        // None with that title: nothing done. The note this job made is still `append` with no title, an add.
+        XCTAssertEqual(changes.run(.append(text: "x", title: "Made-up nothing")).0, .notFound)
+        XCTAssertFalse(HandScript.append(text: "x").changes)
+        // A wrong write is caught by the read-back.
+        fake.apps.wrongWrite = true
+        XCTAssertEqual(changes.run(.append(text: "Made-up eggs", title: "Made-up groceries")).0, .checkFailed)
+        // An agent's append to a note already there waits for one confirm, as every change; to its own note it does not.
+        XCTAssertTrue(NeverList.final(step(append), agent: true))
+        XCTAssertFalse(NeverList.final(step(append)))
+        XCTAssertFalse(NeverList.final(step(.append(text: "x")), agent: true))
+        XCTAssertEqual(hand.act(step(append), in: hand.begin(watchUser: false, agent: true)).end, .needsConfirm)
+        // Its title passes the password words, as a change's does.
+        XCTAssertEqual(hand.act(step(.append(text: "x", title: "Made-up password list")), in: hand.begin(watchUser: false)).end, .password)
+    }
+
+    /// Several items share the title: nothing is changed, and the result lists them (at most 5) by folder and last
+    /// change, list and due date, calendar and start. Never in actions.log.
+    func testSeveralMatchesChangeNothingAndListTheChoices() throws {
+        fake.apps.add("Made-up twin", ["One"], folder: "Made-up Work")
+        fake.apps.add("Made-up twin", ["Two"], folder: "Made-up Home")
+        let due = DateComponents(year: 2031, month: 3, day: 9)
+        fake.items.entries[.reminder] = [HandEntry(id: "r1", title: "Made-up call", due: due, calendarName: "Made-up Errands"),
+                                         HandEntry(id: "r2", title: "Made-up call", calendarName: "Made-up Family")]
+        fake.items.entries[.event] = (1...7).map { HandEntry(id: "e\($0)", title: "Made-up review", start: start + Double($0) * 86_400,
+                                                             end: start + Double($0) * 86_400 + 1800, calendarName: "Made-up Cal \($0)") }
+        let hand = hand()
+        let note = hand.act(step(.append(text: "Three", title: "Made-up twin")), in: hand.begin(watchUser: false))
+        XCTAssertEqual(note.end, .manyFound)
+        XCTAssertEqual(note.choices.count, 2)
+        XCTAssertTrue(note.choices[0].hasPrefix("the note in “Made-up Work”, last changed "), note.choices[0])
+        XCTAssertTrue(note.choices[1].hasPrefix("the note in “Made-up Home”, last changed "), note.choices[1])
+        let reminder = hand.act(step(.complete(title: "Made-up call")), in: hand.begin(watchUser: false))
+        XCTAssertEqual(reminder.choices, ["the reminder in “Made-up Errands”, due "
+                                            + Calendar.current.date(from: due)!.formatted(date: .abbreviated, time: .omitted),
+                                          "the reminder in “Made-up Family”, no due date"])
+        let event = hand.act(step(.delete(.event, title: "Made-up review")), in: hand.begin(watchUser: false))
+        XCTAssertEqual(event.choices.count, 5, "at most 5")
+        XCTAssertEqual(event.choices[0], "the event in “Made-up Cal 1” on " + (start + 86_400).formatted(date: .abbreviated, time: .shortened))
+        // Nothing changed anywhere.
+        XCTAssertEqual(fake.apps.notes.map(\.text), ["Made-up twin\nOne", "Made-up twin\nTwo"])
+        XCTAssertEqual(fake.items.entries[.reminder]?.map(\.done), [false, false])
+        XCTAssertEqual(fake.items.entries[.event]?.count, 7)
+        XCTAssertFalse(fake.apps.ran.contains("change"))
+        // One match, or none: no choices.
+        XCTAssertEqual(hand.act(step(.complete(title: "Made-up nothing")), in: hand.begin(watchUser: false)).choices, [])
+        ActionLog.flush()
+        let text = try String(contentsOf: log, encoding: .utf8)
+        XCTAssertFalse(text.contains("Made-up") || text.contains("“"), text)
+    }
+
+    /// Events are found two years back to five ahead, searched in spans EventKit takes; one two years ahead is moved.
+    func testAnEventTwoYearsAheadIsFoundAndMoved() {
+        let now = Date(timeIntervalSince1970: 1_900_000_000)
+        let calendar = Calendar.current
+        func years(_ n: Int, _ days: Int = 0) -> Date { calendar.date(byAdding: DateComponents(year: n, day: days), to: now)! }
+        let window = Hand.eventWindow(now)
+        for inside in [years(2), years(-2, 1), years(5, -1), now] { XCTAssertTrue(window.contains(inside), "\(inside)") }
+        for outside in [years(-2, -1), years(5, 1), years(6)] { XCTAssertFalse(window.contains(outside), "\(outside)") }
+        let spans = Hand.spans(window)
+        XCTAssertEqual(spans.count, 7)
+        XCTAssertEqual(spans.first?.start, window.start)
+        XCTAssertEqual(spans.last?.end, window.end)
+        XCTAssertTrue(zip(spans, spans.dropFirst()).allSatisfy { $0.end == $1.start }, "no gap, no overlap")
+        XCTAssertTrue(spans.allSatisfy { $0.duration <= 366 * 86_400 }, "under EventKit's four years each")
+        // Through the Hand, on made-up events: found two years ahead and moved a day on, then put back.
+        let ahead = years(2)
+        fake.items.entries[.event] = [HandEntry(id: "e1", title: "Made-up far review", start: ahead, end: ahead + 3600)]
+        let hand = hand(), job = hand.begin(watchUser: false)
+        XCTAssertEqual(hand.act(step(.move(title: "Made-up far review", start: ahead + 86_400, end: nil)), in: job).end, .done)
+        XCTAssertEqual(fake.items.one("e1", .event)?.end, ahead + 86_400 + 3600)
+        XCTAssertEqual(hand.undo(job), .done)
+        XCTAssertEqual(fake.items.one("e1", .event)?.start, ahead)
     }
 
     // MARK: NR: Undo after review (R5, R6, R13, R16, R17)

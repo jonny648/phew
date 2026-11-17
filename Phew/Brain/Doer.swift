@@ -42,7 +42,8 @@ enum Doer {
         For Notes, Reminders, Calendar and Excel, use these instead of pressing. They work behind the app, which need \
         not be in front (no open_app for them):
         - note: a new note in Notes. In title its first line, in text the lines under it.
-        - append: lines added at the end of the note you made earlier in this job, in text.
+        - append: lines added at the end of a note, in text: the note you made earlier in this job, or, with its \
+        exact title in title, a note already there.
         - reminder: a new reminder. In title its name; in start its due date, "YYYY-MM-DD", or with a time \
         "YYYY-MM-DDTHH:MM", or null for none.
         - event: a new calendar event, no guests. In title its name; start and end as "YYYY-MM-DDTHH:MM". With no end \
@@ -257,7 +258,7 @@ enum Doer {
         }
         switch action {
         case "note": return title.isEmpty ? nil : .note(title: title, body: text)
-        case "append": return text.isEmpty ? nil : .append(text: text)
+        case "append": return text.isEmpty ? nil : .append(text: text, title: title)
         case "reminder":
             guard !title.isEmpty else { return nil }
             guard let start = output.start, !start.trimmingCharacters(in: .whitespaces).isEmpty else { return .reminder(title: title, due: nil) }

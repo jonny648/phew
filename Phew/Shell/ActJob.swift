@@ -28,6 +28,11 @@ struct ActJob {
     /// The look taken at the shortcut, of the app the job starts in: round 1 uses it instead of a second screen read
     /// (R53). The Hand's own checks (gone, moved, front changed) stop a step this look no longer fits. Gone with the job.
     var firstLook: ContextPacket?
+    /// R5: true while he waits for room at the minute ceiling, false when he goes on: the card shows `pausedLine`.
+    var paused: (Bool) -> Void = { _ in }
+    /// The job's own clock and wait, for its count of steps (skill steps too). Tests advance a made-up clock.
+    var clock: () -> Date = Date.init
+    var wait: (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) }
 
     enum Outcome: Equatable {
         case done(String)
@@ -57,6 +62,9 @@ struct ActJob {
         var ran: [Date] = []
         var skill: String?
         var skillsFailed = 0
+        // R5: the Hand's own pause, told off the main thread, shown on the card on it.
+        let paused = paused
+        job.pausing = { on in Task { @MainActor in paused(on) } }
         while true {
             if let end = job.end { return .ended(end) }
             let app = job.app
@@ -83,8 +91,8 @@ struct ActJob {
                 repeats = same == last ? repeats + 1 : 0
                 last = same
                 guard repeats < 2 else { return .stuck(Self.noChange) }
-                if let end = Hand.ceiling(actedInJob: ran.count, recent: ran, now: Date()) { return .ended(end) }
-                ran.append(Date())
+                if let end = await brake(ran, job) { return .ended(end) }
+                ran.append(clock())
                 starting(Self.line(step, doing: true))
                 let (ok, said) = await brain.skillStep(step, stop: { job.end != nil })  // Stop ends a running skill
                 if let end = job.end { return .ended(end) }
@@ -122,25 +130,54 @@ struct ActJob {
                 if kind != .keys { aside(step.frame) }
             }
             // Seen live on 15 November: a click that did not land was asked for 11 times. The same action a third time
-            // in a row means nothing changed: he stops, in code, whatever the model says.
+            // in a row means nothing changed: he stops, in code, whatever the model says. A key or a scroll repeated
+            // is normal (arrow down, scroll down): the eleventh in a row stops.
             let same = "\(step.kind.rawValue) \(Self.line(step)) \(step.frame)"
             repeats = same == last ? repeats + 1 : 0
             last = same
-            guard repeats < 2 else { return .stuck(Self.noChange) }
+            guard repeats < ([.keys, .scroll].contains(step.kind) ? Self.sameKeys : 2) else { return .stuck(Self.noChange) }
             // The Hand counts only its own steps; this counts the job's skill steps too.
-            if let end = Hand.ceiling(actedInJob: ran.count, recent: ran, now: Date()) { return .ended(end) }
+            if let end = await brake(ran, job) { return .ended(end) }
             starting(Self.line(step, doing: true))
             let hand = hand
-            // Off the main thread: an app that hangs blocks for at most `Hand.timeout`.
+            // Off the main thread: an app that hangs blocks for at most `Hand.timeout`, a pause at the minute ceiling
+            // for up to a minute.
             let result = await Task.detached { hand.act(step, in: job) }.value
-            ran.append(Date())
+            ran.append(clock())
             let line = Self.line(step)
             done.append("\(line): \(result.end.rawValue)")
+            // R6: the items that share the title, on the card only.
+            if result.end == .manyFound, !result.choices.isEmpty { return .stuck(Self.choose(result.choices)) }
             guard result.end == .done else { return .ended(result.end) }
             listed(line)
             landed(step, result)
             if step.kind == .script { reuse = Self.withoutPicture(packet) }
         }
+    }
+
+    /// The job's own ceilings, over all its steps: 40 ends it; at 20 in a minute he waits for room (R5), with one line
+    /// on the card. Stop and the user's touch end the wait within 0.1 s. Waits without holding the main thread.
+    private func brake(_ ran: [Date], _ job: HandJob) async -> HandEnd? {
+        if ran.count >= Hand.perJob { return .jobCeiling }
+        var said = false
+        defer { if said { paused(false) } }
+        while let left = Hand.room(recent: ran, now: clock()) {
+            if let end = job.end { return end }
+            if !said { said = true; paused(true) }
+            await wait(min(left, 0.1))
+        }
+        return job.end
+    }
+
+    /// R5: the card's line while he waits.
+    static let pausedLine = "Waiting a moment: I make at most 20 actions a minute."
+
+    /// The same key or scroll in a row, at most this many (17 November); any other step, two.
+    static let sameKeys = 10
+
+    /// R6: several items share the title: the plain reason and the choices, so the user can say which. Card only.
+    static func choose(_ choices: [String]) -> String {
+        sentence(for: .manyFound) + " I found " + choices.joined(separator: "; ") + ". Tell me which one."
     }
 
     /// The last look without its picture, for one more round (R54).
@@ -189,7 +226,7 @@ struct ActJob {
                       packet: ContextPacket?, pid: pid_t) -> HandStep? {
         if kind == .keys {
             guard keys != nil || !text.isEmpty else { return nil }
-            return HandStep(kind: .keys, pid: pid, text: keys == nil ? text : "", chord: keys)
+            return HandStep(kind: .keys, pid: pid, text: keys == nil ? text : "", opensWindow: keys.map(opens) ?? false, chord: keys)
         }
         guard [.scroll, .drag].contains(kind), let packet, var step = step(.click, target: target, menu: [], text: "", packet: packet, pid: pid)
         else { return nil }
@@ -205,8 +242,22 @@ struct ActJob {
         return step
     }
 
-    /// A Mac command whose name ends in an ellipsis opens a window or sheet: the next step takes it as expected.
-    static func opens(_ name: String) -> Bool { name.hasSuffix("…") || name.hasSuffix("...") }
+    /// A Mac command whose name ends in an ellipsis, or is one of `sheetNames`, opens a window or sheet: the next step
+    /// takes it as expected (R4). Decided here from the control's own name as read, never by the model.
+    static func opens(_ name: String) -> Bool {
+        name.hasSuffix("…") || name.hasSuffix("...") || sheetNames.contains(NeverList.fold(name))
+    }
+
+    /// The commands that open a sheet or dialog with no "…" in some apps, English and Italian, folded.
+    static let sheetNames: Set<String> = [
+        "save", "save as", "export", "open", "print", "share", "new", "rename", "insert", "format", "find", "go to",
+        "salva", "salva con nome", "esporta", "apri", "stampa", "condividi", "nuovo", "nuova", "rinomina", "inserisci",
+        "formato", "trova", "cerca", "vai a",
+    ]
+
+    /// The shortcuts that open a sheet: save, open, print, save as (R4).
+    static func opens(_ chord: HandChord) -> Bool { sheetChords.contains(chord) }
+    static let sheetChords: Set<HandChord> = Set(["cmd+s", "cmd+o", "cmd+p", "cmd+shift+s"].compactMap(HandChord.parse))
 
     /// One plain line for the card (docs/13-hand.md 13.4): a fixed word and the control's name. `doing`: while it
     /// happens ("Pressing Bold"). Memory only, never logged.
@@ -230,7 +281,8 @@ struct ActJob {
         case .script:
             switch step.script {
             case .note(let title, _): return "Made the note “\(title)” in Notes"
-            case .append(let text): return "Added \(text.count) character\(text.count == 1 ? "" : "s") to the note"
+            case let .append(text, title):
+                return "Added \(text.count) character\(text.count == 1 ? "" : "s") to the note\(title.isEmpty ? "" : " “\(title)”")"
             case .reminder(let title, _): return "Added the reminder “\(title)”"
             case .event(let title, _, _): return "Added the event “\(title)” to Calendar"
             case .workbook: return "Made a new workbook in Excel"

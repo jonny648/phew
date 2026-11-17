@@ -72,11 +72,15 @@ final class FakeSurface: HandSurface, @unchecked Sendable {  // state under `loc
     func send(_ step: HandStep, to element: AnyObject?) -> HandEnd {
         if delay > 0 { Thread.sleep(forTimeInterval: delay) }
         lock.withLock { sent.append(step) }
-        if step.kind == .set, let element = element as? Element { element.seen.value = wrongSet ? "other made-up text" : step.text }
+        if step.kind == .set, let element = element as? Element {
+            element.seen.value = wrongSet ? "other made-up text" : reformat?(step.text) ?? step.text
+        }
         return .done
     }
     /// A field that takes the set and keeps another value (a formatter): the read-back must notice (R38).
     var wrongSet = false
+    /// R4: a field that shows what was typed written its own way (spaces, quotes).
+    var reformat: ((String) -> String)?
 
     /// The fake scripting surface: records each script; makes ids "made-1", "made-2"…; `append` and `cells` need what
     /// this job made, as the real one. `scriptEnd` stands in for how the app answered.
@@ -123,6 +127,7 @@ final class FakeSurface: HandSurface, @unchecked Sendable {  // state under `loc
         lock.withLock { changed.append(script) }
         return changes.run(script)
     }
+    func choices(_ script: HandScript) -> [String] { changes.choices(script) }
 }
 
 @MainActor
@@ -152,8 +157,18 @@ final class HandTests: XCTestCase {
         UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
     }
 
-    private func hand(ownPID: pid_t = getpid(), now: @escaping () -> Date = Date.init) -> Hand {
-        Hand(defaults: defaults, surface: fake, list: neverRead, ownPID: ownPID, now: now)
+    private func hand(ownPID: pid_t = getpid(), now: @escaping () -> Date = Date.init,
+                      sleep: @escaping (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }) -> Hand {
+        Hand(defaults: defaults, surface: fake, list: neverRead, ownPID: ownPID, now: now, sleep: sleep)
+    }
+
+    /// A made-up clock that only the Hand's pause moves on (R5).
+    private final class Clock: @unchecked Sendable {
+        var time = Date(timeIntervalSince1970: 1_000_000)
+        var slept: TimeInterval = 0
+        /// Runs at each slice of a pause, before the clock moves on.
+        var during: (() -> Void)?
+        func sleep(_ seconds: TimeInterval) { during?(); time += seconds; slept += seconds }
     }
 
     private func frame(_ i: Int) -> CGRect { CGRect(x: 20, y: 20 + i * 40, width: 100, height: 30) }
@@ -298,24 +313,56 @@ final class HandTests: XCTestCase {
     // MARK: - Ceilings
 
     func testCeilings() {
-        var time = Date(timeIntervalSince1970: 1_000_000)
+        let clock = Clock()
         let step = fake.add("Bold", frame: frame(0))
         // 40 per job: spaced so the minute ceiling never bites.
-        var hand = self.hand(now: { time })
-        var job = hand.begin(watchUser: false)
+        var hand = self.hand(now: { clock.time }, sleep: clock.sleep)
+        let job = hand.begin(watchUser: false)
         for i in 0..<Hand.perJob {
             XCTAssertEqual(hand.act(step, in: job).end, .done, "action \(i + 1)")
-            time += 5
+            clock.time += 5
         }
         XCTAssertEqual(hand.act(step, in: job).end, .jobCeiling)
-        // 20 per minute, across jobs.
-        hand = self.hand(now: { time })
+        XCTAssertEqual(clock.slept, 0, "spaced out: never a pause")
+        // R5: 20 per minute, across jobs: the 21st waits until the minute has room, then goes on.
+        hand = self.hand(now: { clock.time }, sleep: clock.sleep)
         for _ in 0..<Hand.perMinute { XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, .done) }
-        XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, .minuteCeiling)
-        time += 61
-        job = hand.begin(watchUser: false)
-        XCTAssertEqual(hand.act(step, in: job).end, .done)
+        let paused = hand.begin(watchUser: false)
+        var told: [Bool] = []
+        paused.pausing = { told.append($0) }
+        XCTAssertEqual(hand.act(step, in: paused).end, .done)
+        XCTAssertEqual(told, [true, false], "the card is told once each way")
+        XCTAssertEqual(clock.slept, 60, accuracy: 0.2, "until the first of the 20 is a minute old")
         XCTAssertEqual(fake.sentCount, Hand.perJob + Hand.perMinute + 1)
+        // A step that does not reach the ceiling never pauses.
+        told = []
+        XCTAssertEqual(hand.act(step, in: paused).end, .done)
+        XCTAssertEqual(told, [])
+        XCTAssertEqual(Hand.room(recent: [clock.time], now: clock.time), nil)
+        XCTAssertEqual(Hand.room(recent: Array(repeating: clock.time - 50, count: Hand.perMinute), now: clock.time) ?? 0, 10, accuracy: 0.001)
+    }
+
+    /// R5: Stop and the user's own input end a pause at once; nothing is sent; 40 in one job still ends it.
+    func testThePauseEndsOnStopOrTheUsersInput() throws {
+        let clock = Clock()
+        let step = fake.add("Bold", frame: frame(0))
+        let hand = self.hand(now: { clock.time }, sleep: clock.sleep)
+        for _ in 0..<Hand.perMinute { XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, .done) }
+        var job = hand.begin(watchUser: false)
+        clock.during = { [job] in job.stop() }
+        XCTAssertEqual(hand.act(step, in: job).end, .stopped)
+        XCTAssertLessThanOrEqual(clock.slept, 0.1, "within one slice of the wait")
+        job = hand.begin(watchUser: false)
+        let key = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true))
+        clock.during = { [job] in job.seen(key, in: nil) }
+        XCTAssertEqual(hand.act(step, in: job).end, .userInput)
+        clock.during = nil
+        XCTAssertEqual(fake.sentCount, Hand.perMinute, "nothing sent during a pause that ended")
+        // 40 in one job: after its pauses, the 41st still ends it.
+        job = hand.begin(watchUser: false)
+        for i in 0..<Hand.perJob { XCTAssertEqual(hand.act(step, in: job).end, .done, "action \(i + 1)") }
+        XCTAssertEqual(hand.act(step, in: job).end, .jobCeiling)
+        XCTAssertGreaterThan(clock.slept, 60, "it paused on the way")
     }
 
     // MARK: - Surprises: stop, never retry
@@ -357,6 +404,92 @@ final class HandTests: XCTestCase {
         XCTAssertEqual(hand.act(opens, in: job).end, .done)
         fake.dialogCount = 1
         XCTAssertEqual(hand.act(bold, in: job).end, .done)
+    }
+
+    /// R4: a step meant to open a sheet expects it, by the control's own name or the chord, decided by code; any other
+    /// new sheet still stops the job.
+    func testASaveSheetIsExpectedAnAlertIsNot() {
+        for name in ["Save", "Save As…", "Export...", "Print", "Go to", "Salva con nome", "Esporta", "Vai a", "Trova", "Rename",
+                     "Add a made-up thing…"] {
+            XCTAssertTrue(ActJob.opens(name), name)
+        }
+        for name in ["Bold", "Saved items", "Newsletter", "Openness", "Grassetto", ""] { XCTAssertFalse(ActJob.opens(name), name) }
+        for keys in ["cmd+s", "cmd+o", "cmd+p", "cmd+shift+s"] { XCTAssertTrue(ActJob.opens(HandChord.parse(keys)!), keys) }
+        for keys in ["cmd+b", "cmd+shift+p", "s", "return"] { XCTAssertFalse(ActJob.opens(HandChord.parse(keys)!), keys) }
+        // A press on Save: the sheet that comes is expected, the next step goes on.
+        var save = fake.add("Save", frame: frame(0))
+        save.opensWindow = ActJob.opens(save.name)
+        let bold = fake.add("Bold", frame: frame(1))
+        var hand = self.hand()
+        var job = hand.begin(watchUser: false)
+        XCTAssertEqual(hand.act(save, in: job).end, .done)
+        fake.dialogCount = 1
+        XCTAssertEqual(hand.act(bold, in: job).end, .done)
+        // cmd+S through keys, the same.
+        fake.dialogCount = 0
+        let keys = ActJob.input(.keys, target: nil, to: nil, keys: HandChord.parse("cmd+s"), text: "", amount: 0, packet: nil, pid: FakeSurface.pid)!
+        XCTAssertTrue(keys.opensWindow)
+        hand = self.hand()
+        job = hand.begin(watchUser: false, in: FakeSurface.pid)
+        XCTAssertEqual(hand.act(keys, in: job).end, .done)
+        fake.dialogCount = 1
+        XCTAssertEqual(hand.act(bold, in: job).end, .done)
+        // An alert after a plain press still ends the job.
+        fake.dialogCount = 0
+        hand = self.hand()
+        job = hand.begin(watchUser: false)
+        XCTAssertEqual(hand.act(bold, in: job).end, .done)
+        fake.dialogCount = 1
+        XCTAssertEqual(hand.act(bold, in: job).end, .surprise)
+        // And after a plain key.
+        fake.dialogCount = 0
+        hand = self.hand()
+        job = hand.begin(watchUser: false, in: FakeSurface.pid)
+        XCTAssertEqual(hand.act(HandStep(kind: .keys, pid: FakeSurface.pid, chord: HandChord.parse("cmd+b")), in: job).end, .done)
+        fake.dialogCount = 1
+        XCTAssertEqual(hand.act(bold, in: job).end, .surprise)
+    }
+
+    /// R4: a typed value is compared with what the field shows after normalising both; a different value still fails.
+    func testTheReadBackIsComparedAfterNormalising() {
+        let us = Locale(identifier: "en_US"), it = Locale(identifier: "it_IT")
+        for (shown, typed) in [("Made up", "  Made   up "), ("“Made” ‘up’", "\"Made\" 'up'"), ("cafe\u{301}", "café"),
+                               ("1,000.00", "1000"), ("03/04/2026", "3/4/26"), ("Mar 4, 2026", "3/4/26")] {
+            XCTAssertTrue(Hand.sameValue(shown, typed, locale: us), "\(shown) / \(typed)")
+        }
+        XCTAssertTrue(Hand.sameValue("3,50", "3,5", locale: it))
+        XCTAssertTrue(Hand.sameValue("1.000,00", "1000", locale: it))
+        for (shown, typed) in [("Made up", "Made-up"), ("1,000.00", "1001"), ("3/5/26", "3/4/26"), ("Made up", ""), ("12", "1,2")] {
+            XCTAssertFalse(Hand.sameValue(shown, typed, locale: us), "\(shown) / \(typed)")
+        }
+        XCTAssertFalse(Hand.sameValue(nil, "Made up"))
+        // Through the Hand: a field that writes it its own way passes, one that keeps something else fails.
+        var step = fake.add("Title", role: "AXTextField", frame: frame(0))
+        step.text = "Made up 'one'"
+        fake.reformat = { "  " + $0.replacingOccurrences(of: " ", with: "  ").replacingOccurrences(of: "'", with: "’") }
+        var hand = self.hand()
+        XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, .done)
+        fake.reformat = { _ in "Made up 'two'" }
+        hand = self.hand()
+        XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, .checkFailed)
+    }
+
+    /// NA.6 after review: an app found by its exact name, or else by the last or first words of its name; two found
+    /// stop him. The Never lists then judge the bundle id, as before.
+    func testAppNamesExactOrByTheirLastOrFirstWords() {
+        let mac: [(name: String, bundleID: String)] = [
+            ("Microsoft Excel", "com.microsoft.Excel"), ("Microsoft Excel.app", "com.microsoft.Excel"), ("Mail", "com.apple.mail"),
+            ("Made-up Office Word", "com.example.word"), ("Made-up Office", "com.example.office"), ("Office Tools", "com.example.tools"),
+            ("Notes", "com.apple.Notes"), ("Sticky Notes", "com.example.sticky"), ("Excellent", "com.example.excellent"),
+        ]
+        func names(_ asked: String) -> [String] { Hand.named(asked, in: mac).map(\.bundleID) }
+        XCTAssertEqual(names("Excel"), ["com.microsoft.Excel"], "one entry per bundle id, never Excellent")
+        XCTAssertEqual(Hand.named(" excel ", in: mac).first?.name, "Microsoft Excel")
+        XCTAssertEqual(names("Notes"), ["com.apple.Notes"], "the exact name wins over a longer one")
+        XCTAssertEqual(names("Office").count, 2, "two found: the Doer stops")
+        XCTAssertEqual(names("Word"), ["com.example.word"])
+        XCTAssertEqual(names("cel"), [], "never a part of a word")
+        XCTAssertEqual(names(""), [])
     }
 
     func testFrontAppChangedStops() {
@@ -539,13 +672,14 @@ final class HandTests: XCTestCase {
     }
 
     func testScriptsCountTowardsTheCeilings() {
-        var time = Date(timeIntervalSince1970: 1_000_000)
-        let hand = self.hand(now: { time })
+        let clock = Clock()
+        let hand = self.hand(now: { clock.time }, sleep: clock.sleep)
         let step = script(.reminder(title: "Phew test 1234 made up", due: nil))
         for _ in 0..<Hand.perMinute { XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, .done) }
-        XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, .minuteCeiling)
-        time += 61
+        XCTAssertEqual(clock.slept, 0)
         XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, .done)
+        XCTAssertEqual(clock.slept, 60, accuracy: 0.2, "the 21st waited for room (R5)")
+        XCTAssertEqual(fake.scripts.count, Hand.perMinute + 1)
     }
 
     func testScriptLogLineHoldsNoWords() throws {
@@ -701,14 +835,16 @@ final class HandTests: XCTestCase {
 
     func testFrontSwitchesCountTowardsTheCeilings() {
         fake.bundles[Self.sheets] = "com.example.sheets"
-        let time = Date(timeIntervalSince1970: 1_000_000)
-        let hand = self.hand(now: { time })
+        let clock = Clock()
+        let hand = self.hand(now: { clock.time }, sleep: clock.sleep)
         for _ in 0..<Hand.perMinute {
             fake.front = FakeSurface.pid
             XCTAssertEqual(hand.act(front(), in: hand.begin(watchUser: false, in: FakeSurface.pid)).end, .done)
         }
         fake.front = FakeSurface.pid
-        XCTAssertEqual(hand.act(front(), in: hand.begin(watchUser: false, in: FakeSurface.pid)).end, .minuteCeiling)
+        XCTAssertEqual(clock.slept, 0)
+        XCTAssertEqual(hand.act(front(), in: hand.begin(watchUser: false, in: FakeSurface.pid)).end, .done)
+        XCTAssertEqual(clock.slept, 60, accuracy: 0.2, "the 21st waited for room (R5)")
     }
 
     /// Back to the app the user was in on done, stuck, Stop and a refused step; never after their own take-over.

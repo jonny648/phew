@@ -168,6 +168,8 @@ enum NeverList {
             switch step.script {
             // Invitations or updates go out to guests; a repeat cannot be put back whole.
             case .delete?, .rename?, .noteBody?, .complete?, .move?: return agent || facts.guests || facts.repeats
+            // R6: lines added to a note already there change it: an agent's waits, as every change.
+            case let .append(_, title)?: return agent && !title.isEmpty
             // Adds, cells written over with what they held kept, and Undo itself.
             default: return false
             }

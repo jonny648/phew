@@ -134,8 +134,9 @@ enum HandItem: String, Sendable, Equatable {
 enum HandScript: Sendable, Equatable {
     /// Notes: a new note in the default folder, `title` its first line.
     case note(title: String, body: String)
-    /// Notes: lines added at the end of the note this job made.
-    case append(text: String)
+    /// Notes: lines added at the end of the note this job made; with a `title`, of the note already there with that
+    /// exact title (R6): then a change, kept for Undo.
+    case append(text: String, title: String = "")
     /// Reminders, through EventKit: a new reminder in the default list. `due` with or without a time.
     case reminder(title: String, due: DateComponents?)
     /// Calendar, through EventKit: a new event, no guests, in the default calendar.
@@ -175,7 +176,7 @@ enum HandScript: Sendable, Equatable {
     var chars: Int {
         switch self {
         case let .note(title, body): title.count + body.count
-        case let .append(text), let .rename(_, _, text), let .noteBody(_, text): text.count
+        case let .append(text, _), let .rename(_, _, text), let .noteBody(_, text): text.count
         case let .reminder(title, _), let .event(title, _, _): title.count
         case .workbook, .complete, .move, .delete, .restore: 0
         case let .cells(_, rows), let .changeCells(_, _, rows): rows.joined().reduce(0) { $0 + $1.count }
@@ -188,7 +189,8 @@ enum HandScript: Sendable, Equatable {
     /// A change, delete or restore of what exists: run by `HandSurface.change`, not `run`.
     var changes: Bool {
         switch self {
-        case .note, .append, .reminder, .event, .workbook, .cells: false
+        case let .append(_, title): !title.isEmpty
+        case .note, .reminder, .event, .workbook, .cells: false
         default: true
         }
     }
@@ -200,7 +202,8 @@ enum HandScript: Sendable, Equatable {
              let .complete(title), let .move(title, _, _), let .delete(_, title): [title]
         case let .rename(_, title, to): [title, to]
         case let .changeCells(book, _, _): [book]
-        case .append, .workbook, .cells, .restore: []
+        case let .append(_, title): title.isEmpty ? [] : [title]
+        case .workbook, .cells, .restore: []
         }
     }
 
@@ -209,6 +212,7 @@ enum HandScript: Sendable, Equatable {
         switch self {
         case let .rename(item, title, _), let .delete(item, title): (item, title)
         case let .noteBody(title, _): (.note, title)
+        case let .append(_, title) where !title.isEmpty: (.note, title)
         case let .complete(title): (.reminder, title)
         case let .move(title, _, _): (.event, title)
         default: nil
@@ -240,6 +244,8 @@ struct HandEntry: Sendable, Equatable {
     var notes: String?
     /// The list or calendar it is in, by id, to make it again in the same place.
     var calendar = ""
+    /// That list's or calendar's name, for the choices shown when several items share a title (R6). Card only.
+    var calendarName = ""
     /// What the "cannot be undone" class needs: invitations go out, a repeat cannot be put back whole.
     var guests = false
     var repeats = false
@@ -355,7 +361,7 @@ enum HandEnd: String, Sendable, CaseIterable {
     /// A shortcut on the fixed never-send list (`NeverList.neverSend`): quit, log out, lock, force quit, empty the
     /// Trash, or one that leaves the app.
     case neverKeys
-    /// The runaway brake.
+    /// The runaway brake. `minuteCeiling` no longer ends a job: the Hand pauses until the minute has room (R5).
     case jobCeiling, minuteCeiling
     /// Not as the look saw it: nothing there now, something else there, a window the job did not call for, another
     /// app in front.
@@ -380,6 +386,9 @@ struct HandResult: Equatable, Sendable {
     var final = false
     /// A put-back of Undo left the item as it is: it was changed again since the job (R16).
     var left = false
+    /// `manyFound`: the items that share the title, at most 5, in plain words (R6). Built from the user's own items:
+    /// for the card only, never a log.
+    var choices: [String] = []
 }
 
 /// One job: the steps of one request. Ends once, for good: on Stop, on the user's own input, or on the first step
@@ -408,6 +417,9 @@ final class HandJob: @unchecked Sendable {  // state under `lock`
     /// A research agent's job (PA.4), not one the user watches: what cannot be undone waits for a confirm.
     let agent: Bool
     private var keptValues: [HandKept] = []  // under `lock`
+    /// R5: told true when the Hand pauses at the minute ceiling and false when it goes on, off the main thread. Set
+    /// once by the caller before the first action.
+    var pausing: ((Bool) -> Void)?
 
     fileprivate init(number: Int, app: pid_t, agent: Bool = false) {
         self.number = number
@@ -475,6 +487,8 @@ protocol HandSurface {
     /// A change, delete or restore (`HandScript.changes`), once, then read back. Returns how it ended and what it
     /// replaced, for Undo.
     func change(_ script: HandScript, stop: @escaping () -> Bool) -> (HandEnd, HandKept?)
+    /// After `manyFound`, reading only: the items that share the title, in plain words, at most 5 (R6).
+    func choices(_ script: HandScript) -> [String]
     /// The app whose window or menu is at `point` (where a click lands), nil when not known. Reads only the owner.
     func owner(at point: CGPoint) -> pid_t?
     /// The app with this bundle id, when it runs.
@@ -493,6 +507,7 @@ extension HandSurface {
     func raise(_ window: AnyObject) -> Bool { false }
     func focused(_ pid: pid_t) -> AnyObject? { nil }
     func isDefault(_ element: AnyObject) -> Bool { false }
+    func choices(_ script: HandScript) -> [String] { [] }
 }
 
 /// An element as read at the moment of acting. `value` is never read from a secure field.
@@ -533,6 +548,8 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     private let list: NeverReadList
     private let ownPID: pid_t
     private let now: () -> Date
+    /// The pause's wait (R5): never on the main thread. Tests advance their clock instead.
+    private let sleep: (TimeInterval) -> Void
     /// Only the job counter and `ranHere`: never held while an app or a script works, so `begin` on the main thread
     /// never waits for an action (R30).
     private let lock = NSLock()
@@ -548,12 +565,14 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
 
     /// Tests pass a throwaway defaults suite, a fake surface or clock, and may stand in for Phew's own pid.
     init(defaults: UserDefaults = .standard, surface: HandSurface = AXSurface(), list: NeverReadList = .shared,
-         ownPID: pid_t = getpid(), now: @escaping () -> Date = Date.init) {
+         ownPID: pid_t = getpid(), now: @escaping () -> Date = Date.init,
+         sleep: @escaping (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }) {
         self.defaults = defaults
         self.surface = surface
         self.list = list
         self.ownPID = ownPID
         self.now = now
+        self.sleep = sleep
     }
 
     /// On unless the menu's switch turned it off (the user's word of 15 November: no Allow to press).
@@ -595,30 +614,60 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     /// Phew's own posted events carry `mark`.
     static func isOwn(_ event: CGEvent) -> Bool { event.getIntegerValueField(.eventSourceUserData) == mark }
 
-    /// The runaway brake: a pure rule, so the counters are unit-tested.
+    /// The runaway brake: a pure rule, so the counters are unit-tested. At `minuteCeiling` a job pauses (`room`).
     static func ceiling(actedInJob: Int, recent: [Date], now: Date) -> HandEnd? {
         if actedInJob >= perJob { return .jobCeiling }
         if recent.filter({ now.timeIntervalSince($0) < 60 }).count >= perMinute { return .minuteCeiling }
         return nil
     }
 
-    /// The one acting function. Blocks for at most about `timeout`: call it off the main thread, one step at a time.
+    /// R5: how long until the last minute holds fewer than `perMinute` actions; nil when it does now.
+    static func room(recent: [Date], now: Date) -> TimeInterval? {
+        let inside = recent.filter { now.timeIntervalSince($0) < 60 }.sorted()
+        guard inside.count >= perMinute else { return nil }
+        return max(0.01, 60 - now.timeIntervalSince(inside[inside.count - perMinute]))
+    }
+
+    /// The one acting function. Blocks for at most about `timeout`, or for a pause at the minute ceiling (R5): call it
+    /// off the main thread, one step at a time.
     func act(_ step: HandStep, in job: HandJob) -> HandResult {
         if let end = job.end { return HandResult(end: end) }  // the job is over: no step, no retry
         let start = Date()
         var role = step.role
         var marked = false, final = false, left = false
-        let end = acting.withLock { () -> HandEnd in
-            job.steps += 1
-            let end = check(step, job: job, role: &role, marked: &marked, final: &final, left: &left)
-            if end != .done { job.finish(end) }
-            return end
+        var end = HandEnd.minuteCeiling
+        while end == .minuteCeiling {
+            end = acting.withLock { () -> HandEnd in
+                let end = check(step, job: job, role: &role, marked: &marked, final: &final, left: &left)
+                guard end != .minuteCeiling else { return end }  // nothing sent: every gate again after the pause
+                job.steps += 1
+                if end != .done { job.finish(end) }
+                return end
+            }
+            if end == .minuteCeiling, let over = pause(job) {
+                end = over
+                acting.withLock { job.steps += 1 }
+            }
         }
         // The level, as before: marked or in the class. No word of what changed.
         ActionLog.record(ActionLog.line(job: job.number, step: job.steps, kind: step.kind, role: role, ended: end,
                                         marked: marked || final, ms: Int(Date().timeIntervalSince(start) * 1000),
                                         chars: end != .done ? 0 : step.kind == .set || step.kind == .keys ? step.text.count : step.script?.chars ?? 0))
-        return HandResult(end: end, marked: marked, final: final, left: left)
+        var result = HandResult(end: end, marked: marked, final: final, left: left)
+        if end == .manyFound, let script = step.script { result.choices = Array(surface.choices(script).prefix(5)) }
+        return result
+    }
+
+    /// R5: at the minute ceiling he waits, outside `acting`, until the minute has room again, then the step goes on.
+    /// Stop and the user's own input end the wait within 0.1 s, as at any time. Nil: go on; else the job's end.
+    private func pause(_ job: HandJob) -> HandEnd? {
+        job.pausing?(true)
+        defer { job.pausing?(false) }
+        while true {
+            if let end = job.end { return end }
+            guard let left = acting.withLock({ Self.room(recent: recent, now: now()) }) else { return nil }
+            sleep(min(left, 0.1))
+        }
     }
 
     /// Under `acting`. Every guard, then the action.
@@ -671,8 +720,37 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         // A set value is read back; the look after the step checks the rest (PH.7): a click, double or right click,
         // a scroll and a drag change what the next look shows, and the job judges it there. A drag on a canvas may
         // change nothing a look can read: no code check is possible for it, only the picture.
-        if step.kind == .set, let element, surface.read(element)?.value != step.text { return .checkFailed }
+        if step.kind == .set, let element, !Self.sameValue(surface.read(element)?.value, step.text) { return .checkFailed }
         return .done
+    }
+
+    /// R4: what a field shows after a set against what was typed. The same once both are normalised: ends trimmed,
+    /// runs of white space as one space, one Unicode form, curly quotes as straight ones. Or, when both read as a
+    /// number or as a date in the user's locale, the same value written another way ("1000" and "1,000.00").
+    static func sameValue(_ shown: String?, _ typed: String, locale: Locale = .current) -> Bool {
+        guard let shown else { return false }
+        func plain(_ s: String) -> String {
+            s.precomposedStringWithCanonicalMapping
+                .replacing(/[‘’‚‛′]/, with: "'").replacing(/[“”„‟″]/, with: "\"")
+                .replacing(/\s+/, with: " ").trimmingCharacters(in: .whitespaces)
+        }
+        let (a, b) = (plain(shown), plain(typed))
+        if a == b { return true }
+        let number = NumberFormatter()
+        number.locale = locale
+        number.numberStyle = .decimal
+        if let x = number.number(from: a), let y = number.number(from: b) { return x == y }
+        func day(_ s: String) -> Date? {
+            [DateFormatter.Style.short, .medium, .long].lazy.compactMap { style in
+                let date = DateFormatter()
+                date.locale = locale
+                date.dateStyle = style
+                date.timeStyle = .none
+                return date.date(from: s)
+            }.first
+        }
+        if let x = day(a), let y = day(b) { return Calendar.current.isDate(x, inSameDayAs: y) }
+        return false
     }
 
     /// Under `acting`. The ceilings.
@@ -717,7 +795,7 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         if surprised(step.pid, job) { return .surprise }
         if let end = job.end { return end }
         job.acted += 1
-        job.windowExpected = false
+        job.windowExpected = step.opensWindow  // R4: cmd+S and its kind open a sheet (`ActJob.opens`)
         recent.append(time)
         return surface.send(step, to: nil)
     }
@@ -1166,7 +1244,7 @@ extension AXSurface {
             guard end == .done, let id = lines.first, !id.isEmpty else { return (end == .done ? .failed : end, nil) }
             let note = HandMade(kind: "note", id: id, title: title)
             return (lines.dropFirst().joined() == title.trimmingCharacters(in: .whitespaces) ? .done : .checkFailed, note)
-        case let .append(text):
+        case let .append(text, _):
             guard let note = made.last(where: { $0.kind == "note" }) else { return (.gone, nil) }
             let lines = text.components(separatedBy: .newlines)
             guard let last = lines.last(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) else { return (.failed, nil) }
@@ -1220,6 +1298,8 @@ extension AXSurface {
     func facts(_ script: HandScript) -> HandFacts { changes(stop: { false }).facts(script) }
 
     func change(_ script: HandScript, stop: @escaping () -> Bool) -> (HandEnd, HandKept?) { changes(stop: stop).run(script) }
+
+    func choices(_ script: HandScript) -> [String] { changes(stop: { false }).choices(script) }
 
     private func changes(stop: @escaping () -> Bool) -> HandChanges {
         HandChanges(script: { Self.osascript($0, $1, stop: stop) }, items: EventKitItems(stop: stop))
@@ -1398,6 +1478,13 @@ struct HandChanges {
             return note(title, "body", AXSurface.html([title] + lines)) { name, text in
                 name == title && (last.map(text.contains) ?? true)
             }
+        case let .append(text, title) where !title.isEmpty:
+            // R6: lines added at the end of a note already there; its title and what it held stay as they were.
+            let lines = text.components(separatedBy: .newlines)
+            let last = lines.last { !$0.trimmingCharacters(in: .whitespaces).isEmpty }?.trimmingCharacters(in: .whitespaces)
+            return note(title, "append", AXSurface.html(lines)) { name, plain in
+                name == title && (last.map(plain.contains) ?? true)
+            }
         case .delete(.note, let title):
             return note(title, "delete", "") { _, text in text == "gone" }
         case let .rename(kind, title, to):
@@ -1417,19 +1504,15 @@ struct HandChanges {
         case let .restore(kept):
             return restore(kept)
         case .note, .append, .reminder, .event, .workbook, .cells:
-            return (.failed, nil)  // adds go through `run`
+            return (.failed, nil)  // adds go through `run`; an append to a note named by title is above
         }
     }
 
     /// Notes: found by title in Notes, then picked here by the exact title; changed by id. `check` gets the name and
     /// plain text read back after the change ("gone" for a delete).
     private func note(_ title: String, _ mode: String, _ value: String, check: (String, String) -> Bool) -> (HandEnd, HandKept?) {
-        let (found, list) = script(Self.findNotes, [title])
+        let (found, notes) = find(title)
         guard found == .done else { return (found, nil) }
-        let notes = list.isEmpty ? [] : list.components(separatedBy: "\u{1F}").compactMap { pair -> (id: String, name: String)? in
-            let parts = pair.components(separatedBy: "\u{1E}")
-            return parts.count == 2 ? (parts[0], parts[1]) : nil
-        }
         let (hit, match) = Hand.one(notes, titled: title) { $0.name }
         guard let id = hit?.id else { return (match, nil) }
         // What it holds, kept first, by a script of its own: what Undo needs never rides on the change's output (R5).
@@ -1444,6 +1527,42 @@ struct HandChanges {
         let back = out.split(separator: "\u{1E}", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
         let ok = check(back[0], back.count == 2 ? back[1] : back[0])
         return (ok ? .done : .checkFailed, mode == "delete" ? kept : kept.after(out))
+    }
+
+    /// A note Notes found by name: its id, name, folder's name and the seconds since it was last changed.
+    private struct Found { var id: String, name: String, folder = "", ago: TimeInterval = 0 }
+
+    /// Every note Notes finds by `title` (`findNotes`), the exact one still to be picked.
+    private func find(_ title: String) -> (HandEnd, [Found]) {
+        let (end, list) = script(Self.findNotes, [title])
+        guard end == .done else { return (end, []) }
+        return (.done, list.isEmpty ? [] : list.components(separatedBy: "\u{1F}").compactMap { row in
+            let parts = row.components(separatedBy: "\u{1E}")
+            guard parts.count >= 2 else { return nil }
+            return Found(id: parts[0], name: parts[1], folder: parts.count > 2 ? parts[2] : "",
+                         ago: parts.count > 3 ? TimeInterval(parts[3]) ?? 0 : 0)
+        })
+    }
+
+    /// R6: after `manyFound`, reading only: the items that share the exact title, as plain words for the card, at
+    /// most 5. Notes by folder and last change, reminders by list and due date, events by calendar and start.
+    func choices(_ script: HandScript, now: Date = Date()) -> [String] {
+        guard let (kind, title) = script.target else { return [] }
+        if kind == .note {
+            return Hand.all(find(title).1, titled: title) { $0.name }.prefix(5).map {
+                "the note in \($0.folder.isEmpty ? "a folder" : "“\($0.folder)”"), last changed "
+                    + now.addingTimeInterval(-$0.ago).formatted(date: .abbreviated, time: .omitted)
+            }
+        }
+        return Hand.all(items.all(kind) ?? [], titled: title) { $0.title }.prefix(5).map { item in
+            let place = item.calendarName.isEmpty ? "" : " in “\(item.calendarName)”"
+            if kind == .event {
+                return "the event\(place) on " + (item.start?.formatted(date: .abbreviated, time: .shortened) ?? "no date")
+            }
+            let due = item.due.flatMap { Calendar.current.date(from: $0) }
+                .map { "due " + $0.formatted(date: .abbreviated, time: item.due?.hour == nil ? .omitted : .shortened) }
+            return "the reminder\(place), " + (due ?? "no due date")
+        }
     }
 
     /// `readNote`'s answer: body, name, folder id, plain text; empty when no note has the id.
@@ -1547,14 +1666,15 @@ struct HandChanges {
         return back.title == want.title && back.done == want.done && back.start == want.start && back.end == want.end
     }
 
-    /// argv: the title. Every note Notes finds by that name, as id and name; the exact one is picked in Swift.
+    /// argv: the title. Every note Notes finds by that name, as id, name, its folder's name and the seconds since it
+    /// was last changed (for the choices, R6); the exact one is picked in Swift.
     static let findNotes = """
         on run argv
         tell application id "com.apple.Notes"
         set found to every note whose name is (item 1 of argv)
         set out to {}
         repeat with n in found
-        set end of out to (id of n) & (ASCII character 30) & (name of n)
+        set end of out to (id of n) & (ASCII character 30) & (name of n) & (ASCII character 30) & (name of container of n) & (ASCII character 30) & (((current date) - (modification date of n)) as text)
         end repeat
         end tell
         set AppleScript's text item delimiters to (ASCII character 31)
@@ -1574,8 +1694,8 @@ struct HandChanges {
         end tell
         end run
         """
-    /// argv: the id, the change (name, body, delete), the new value. Returns the name and plain text read back, or
-    /// for a delete "gone" unless the note is still in its folder. What it held is read before, by `readNote`.
+    /// argv: the id, the change (name, body, append, delete), the new value. Returns the name and plain text read
+    /// back, or for a delete "gone" unless the note is still in its folder. What it held is read before, by `readNote`.
     static let changeNote = """
         on run argv
         tell application id "com.apple.Notes"
@@ -1590,6 +1710,8 @@ struct HandChanges {
         else
         if (item 2 of argv) is "name" then
         set name of n to item 3 of argv
+        else if (item 2 of argv) is "append" then
+        set body of n to (body of n) & (item 3 of argv)
         else
         set body of n to item 3 of argv
         end if
@@ -1652,8 +1774,7 @@ struct HandChanges {
 }
 
 /// Reminders and events through EventKit: the real `HandItems`. Only open reminders are matched by title (done ones
-/// pile up under the same names); events from 30 days back to a year ahead.
-// shortcut: a fixed window for events; widen it if a live job needs an event further out.
+/// pile up under the same names); events in `Hand.eventWindow` (R6).
 struct EventKitItems: HandItems {
     let stop: () -> Bool
     private var store: EKEventStore { AXSurface.store }
@@ -1673,9 +1794,11 @@ struct EventKitItems: HandItems {
             return found.reminders.map(Self.entry)
         case .event:
             guard AXSurface.access(.event, stop: stop) else { return nil }
-            let now = Date()
-            let window = store.predicateForEvents(withStart: now.addingTimeInterval(-30 * 86_400), end: now.addingTimeInterval(365 * 86_400), calendars: nil)
-            return store.events(matching: window).map(Self.entry)
+            // EventKit matches at most four years per search: one search per span, an event crossing two spans once.
+            var seen = Set<String>()
+            return Hand.spans(Hand.eventWindow()).flatMap { span in
+                store.events(matching: store.predicateForEvents(withStart: span.start, end: span.end, calendars: nil))
+            }.filter { seen.insert("\($0.eventIdentifier ?? "")|\($0.startDate.timeIntervalSince1970)").inserted }.map(Self.entry)
         }
     }
 
@@ -1733,14 +1856,15 @@ struct EventKitItems: HandItems {
 
     private static func entry(_ item: EKReminder) -> HandEntry {
         HandEntry(id: item.calendarItemIdentifier, title: item.title ?? "", done: item.isCompleted, due: item.dueDateComponents,
-                  notes: item.notes, calendar: item.calendar?.calendarIdentifier ?? "", repeats: item.hasRecurrenceRules,
-                  alarms: alarms(item), priority: item.priority, url: item.url)
+                  notes: item.notes, calendar: item.calendar?.calendarIdentifier ?? "", calendarName: item.calendar?.title ?? "",
+                  repeats: item.hasRecurrenceRules, alarms: alarms(item), priority: item.priority, url: item.url)
     }
 
     private static func entry(_ item: EKEvent) -> HandEntry {
         HandEntry(id: item.eventIdentifier ?? "", title: item.title ?? "", start: item.startDate, end: item.endDate, allDay: item.isAllDay,
                   location: item.location, notes: item.notes, calendar: item.calendar?.calendarIdentifier ?? "",
-                  guests: item.hasAttendees, repeats: item.hasRecurrenceRules, alarms: alarms(item), url: item.url)
+                  calendarName: item.calendar?.title ?? "", guests: item.hasAttendees, repeats: item.hasRecurrenceRules,
+                  alarms: alarms(item), url: item.url)
     }
 
     /// Alerts by time; location alerts cannot be carried, and `HandUndo.lost` says so.
@@ -1761,23 +1885,43 @@ extension Hand {
     /// The one item titled exactly `title` (case kept, spaces at the ends aside): `notFound` for none, `manyFound`
     /// for more than one. Never a guess.
     static func one<T>(_ items: [T], titled title: String, _ name: (T) -> String) -> (T?, HandEnd) {
-        let want = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let hits = items.filter { name($0).trimmingCharacters(in: .whitespacesAndNewlines) == want }
+        let hits = all(items, titled: title, name)
         return hits.count == 1 ? (hits[0], .done) : (nil, hits.isEmpty ? .notFound : .manyFound)
+    }
+
+    /// Every item titled exactly `title`, by the same rule as `one`.
+    static func all<T>(_ items: [T], titled title: String, _ name: (T) -> String) -> [T] {
+        let want = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return items.filter { name($0).trimmingCharacters(in: .whitespacesAndNewlines) == want }
+    }
+
+    /// R6: where an event is looked for, made or moved to: two years back to five years ahead.
+    static func eventWindow(_ now: Date = Date()) -> DateInterval {
+        let calendar = Calendar.current
+        return DateInterval(start: calendar.date(byAdding: .year, value: -2, to: now)!, end: calendar.date(byAdding: .year, value: 5, to: now)!)
+    }
+
+    /// `window` cut into spans of at most one year each: EventKit searches at most four years at once.
+    static func spans(_ window: DateInterval) -> [DateInterval] {
+        var spans: [DateInterval] = [], start = window.start
+        while start < window.end {
+            let end = min(Calendar.current.date(byAdding: .year, value: 1, to: start)!, window.end)
+            spans.append(DateInterval(start: start, end: end))
+            start = end
+        }
+        return spans
     }
 }
 
 extension Hand {
-    /// NA.6: the apps on this Mac named exactly `name`, any case: running ones by their shown name, and those in the
-    /// system's application folders (and one folder down) by their shown or file name. One entry per bundle id.
-    /// Reading only: nothing is opened or brought forward; `act` does that, after the Never lists.
+    /// NA.6: the apps on this Mac named `name` (`named(_:in:)`): running ones by their shown name, and those in the
+    /// system's application folders (and one folder down) by their shown or file name. Reading only: nothing is
+    /// opened or brought forward; `act` does that, after the Never lists, by bundle id.
     static func apps(named name: String) -> [(name: String, bundleID: String)] {
         let want = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !want.isEmpty else { return [] }
-        func same(_ s: String?) -> Bool { s.map { ($0.hasSuffix(".app") ? String($0.dropLast(4)) : $0).caseInsensitiveCompare(want) == .orderedSame } ?? false }
-        var found: [String: String] = [:]
-        for app in NSWorkspace.shared.runningApplications where same(app.localizedName) {
-            if let id = app.bundleIdentifier { found[id] = app.localizedName }
+        var all = NSWorkspace.shared.runningApplications.compactMap { app in
+            app.bundleIdentifier.map { (name: app.localizedName ?? "", bundleID: $0) }
         }
         let files = FileManager.default
         var folders = files.urls(for: .applicationDirectory, in: [.localDomainMask, .systemDomainMask, .userDomainMask])
@@ -1788,12 +1932,27 @@ extension Hand {
                     if deeper, (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { look(in: url, deeper: false) }
                     continue
                 }
-                let shown = try? url.resourceValues(forKeys: [.localizedNameKey]).localizedName
-                guard same(url.lastPathComponent) || same(shown), let id = Bundle(url: url)?.bundleIdentifier else { continue }
-                found[id] = found[id] ?? (shown.map { $0.hasSuffix(".app") ? String($0.dropLast(4)) : $0 } ?? want)
+                let names = [try? url.resourceValues(forKeys: [.localizedNameKey]).localizedName, url.lastPathComponent].compactMap { $0 }
+                // Only a name that holds the words is opened for its bundle id.
+                guard names.contains(where: { $0.localizedCaseInsensitiveContains(want) }), let id = Bundle(url: url)?.bundleIdentifier else { continue }
+                all += names.map { (name: $0, bundleID: id) }
             }
         }
         folders.forEach { look(in: $0, deeper: true) }
+        return named(name, in: all)
+    }
+
+    /// The apps of `apps` named exactly `name`, any case, ".app" aside; when none is, those whose name ends with
+    /// " " + `name` or starts with `name` + " " ("Excel" finds "Microsoft Excel"). One entry per bundle id, under the
+    /// first name given for it. A pure rule: more than one entry and the caller stops.
+    static func named(_ name: String, in apps: [(name: String, bundleID: String)]) -> [(name: String, bundleID: String)] {
+        let want = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !want.isEmpty else { return [] }
+        let plain = apps.map { (name: $0.name.hasSuffix(".app") ? String($0.name.dropLast(4)) : $0.name, bundleID: $0.bundleID) }
+        var hits = plain.filter { $0.name.lowercased() == want }
+        if hits.isEmpty { hits = plain.filter { $0.name.lowercased().hasSuffix(" " + want) || $0.name.lowercased().hasPrefix(want + " ") } }
+        var found: [String: String] = [:]
+        for hit in hits where found[hit.bundleID] == nil { found[hit.bundleID] = hit.name }
         return found.map { ($0.value, $0.key) }.sorted { $0.bundleID < $1.bundleID }
     }
 

@@ -568,6 +568,84 @@ final class ActJobTests: XCTestCase {
         XCTAssertEqual(fake.sent.map(\.pid), [FakeSurface.pid, FakeSurface.pid])
     }
 
+    // MARK: NA.7, NA.8: fewer false stops, what the user already has
+
+    /// R4: a press on Save opens its sheet and the job goes on to the next look; an alert after a plain press ends it.
+    func testASaveSheetDoesNotEndTheJobAnAlertDoes() async {
+        let save = CGRect(x: 20, y: 100, width: 100, height: 30)
+        fake.add("Save…", frame: save)
+        var look = packet
+        look.pointables.append(Pointable(id: "e3", role: "AXButton", label: "Save…", frame: save))
+        var round = 0
+        // The sheet is there from the second look on.
+        var (run, _, job, _) = make([reply("press", element: "e3"), reply("press", element: "e1"), reply("done", text: "Saved.")],
+                                    packet: look, capture: { [fake] in round += 1; if round == 2 { fake?.dialogCount = 1 } })
+        var outcome = await run.run("Save it", job: job) { _ in }
+        XCTAssertEqual(outcome, .done("Saved."))
+        XCTAssertEqual(fake.sentCount, 2)
+        fake.dialogCount = 0
+        round = 0
+        (run, _, job, _) = make([reply("press", element: "e1"), reply("press", element: "e2"), reply("done", text: "Done.")],
+                                packet: look, capture: { [fake] in round += 1; if round == 2 { fake?.dialogCount = 1 } })
+        outcome = await run.run("Make it bold", job: job) { _ in }
+        XCTAssertEqual(outcome, .ended(.surprise))
+        XCTAssertEqual(fake.sentCount, 3, "the step after the alert is never sent")
+    }
+
+    /// Ten arrow keys in a row go, the eleventh stops; the same for a scroll. Three identical presses still stop.
+    func testTenKeysOrScrollsInARowGoTheEleventhStops() async {
+        var (run, _, job, _) = make(Array(repeating: input("keys", keys: "down"), count: 12))
+        var outcome = await run.run("Go down", job: job) { _ in }
+        XCTAssertEqual(outcome, .stuck(ActJob.noChange))
+        XCTAssertEqual(fake.sentCount, ActJob.sameKeys)
+        (run, _, job, _) = make(Array(repeating: input("scroll", element: "e1", amount: 3), count: 12))
+        outcome = await run.run("Scroll down", job: job) { _ in }
+        XCTAssertEqual(outcome, .stuck(ActJob.noChange))
+        XCTAssertEqual(fake.sentCount, 2 * ActJob.sameKeys)
+        (run, _, job, _) = make(Array(repeating: reply("press", element: "e1"), count: 4))
+        outcome = await run.run("Make it bold", job: job) { _ in }
+        XCTAssertEqual(outcome, .stuck(ActJob.noChange))
+        XCTAssertEqual(fake.sentCount, 2 * ActJob.sameKeys + 2)
+    }
+
+    /// R6: two notes share the title: the job ends with the choices on the card, nothing changed, nothing logged.
+    func testSeveralMatchesEndTheJobWithTheChoices() async throws {
+        fake.apps.add("Made-up twin", folder: "Made-up Work")
+        fake.apps.add("Made-up twin", folder: "Made-up Home")
+        let (run, _, job, _) = make([script("append", title: "Made-up twin", text: "Made-up line")])
+        let outcome = await run.run("Add a line to my twin note", job: job) { _ in }
+        guard case .stuck(let line) = outcome else { return XCTFail("not stuck: \(outcome)") }
+        XCTAssertTrue(line.hasPrefix(ActJob.sentence(for: .manyFound) + " I found the note in “Made-up Work”"), line)
+        XCTAssertTrue(line.contains("; the note in “Made-up Home”") && line.hasSuffix(". Tell me which one."), line)
+        XCTAssertEqual(fake.apps.notes.map(\.text), ["Made-up twin", "Made-up twin"])
+        ActionLog.flush()
+        let text = try String(contentsOf: log, encoding: .utf8)
+        XCTAssertFalse(text.contains("Made-up"), text)
+        // The Doer's append: with a title, a note already there; without, the job's own.
+        func decide(_ json: String) throws -> NextAction {
+            Doer.decide(try JSONDecoder().decode(Doer.Output.self, from: Data(json.utf8)), packet: packet, shot: nil)
+        }
+        XCTAssertEqual(try decide(script("append", title: " Made-up twin ", text: "x")), .script(.append(text: "x", title: "Made-up twin")))
+        XCTAssertEqual(try decide(script("append", text: "x")), .script(.append(text: "x")))
+        XCTAssertTrue(Doer.system.contains("or, with its exact title in title, a note already there"))
+    }
+
+    /// "Excel" opens "Microsoft Excel" when no app has the exact name; two found stop him; the Hand still refuses a
+    /// never app found this way.
+    func testAnAppFoundByTheLastWordOfItsName() async throws {
+        let mac: [(name: String, bundleID: String)] = [("Microsoft Excel", "com.microsoft.Excel"), ("Made-up Shell", "com.apple.Terminal"),
+                                                        ("Twin One", "com.example.twin-one"), ("Twin Two", "com.example.twin-two")]
+        Doer.installed = { Hand.named($0, in: mac) }
+        func decide(_ title: String) throws -> NextAction {
+            Doer.decide(try JSONDecoder().decode(Doer.Output.self, from: Data(script("open_app", title: title).utf8)), packet: packet, shot: nil)
+        }
+        XCTAssertEqual(try decide("Excel"), .front(bundleID: "com.microsoft.Excel", name: "Microsoft Excel"))
+        XCTAssertEqual(try decide("Twin"), .stuck(Doer.manyApps))
+        let (run, _, job, _) = make([script("open_app", title: "Shell")])
+        let outcome = await run.run("Open my shell", job: job) { _ in }
+        XCTAssertEqual(outcome, .ended(.neverActApp))
+    }
+
     // MARK: Clicks at a point, for canvases (PH.11)
 
     /// A PNG's first 24 bytes: all `ScreenshotSize` reads.
@@ -920,7 +998,8 @@ final class ActJobTests: XCTestCase {
         XCTAssertTrue(text.hasSuffix("Request: Echo it"))
     }
 
-    /// The job's ceilings count skill steps too: at most 20 steps in a minute, none reaching the Hand.
+    /// The job's ceilings count skill steps too: at 20 steps in a minute he pauses, with a line on the card, then goes
+    /// on (R5); 40 steps end the job. None reaches the Hand.
     func testTheCeilingsCountSkillSteps() async {
         struct Computing: Brain {
             func answer(_ question: String, packet: ContextPacket?) -> AsyncThrowingStream<BrainEvent, Error> { AsyncThrowingStream { $0.finish() } }
@@ -934,13 +1013,42 @@ final class ActJobTests: XCTestCase {
         let job = hand.begin(watchUser: false, in: FakeSurface.pid)
         let packet = packet
         var run = ActJob(brain: Computing(), hand: hand, capture: { _ in packet })
-        var started = 0
+        var started = 0, paused: [Bool] = []
+        let clock = Clock()
+        run.clock = { clock.time }
+        run.wait = { clock.time += $0; clock.slept += $0 }
         run.starting = { _ in started += 1 }
+        run.paused = { paused.append($0) }
         let outcome = await run.run("Compute forever", job: job) { _ in }
-        XCTAssertEqual(outcome, .ended(.minuteCeiling))
-        XCTAssertEqual(started, Hand.perMinute)
+        XCTAssertEqual(outcome, .ended(.jobCeiling))
+        XCTAssertEqual(started, Hand.perJob)
+        XCTAssertEqual(paused, [true, false], "one pause between the 20th and the 21st")
+        XCTAssertEqual(clock.slept, 60, accuracy: 0.2)
         XCTAssertEqual(fake.sentCount, 0)
         XCTAssertEqual(fake.scripts, [])
+    }
+
+    /// A made-up clock that only the job's pause moves on (R5).
+    private final class Clock: @unchecked Sendable {
+        var time = Date(timeIntervalSince1970: 1_000_000)
+        var slept: TimeInterval = 0
+    }
+
+    /// R5: Stop during the job's pause ends it at once, with nothing sent.
+    func testStopDuringThePauseEndsTheJob() async {
+        // Two controls in turn, so the same-step rule never bites.
+        let (made, _, job, _) = make((0...Hand.perMinute).map { reply("press", element: $0 % 2 == 0 ? "e1" : "e2") })
+        var run = made
+        let clock = Clock()
+        var paused: [Bool] = []
+        run.clock = { clock.time }
+        run.wait = { clock.time += $0; clock.slept += $0; job.stop() }
+        run.paused = { paused.append($0) }
+        let outcome = await run.run("Press them", job: job) { _ in }
+        XCTAssertEqual(outcome, .ended(.stopped))
+        XCTAssertEqual(fake.sentCount, Hand.perMinute, "the 21st is never sent")
+        XCTAssertLessThanOrEqual(clock.slept, 0.1, "within one slice of the wait")
+        XCTAssertEqual(paused, [true, false])
     }
 
     func testDoerSkillAnswers() throws {

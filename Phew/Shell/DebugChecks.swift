@@ -378,7 +378,7 @@ extension AppDelegate {
         }
         switch script {
         case let .note(title, body): return "note marked=\(title.hasPrefix(marker)) lines=\(body.isEmpty ? 0 : body.components(separatedBy: .newlines).count)"
-        case let .append(text): return "append lines=\(text.components(separatedBy: .newlines).count)"
+        case let .append(text, title): return "append lines=\(text.components(separatedBy: .newlines).count) titled=\(!title.isEmpty)"
         case let .reminder(title, due):
             return "reminder marked=\(title.hasPrefix(marker)) due=\(due.map { $0.hour == nil ? "date only, " + when(Calendar.current.date(from: $0)) : when(Calendar.current.date(from: $0)) } ?? "none")"
         case let .event(title, start, end): return "event marked=\(title.hasPrefix(marker)) start=\(when(start)) minutes=\(Int(end.timeIntervalSince(start) / 60))"

@@ -113,6 +113,22 @@ final class TextCard: EditPanel {
         restartIdle()
     }
 
+    /// D3: a saved conversation, opened by the user from the menu: its turns on the open thread, the cursor in the reply
+    /// field. A reply continues it in the Map, with a fresh look as any reply. The card closes if it is gone.
+    func showThread(_ id: Int64, at point: NSPoint, brain: any Brain, onKeyProblem: @escaping (BrainError) -> Void) async {
+        open(at: point, brain: brain, onKeyProblem: onKeyProblem)  // the conversation before ends first
+        guard let thread = await brain.openThread(id), !thread.turns.isEmpty, isVisible else { return dismiss() }
+        for turn in thread.turns {
+            model.begin(SavedThread.shown(turn.question))
+            model.text = turn.answer
+        }
+        model.thinking = false
+        model.open = true
+        restartIdle()
+        focusReply()
+        shellLog("card: saved conversation opened, \(thread.turns.count) turns")
+    }
+
     private func open(at point: NSPoint, brain: any Brain, onKeyProblem: @escaping (BrainError) -> Void) {
         dismiss()
         model.reset()

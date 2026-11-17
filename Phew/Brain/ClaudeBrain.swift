@@ -21,6 +21,8 @@ struct ClaudeBrain: Brain {
     /// about Phew; on any other route it is cancelled unseen (its cost logged as cancelled). Off by default, so unit
     /// tests stay deterministic; the app turns it on.
     var answerEarly = false
+    /// D3: asked at each reply, so an earlier screen from an app put on the list since is never sent.
+    var neverRead = NeverReadList.shared
 
     /// Only when the Map cannot be opened.
     static let cannotRemember = "My memory isn't available right now, so nothing was stored."
@@ -116,6 +118,21 @@ struct ClaudeBrain: Brain {
         return (try? await store.deleteNow(id)) ?? false
     }
 
+    // MARK: Saved conversations (D3, 05-map.md 5.8.1)
+
+    func savedThreads() async -> [SavedThread] { await map.ready()?.threads() ?? [] }
+
+    func openThread(_ id: Int64) async -> SavedThread? {
+        guard let thread = await map.ready()?.thread(id) else { return nil }
+        memory.resume(id: thread.id, turns: thread.turns, project: thread.projectID)
+        return thread
+    }
+
+    func forgetThread(_ id: Int64) async -> String? {
+        guard let store = await map.ready() else { return nil }
+        return (try? await store.forgetThread(id))?.label
+    }
+
     /// After every Librarian run started before, like every other read.
     func exportMap(includeSensitive: Bool) async -> String? {
         await map.ready()?.export(includeSensitive: includeSensitive)
@@ -128,6 +145,7 @@ struct ClaudeBrain: Brain {
     private func run(_ question: String, asTyped: String? = nil, packet: ContextPacket?, state: ShellState, spoken: [Hearing],
                      emit: (BrainEvent) -> Void) async throws {
         let start = Date()
+        let taken = memory.now()  // when this turn's capture was taken, for its 10 minutes as the earlier screen
         let sent = asTyped ?? question
         // The Conductor and the Map side by side. The Map is read by code, no model call.
         // P6.3: for a spoken question, the words the recogniser had (screen and memory), so a misheard name can be put right.
@@ -137,6 +155,8 @@ struct ClaudeBrain: Brain {
         // R47: there is no Observer: the Guide reads the packet's text as it is.
         let recalled = Task { await recall(question, packet: packet) }
         let earlier = memory.turns
+        // D3: the previous turn's capture, for a reply, as data; dropped here when its app is never read now.
+        let earlierScreen = memory.earlierCapture(refusing: neverRead.refuses)
         // R57: a typed question's plain explanation starts now; its words wait in `early` until the route is known.
         let (early, out) = AsyncThrowingStream<BrainEvent, Error>.makeStream()
         let starting = answerEarly && spoken.isEmpty && !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -145,7 +165,8 @@ struct ClaudeBrain: Brain {
                 let (store, lines) = await recalled.value
                 let project = await projectMemoryBlock(question, packet: packet, store: store)
                 try await Guide.answer(sent, packet: packet, route: .explain, earlier: earlier, recall: lines, aboutPhew: false,
-                                       projectMemory: project, tools: tools ?? store.map(MapSearch.init), provider: provider) { out.yield($0) }
+                                       projectMemory: project, earlierScreen: earlierScreen, tools: tools ?? store.map(MapSearch.init),
+                                       provider: provider) { out.yield($0) }
                 out.finish()
             } catch { out.finish(throwing: error) }
         }
@@ -172,7 +193,7 @@ struct ClaudeBrain: Brain {
         if route == .act { route = .guide }
         let (store, lines) = await recalled.value
         let fromEarly = explaining != nil && route == .explain && !aboutPhew
-        shellLog("brain: route \(route), text \(packet?.visibleText.count ?? 0) chars,\(earlier.count) earlier turns, map \(store == nil ? "off" : "on") with \(lines.isEmpty ? 0 : lines.split(separator: "\n").count) lines, ready in \(Int(Date().timeIntervalSince(start) * 1000)) ms\(explaining == nil ? "" : fromEarly ? ", early answer kept" : ", early answer cancelled")")
+        shellLog("brain: route \(route), text \(packet?.visibleText.count ?? 0) chars,\(earlier.count) earlier turns, earlier screen \(earlierScreen != nil), map \(store == nil ? "off" : "on") with \(lines.isEmpty ? 0 : lines.split(separator: "\n").count) lines, ready in \(Int(Date().timeIntervalSince(start) * 1000)) ms\(explaining == nil ? "" : fromEarly ? ", early answer kept" : ", early answer cancelled")")
         var explanation = "", steps: [GuideStep] = []
         func take(_ event: BrainEvent) {
             if case .text(let piece) = event { explanation += piece }
@@ -188,13 +209,34 @@ struct ClaudeBrain: Brain {
             let about = SelfKnowledge.live(state, turn: earlier.count + 1, projects: held?.projects, facts: held?.facts)
             let project = route == .explain ? await projectMemoryBlock(question, packet: packet, store: store) : nil
             try await Guide.answer(sent, packet: packet, route: route, earlier: earlier, recall: lines, about: about,
-                                   aboutPhew: aboutPhew, projectMemory: project, spoken: spoken, tools: tools ?? store.map(MapSearch.init),
-                                   provider: provider, emit: take)
+                                   aboutPhew: aboutPhew, projectMemory: project, spoken: spoken, earlierScreen: earlierScreen,
+                                   tools: tools ?? store.map(MapSearch.init), provider: provider, emit: take)
         }
         // Only a finished answer is kept, and only as text. The Librarian learns from the same text.
         let turn = Guide.turn(question, explanation: explanation, steps: steps)
         memory.add(turn)
+        memory.keepCapture(packet, taken: taken)  // D3: in memory only, the earlier screen of the next reply
+        await saveThread(question, packet: packet)
         await map.learn(question: question, answer: turn.answer, route: route, packet: packet, provider: provider)
+    }
+
+    /// D3 (5.8.1): the conversation as text in the Map, one row rewritten after each turn, under the first Project code
+    /// detects for it. Code only, no model call; never the capture. Does not wait for the Librarian.
+    private func saveThread(_ question: String, packet: ContextPacket?) async {
+        guard let store = await map.now() else { return }
+        if !memory.hasProject,
+           let project = await store.detectProject(appName: packet?.appName ?? "", windowTitle: packet?.windowTitle ?? "",
+                                                   documentPath: packet?.documentPath, question: question) {
+            memory.setProject(project.id)
+        }
+        let conversation = memory.conversation
+        do {
+            if let id = try await store.saveThread(id: conversation.id, turns: conversation.turns, project: conversation.project) {
+                memory.saved(as: id, generation: conversation.generation)
+            }
+        } catch {
+            shellLog("map: conversation not saved")
+        }
     }
 
     /// Layers 1 and 2 of 5.11: the profile on top, then what code recalls for this question. Empty without a Map.

@@ -66,6 +66,14 @@ protocol Brain: Sendable {
     /// The Map as one Markdown document (P5.10), sensitive facts only when asked. Nil when there is no Map to read.
     func exportMap(includeSensitive: Bool) async -> String?
 
+    /// D3 (docs/05-map.md 5.8.1): the saved conversations, newest first, without their turns. Empty without a Map.
+    func savedThreads() async -> [SavedThread]
+    /// Open: the thread with its turns, which become the conversation, so a reply continues it (as text, within the
+    /// working memory's limits, with a fresh look). Call after the card has closed the one before. Nil when it is gone.
+    func openThread(_ id: Int64) async -> SavedThread?
+    /// Forgets one saved conversation: to Recently deleted for 30 days. The line for the panel, nil if nothing went.
+    func forgetThread(_ id: Int64) async -> String?
+
     /// A research task on the task route (PA.1): the Runner works alone from `words`, the one screen read made when
     /// the task was given (`packet`, dropped when the task ends), the Map and the web, then the report is saved as a
     /// new PDF in `folder` (nil: Downloads) with a Markdown copy in Phew's storage. Events: `.searching` and
@@ -150,6 +158,9 @@ extension Brain {
     func restore(_ id: Int64) async -> Bool { false }
     func deleteNow(_ id: Int64) async -> Bool { false }
     func exportMap(includeSensitive: Bool) async -> String? { nil }
+    func savedThreads() async -> [SavedThread] { [] }
+    func openThread(_ id: Int64) async -> SavedThread? { nil }
+    func forgetThread(_ id: Int64) async -> String? { nil }
 }
 
 struct DeletedItem: Sendable, Identifiable { let id: Int64; let label: String; let daysLeft: Int }

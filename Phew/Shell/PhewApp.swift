@@ -36,6 +36,7 @@ struct PhewApp: App {
                 Button("Import from a project folder…") { delegate.importFromFolder() }
                 UndoImportEntry(undo: delegate.importUndo) { delegate.undoLastImport() }
                 Divider()
+                Button("Conversations…") { delegate.showConversations() }
                 Button("Recently deleted…") { delegate.showRecentlyDeleted() }
                 Button("Export the Map…") { delegate.showExport() }
                 Button("Never-read apps…") { delegate.showNeverRead() }
@@ -397,6 +398,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func showRecentlyDeleted() {
         menuPanel.show(title: "Recently deleted", DeletedView(list: DeletedList(brain: brain)))
+    }
+
+    /// D3: the saved conversations; Open shows one on the card near the menu bar, where a reply continues it.
+    func showConversations() {
+        let list = ConversationsList(brain: brain)
+        list.onOpen = { [unowned self] id in
+            let mouse = NSEvent.mouseLocation
+            guard let visible = (NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.screens.first)?.visibleFrame else { return }
+            Task {
+                await card.showThread(id, at: NSPoint(x: visible.maxX - Design.Size.width - 16, y: visible.maxY - 8), brain: brain) { [unowned self] error in
+                    setup.showKey(rejected: error == .badKey)
+                }
+            }
+        }
+        menuPanel.show(title: "Conversations", ConversationsView(list: list))
     }
 
     func showExport() {

@@ -172,7 +172,7 @@ actor MapStore {
 
     /// For tests: how many rows of `table` (nodes, edges or events) with this id each file holds.
     func fileCounts(_ table: String, _ id: Int64) throws -> (main: Int64, sensitive: Int64) {
-        precondition(["nodes", "edges", "events"].contains(table))
+        precondition(["nodes", "edges", "events", "threads"].contains(table))
         let count = { (file: String) in try self.db.scalar("SELECT count(*) FROM \(file).\(table) WHERE id = ?", [.int(id)]).intValue ?? -1 }
         return try (count("main"), count("s"))
     }
@@ -240,6 +240,11 @@ actor MapStore {
             try db.query("INSERT INTO \(to).events SELECT * FROM \(from).events e WHERE \(events)", [.int(id)])
             try db.query("UPDATE \(to).events SET sensitive = ?2 WHERE id IN (SELECT e.id FROM \(to).events e WHERE \(touches))", [.int(id), flag])
             try db.query("DELETE FROM \(from).events WHERE id IN (SELECT id FROM \(to).events)")
+
+            // D3 (5.8.1): a saved conversation lives in its Project's file.
+            try db.query("INSERT INTO \(to).threads SELECT * FROM \(from).threads WHERE project = ?1", [.int(id)])
+            try db.query("UPDATE \(to).threads SET sensitive = ?2 WHERE project = ?1", [.int(id), flag])
+            try db.query("DELETE FROM \(from).threads WHERE project = ?1", [.int(id)])
         }
     }
 

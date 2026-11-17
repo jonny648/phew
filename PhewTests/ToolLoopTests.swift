@@ -162,15 +162,18 @@ final class ToolLoopTests: XCTestCase {
         XCTAssertEqual(followUp.image, second)  // the fresh look only
         XCTAssertTrue(followUp.text.contains("SECOND-SCREEN-TEXT"))
         XCTAssertTrue(followUp.text.hasSuffix("Question: And the second one?"))
-        // Nothing of the earlier look: no screen text, no picture.
+        // The kept turns hold nothing of the earlier look. D3: its text comes once, as data in its own block before the
+        // screen now; the same window, so not its picture.
         let earlierText = followUp.earlier.map { $0.question + $0.answer }.joined()
         XCTAssertFalse(earlierText.contains("FIRST-SCREEN-TEXT"))
-        XCTAssertFalse(followUp.text.contains("FIRST-SCREEN-TEXT"))
+        let block = try XCTUnwrap(followUp.text.range(of: "<earlier_screen>")).upperBound..<XCTUnwrap(followUp.text.range(of: "</earlier_screen>")).lowerBound
+        XCTAssertTrue(followUp.text[block].contains("FIRST-SCREEN-TEXT"))
+        XCTAssertEqual(followUp.text.components(separatedBy: "FIRST-SCREEN-TEXT").count - 1, 1)
+        XCTAssertNil(followUp.earlierImage)
         // On the wire: one picture in the whole request, in the last user message.
         let body = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(ClaudeProvider.urlRequest(followUp, key: "k").httpBody)) as? [String: Any])
         let wire = String(decoding: try JSONSerialization.data(withJSONObject: body), as: UTF8.self)
         XCTAssertEqual(wire.components(separatedBy: #""type":"image""#).count - 1, 1)
-        XCTAssertFalse(wire.contains("FIRST-SCREEN-TEXT"))
         XCTAssertFalse(wire.contains(first.base64EncodedString()))
     }
 

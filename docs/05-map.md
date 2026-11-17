@@ -200,12 +200,29 @@ How each rule reaches the Guide: the first three are computed by code and arrive
 
 | Memory | Holds | Lives |
 |---|---|---|
-| Working | The last 3 questions and answers of the current conversation, as text only, for follow-up questions. Never the screen text or the picture of an earlier turn: a follow-up takes a fresh look | In memory only. Dropped 5 minutes after the last answer, and on Quit |
+| Working | The last 3 questions and answers of the current conversation, as text only, for follow-up questions. A follow-up takes a fresh look; since D3 it also gets the previous turn's capture, below | In memory only. Dropped 5 minutes after the last answer, and on Quit |
 | Profile | A short summary of you: your name, current Notes about Me (told first, then observed, then imported), then active Projects with their Tasks due soon. Each line says where it came from | Built by Phew's own code when a question arrives, with no model call. The same facts always give the same text, in the same order. At most about 200 lines |
 | Episodic | Past questions: what you asked, what he answered in one or two lines, when, in which app, on which project | Events table |
 | Semantic | The Map: things and links | Nodes and edges tables |
 
 3 turns, 5 minutes and 200 lines were kept on 14 November. Since the conversation card (15 November, `03-experience.md` 3.10) the numbers are 8 turns and 10 minutes; past 8 the last 4 are kept (16 November).
+
+**The earlier screen (decision D3, 17 November).** Beside the turns, the working memory keeps the capture of the conversation's previous turn, its screen text and its picture, in memory only, for at most 10 minutes from when it was taken. A reply gets it as the earlier screen, marked as earlier and as data: its text always (at most 4,000 characters), its picture only when the reply's own look is of another app or window. Only that one capture, never a history. It goes at 10 minutes (a timer), when the card closes, when the conversation ends, on Quit, and when its app is on the Never-read list at the time of the reply. It is never written to disk, a log, the Map or a saved conversation.
+
+### 5.8.1 Saved conversations (decision D3, 17 November)
+
+A conversation on the card is kept as text after it ends, so it can be read again and continued.
+
+- **Where.** One table, `threads`, in both files like the others (`05-map-storage.md` 5.12 gains it): id, owner, time, project, turns, sensitive, deleted. One row per conversation. `turns` is a JSON list of the questions and answers as the working memory holds them: text only, through the secrets filter again before it is written. Never a screen text, a picture or a capture. A question sent with "Send as it is" is kept in its filtered form, as the working memory has it. `time` is when its last turn ended. `project` is the Project Phew's code detects for a turn of the conversation (5.11, the first one found), or empty. Ids come from the one counter.
+- **Why a table, not past questions.** A past question holds the Librarian's summary of one or two lines, is in the text index, and is read by recall, project detection and `search_map`. A thread holds whole answers and must stay out of all of these. A table with no text index stays out of them with no change to them, and has the `deleted` and `sensitive` columns that forget, restore, the real delete and the sensitive lock already work with.
+- **Written by code**, never by a model. The row is written when the conversation's first turn ends and rewritten after each later turn, so a conversation is one row, saved once, also if Phew quits. A conversation whose only turn was stopped or failed has no turn kept, so no row. A forget on the remember route clears the turns, and the next turn starts a new row.
+- **Caps, by code.** At most 40 turns and 60,000 characters in a thread, and the last 200 threads. Past a cap the oldest turns, then the oldest threads, go first, with a real delete.
+- **Sensitive.** A thread whose Project is sensitive lives in `map-sensitive.sqlite`, and moves with its Project when the mark changes. It is left out of the export unless sensitive facts are ticked, like past questions.
+- **Forget.** Forgetting a Project hides its threads with it: in Recently deleted for 30 days, put back by Restore, wiped by the real delete, and counted on the card's line. One thread can be forgotten from the Conversations panel: a forget of its own, with the line "Forgot the conversation "<first question>"". A forgotten thread is never written again, also if it is still open on the card. The step "the name used elsewhere" (5.5) does not look inside threads.
+- **Not in recall.** Threads are never sent with an answer and are not in `search_map`. What was asked in them is already there: each answered question is a past question, which `search_map` reaches with class `History`.
+- **Open.** Memory, "Conversations…" lists the threads newest first, by date, Project and first question. Open shows the thread on the card; a reply continues the same row, with the earlier turns as text within the working memory's limits (8 kept, the last 4 past 8) and a fresh look, as any reply.
+- **Export.** A section "Conversations": each thread with its date, its Project and its turns.
+- An existing Map gains the empty `threads` table in both files, and its read view, the first time this version opens it (`IF NOT EXISTS`). Nothing else changes in it.
 
 ## 5.9 How it is filled
 
@@ -424,7 +441,7 @@ When this was written the Brain sent one question and got one answer: no tools, 
 - **Loop.** The Guide answers, or calls `search_map` and then answers. At most 2 such calls per question, then it must answer (kept 14 November, tuned after the MVP test). While it searches no words arrive, so the card stays in its waiting state.
 - **Sending back.** When the model calls the tool, its whole reply goes back unchanged together with the search result, including the model's hidden "thinking" blocks. The Claude API requires this: check its documentation when building. The first message, with the picture, is sent again unchanged. All of it is dropped when the answer is done.
 - **Caching.** The system prompt, the tool definition and the profile are marked for caching. They are identical from call to call, and the profile text changes only when a fact in it changes. By the price table in the code, a cached part costs about a twentieth of the normal price. It lasts 5 minutes from the last call, the first call pays a quarter more on that part, and a part that is too short is not cached at all (about 512 tokens today: check the Claude API documentation for the current figure). Until caching is built (roadmap PS.4 at the latest) nothing is cached: layer 1 is paid in full on every call and a search pays for the picture twice.
-- **Kept turns.** As in 5.8: text only, never an earlier look.
+- **Kept turns.** As in 5.8: text only, with the previous turn's capture as the earlier screen since D3.
 - **The "remember" route.** Today it answers "I can't remember things yet". It is replaced as written in 5.9.
 
 All figures in 5.11 are estimates. None was measured.

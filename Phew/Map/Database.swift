@@ -86,7 +86,8 @@ final class Database {
                   SELECT max(id) m FROM main.nodes UNION ALL SELECT max(id) FROM s.nodes
                   UNION ALL SELECT max(id) FROM main.edges UNION ALL SELECT max(id) FROM s.edges
                   UNION ALL SELECT max(id) FROM main.events UNION ALL SELECT max(id) FROM s.events
-                  UNION ALL SELECT max(id) FROM main.forgets UNION ALL SELECT max(id) FROM s.forgets) WHERE true
+                  UNION ALL SELECT max(id) FROM main.forgets UNION ALL SELECT max(id) FROM s.forgets
+                  UNION ALL SELECT max(id) FROM main.threads UNION ALL SELECT max(id) FROM s.threads) WHERE true
                 ON CONFLICT (one) DO UPDATE SET last = max(last, excluded.last)
                 """, step: "counter")
         } catch {
@@ -194,12 +195,14 @@ final class Database {
             CREATE TEMP VIEW IF NOT EXISTS all_nodes AS SELECT * FROM main.nodes UNION ALL SELECT * FROM s.nodes;
             CREATE TEMP VIEW IF NOT EXISTS all_edges AS SELECT * FROM main.edges UNION ALL SELECT * FROM s.edges;
             CREATE TEMP VIEW IF NOT EXISTS all_events AS SELECT * FROM main.events UNION ALL SELECT * FROM s.events;
+            CREATE TEMP VIEW IF NOT EXISTS all_threads AS SELECT * FROM main.threads UNION ALL SELECT * FROM s.threads;
             """
         let rc = sqlite3_exec(handle, sql, nil, nil, nil)
         guard rc == SQLITE_OK else { throw Failure(code: rc, step: "schema") }
     }
 
-    /// The tables of 5.12 (terms only in main) and the two text indexes of one file. The plain indexes (R49) serve
+    /// The tables of 5.12 (terms only in main), `threads` (05-map.md 5.8.1, D3: no text index, so never searched), and
+    /// the two text indexes of one file. The plain indexes (R49) serve
     /// the reads by link end, Project, replacement and source on every answer; "IF NOT EXISTS" adds them to a
     /// Map made before them the next time it opens, inside its encryption like every other page. A row in Recently deleted
     /// (`deleted` not empty) is kept out of its index by the triggers, so a forget and a restore update the index too.
@@ -221,6 +224,9 @@ final class Database {
           kind TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', project INTEGER, mentions TEXT NOT NULL DEFAULT '[]',
           sensitive INTEGER NOT NULL DEFAULT 0, deleted TEXT NOT NULL DEFAULT '', embedding BLOB);
         CREATE TABLE IF NOT EXISTS \(s).forgets (id INTEGER PRIMARY KEY, time TEXT NOT NULL, label TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS \(s).threads (
+          id INTEGER PRIMARY KEY, owner INTEGER NOT NULL DEFAULT 1, time TEXT NOT NULL, project INTEGER,
+          turns TEXT NOT NULL DEFAULT '[]', sensitive INTEGER NOT NULL DEFAULT 0, deleted TEXT NOT NULL DEFAULT '');
         CREATE INDEX IF NOT EXISTS \(s).edges_from ON edges(from_node);
         CREATE INDEX IF NOT EXISTS \(s).edges_to ON edges(to_node);
         CREATE INDEX IF NOT EXISTS \(s).events_project ON events(project);

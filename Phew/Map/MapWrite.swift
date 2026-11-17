@@ -557,8 +557,10 @@ extension MapStore {
             let events = try db.query("""
                 SELECT id FROM all_events WHERE project \(inSet) OR EXISTS (SELECT 1 FROM json_each(mentions) WHERE value \(inSet))
                 """, [set]).compactMap { $0.int("id") }
+            // D3 (5.8.1): the saved conversations of a forgotten Project go with it.
+            let threads = try db.query("SELECT id FROM all_threads WHERE project \(inSet)", [set]).compactMap { $0.int("id") }
 
-            let label = try forgetLabel(first, nodes: nodes, edges: edges, events: events, title: title)
+            let label = try forgetLabel(first, nodes: nodes, edges: edges, events: events, threads: threads.count, title: title)
             let sensitive = try db.scalar("""
                 SELECT count(*) FROM (SELECT id FROM s.nodes WHERE id \(inSet) UNION ALL SELECT id FROM s.events WHERE id IN (SELECT value FROM json_each(?2)))
                 """, [set, .text(Self.json(events))]) != .int(0)
@@ -567,7 +569,7 @@ extension MapStore {
                          [.int(id), .text(Self.iso(now)), .text(label)])
             let add = "deleted = CASE WHEN deleted = '' THEN json_array(?2) ELSE json_insert(deleted, '$[#]', ?2) END"
             for file in ["main", "s"] {
-                for (table, rows) in [("nodes", Array(nodes)), ("edges", edges), ("events", events)] {
+                for (table, rows) in [("nodes", Array(nodes)), ("edges", edges), ("events", events), ("threads", threads)] {
                     try db.query("UPDATE \(file).\(table) SET \(add) WHERE id IN (SELECT value FROM json_each(?1))",
                                  [.text(Self.json(rows)), .int(id)])
                 }
@@ -587,7 +589,7 @@ extension MapStore {
         try db.transaction {
             guard try forgetExists(forget) else { return false }
             for file in ["main", "s"] {
-                for table in ["nodes", "edges", "events"] {
+                for table in ["nodes", "edges", "events", "threads"] {
                     try db.query("""
                         UPDATE \(file).\(table) SET deleted = coalesce((SELECT CASE WHEN count(*) = 0 THEN '' ELSE json_group_array(value) END
                           FROM json_each(deleted) WHERE value != ?1), '')
@@ -635,6 +637,8 @@ extension MapStore {
                       AND NOT EXISTS (SELECT 1 FROM all_edges WHERE source_event = \(file).events.id)
                     """, [.int(forget)])
                 try db.query("UPDATE \(file).events SET summary = '', deleted = \(without) WHERE \(hidden)", [.int(forget)])
+                // A saved conversation this forget hid is wiped whole (5.8.1).
+                try db.query("DELETE FROM \(file).threads WHERE \(hidden)", [.int(forget)])
                 try db.query("DELETE FROM \(file).forgets WHERE id = ?", [.int(forget)])
             }
             return true
@@ -715,7 +719,7 @@ extension MapStore {
     }
 
     /// "Forgot Marta: 1 person, 4 notes, 3 links, 6 past questions. In Recently deleted for 30 days."
-    private func forgetLabel(_ first: MapNode, nodes: Set<Int64>, edges: [Int64], events: [Int64], title: String? = nil) throws -> String {
+    private func forgetLabel(_ first: MapNode, nodes: Set<Int64>, edges: [Int64], events: [Int64], threads: Int = 0, title: String? = nil) throws -> String {
         let rows = try db.query("""
             SELECT class, count(*) AS n FROM all_nodes WHERE id IN (SELECT value FROM json_each(?)) AND valid_to IS NULL GROUP BY class ORDER BY class = 'Note', class
             """, [.text(Self.json(nodes.sorted()))])
@@ -728,6 +732,7 @@ extension MapStore {
         }
         if links > 0 { parts.append(counted(links, "link", "links")) }
         if !events.isEmpty { parts.append(counted(Int64(events.count), "past question", "past questions")) }
+        if threads > 0 { parts.append(counted(Int64(threads), "conversation", "conversations")) }
         let what = first.mapClass == .note ? "\"\(first.text.prefix(60))\"" : first.name
         return SecretsFilter.clean("\(title ?? "Forgot \(what)"): \(parts.joined(separator: ", ")). In Recently deleted for \(Self.daysInRecentlyDeleted) days.")
     }

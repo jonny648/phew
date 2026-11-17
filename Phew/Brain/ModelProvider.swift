@@ -63,6 +63,9 @@ struct ModelRequest: Sendable {
     var image: Data? = nil
     /// R9: the sharp close-up (`ContextPacket.sharpCrop`), sent right after `image`. Positions stay in `image`'s pixels.
     var crop: Data? = nil
+    /// D3: the previous turn's picture, as the earlier screen of a reply: sent after `image`, with one sentence saying
+    /// what it is. Nil: none.
+    var earlierImage: Data? = nil
     /// JSON schema the answer must follow (structured output). The answer then streams as JSON text.
     var schema: String? = nil
     /// Interactive overlay: time to the first word matters more than depth.

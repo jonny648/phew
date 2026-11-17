@@ -2,7 +2,7 @@ import Foundation
 
 /// The Map as one readable Markdown file (docs/05-map-storage.md 5.13, roadmap P5.10): you, your projects with their tasks,
 /// documents, events and notes, the other things by class, every link, the old versions, then past questions by
-/// date. Each fact shows its origin, when it was stored and its confidence. Forgotten items never appear; sensitive
+/// date, then the saved conversations (D3). Each fact shows its origin, when it was stored and its confidence. Forgotten items never appear; sensitive
 /// facts only when `includeSensitive`. Plain code, no model call. The same Map and `now` give the same text.
 extension MapStore {
     func export(includeSensitive: Bool, now: Date = .now) -> String {
@@ -107,6 +107,14 @@ extension MapStore {
         section("Links", liveEdges.map(line))
         section("Old versions", all.filter { $0.validTo != nil }.map(line) + edges.filter { $0.validTo != nil }.map(line))
         section("Past questions", events.map(line))
+        // D3 (5.8.1): the saved conversations, oldest first; a sensitive Project's only when sensitive facts are asked for.
+        let saved = threads().filter { includeSensitive || !$0.sensitive }.reversed().compactMap { thread($0.id) }
+        if !saved.isEmpty { out += ["", "## Conversations"] }
+        for thread in saved {
+            out += ["", "### \(Self.exportDate(thread.time, withTime: true) ?? "Unknown day")" + (thread.project.isEmpty ? "" : ", on \(thread.project)")
+                    + (thread.sensitive ? ". Sensitive." : ""), ""]
+            out += thread.turns.flatMap { ["- You: \(SavedThread.shown($0.question))", "  Phew: \($0.answer)"] }
+        }
         // One fact per line: a line break inside a name or a sentence would split it. Then the secrets filter, line by line.
         return out.map { SecretsFilter.clean($0.replacingOccurrences(of: "\n", with: " ")) }.joined(separator: "\n") + "\n"
     }

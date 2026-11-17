@@ -24,17 +24,30 @@ final class BreakingGateTests: XCTestCase {
         XCTAssertEqual(Connections.access(ConnectorTool(name: "get-page", readOnly: true), on: Self.server), .read)
     }
 
-    /// OPEN (guard 2). The name rule is a deny-list of write words behind an allow-list of one read word: a write word
-    /// the list lacks, or hidden by an all-capitals run, is classed a read, and a read runs with no Hand and no confirm.
+    /// CLOSED (guard 2). The name rule is an allow-list: every word must be a read verb or a harmless word, so a write
+    /// word Phew does not know, one hidden by an all-capitals run, or a look-alike letter makes the tool a write.
     func testAReadWordInFrontLetsAWriteWordThroughThatTheListLacks() {
         let names = ["fetchANDDelete", "get-and-trigger-build", "list-and-purge", "fetch-then-clear-cache", "search-and-merge",
                      "read-and-save", "find-and-append", "view-and-approve", "get_and_execute", "get-and-sync", "query-and-drop",
-                     "fetch-and-deletes", "list-and-trash", "get-d\u{0435}lete" /* Cyrillic e */]
+                     "fetch-and-deletes", "list-and-trash", "get-d\u{0435}lete" /* Cyrillic e */, "get_access_to_vercel_url",
+                     "getPageAndPublish", "list-pages2-purge", "GETPAGESANDDELETE", "pages", "comments", "get-comment", "get\u{2013}page"]
         let misclassed = names.filter { Connections.access(ConnectorTool(name: $0), on: Self.server) == .read }
-        XCTExpectFailure("a read word first and a write word the list lacks is classed a read (Connections.swift:187-192)") {
-            XCTAssertEqual(misclassed, [])
+        XCTAssertEqual(misclassed, [])
+    }
+
+    /// Plain reads still read, by the name alone and after the server's prefix.
+    func testPlainReadNamesStillRead() {
+        for name in ["get-page", "search-pages", "list-recent-files", "getPageContent", "get_file_metadata", "list_calendars",
+                     "fetch", "SEARCH", "madeup-query-database", "find-users-by-id", "list-events-in-calendar", "lookup",
+                     "describe-teams", "count-items", "get-thread-messages", "get-self", "check-status", "showProjectDetails"] {
+            XCTAssertEqual(Connections.access(ConnectorTool(name: name), on: Self.server), .read, name)
         }
-        XCTAssertGreaterThan(misclassed.count, 0, "the hole is still open: \(misclassed)")
+        XCTAssertEqual(Connections.nameWords("fetchANDDelete"), ["fetch", "and", "delete"])
+        XCTAssertEqual(Connections.nameWords("getPage2Content"), ["get", "page", "content"])
+        XCTAssertNil(Connections.nameWords("get-d\u{0435}lete"))
+        // Phew's own table wins over the name.
+        XCTAssertEqual(Connections.access(ConnectorTool(name: "notion-search"), on: .notion), .read)
+        XCTAssertEqual(Connections.access(ConnectorTool(name: "notion-create-comment"), on: .notion), .write)
     }
 
     /// OPEN (guard 6). A connector call's arguments, written by the model, reach the server with no secrets filter.

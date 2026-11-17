@@ -168,11 +168,15 @@ final class Connections: @unchecked Sendable {  // state under `lock`
 
     // MARK: The gate
 
-    static let readWords: Set = ["get", "list", "search", "read", "fetch", "query", "find", "view"]
-    /// A read-looking name that also holds one of these writes (stricter than the name's first word alone).
-    static let writeWords: Set = ["create", "update", "delete", "remove", "add", "set", "send", "post", "move", "edit",
-                                  "write", "archive", "publish", "upload", "share", "invite", "restore", "duplicate", "insert",
-                                  "replace", "rename", "assign", "submit", "cancel", "reply", "comment", "upsert", "patch", "put"]
+    /// The verbs that only read. A name needs at least one.
+    static let readVerbs: Set = ["get", "list", "search", "read", "fetch", "query", "find", "view", "show", "describe", "count",
+                                 "check", "lookup", "status"]
+    /// Nouns and joiners that change nothing. No verb that could write ("comment", "message" as verbs are left out).
+    static let harmlessWords: Set = ["page", "pages", "file", "files", "user", "users", "comments", "event", "events", "item",
+                                     "items", "by", "id", "ids", "info", "details", "metadata", "recent", "all", "of", "for",
+                                     "in", "the", "my", "self", "content", "document", "doc", "docs", "sheet", "values", "thread",
+                                     "threads", "messages", "calendar", "calendars", "team", "teams", "project", "projects",
+                                     "database", "data", "source", "sources", "results", "logs"]
 
     /// Read or write, decided by Phew's code: the server's table first, else the name; the server's own marks can only
     /// make it stricter. A tool it cannot judge writes.
@@ -183,12 +187,23 @@ final class Connections: @unchecked Sendable {  // state under `lock`
         return phew
     }
 
-    /// The name's first word, after the server's own prefix, is a read word, and no later word writes.
+    /// A read only when every word of the name, after the server's own prefix, is a read verb or a harmless word, and
+    /// one at least is a read verb. Anything else writes: a word Phew does not know, any sign that is not ASCII.
     static func byName(_ name: String, server: ConnectorServer) -> ConnectorAccess {
-        var words = Self.words(name)
+        guard var words = nameWords(name) else { return .write }
         if words.first == server.id { words.removeFirst() }
-        guard let first = words.first, readWords.contains(first), !words.contains(where: writeWords.contains) else { return .write }
+        guard words.contains(where: readVerbs.contains),
+              words.allSatisfy({ readVerbs.contains($0) || harmlessWords.contains($0) }) else { return .write }
         return .read
+    }
+
+    /// A tool name's words, lower case: split at every sign and digit, at a capital inside a word ("getPage") and at
+    /// the end of a capital run ("fetchANDDelete": fetch, and, delete). Nil when the name holds anything not ASCII.
+    static func nameWords(_ name: String) -> [String]? {
+        guard name.unicodeScalars.allSatisfy(\.isASCII) else { return nil }
+        return name.replacing(#/([a-z])([A-Z])/#) { "\($0.1) \($0.2)" }
+            .replacing(#/([A-Z]+)([A-Z][a-z])/#) { "\($0.1) \($0.2)" }
+            .lowercased().split(whereSeparator: { !$0.isLetter }).map(String.init)
     }
 
     /// Lower-case words of a name or a text: split at every sign and at a capital inside a word ("getPage").

@@ -106,8 +106,8 @@ struct ClaudeProvider: ModelProvider {
             + request.earlier.reduce(0) { $0 + $1.question.count + $1.answer.count }
             + request.after.reduce(0) { $0 + $1.content.count }
             + request.tools.reduce(0) { $0 + $1.description.count + $1.schema.count }
-        let picture = request.image.flatMap { ScreenshotSize(png: $0) }.map { ($0.seenWidth * $0.seenHeight + 783) / 784 } ?? 0
-        return SSEParser.tokens(characters) + picture
+        let pictures = [request.image, request.crop].compactMap { $0.flatMap { ScreenshotSize(png: $0) } }
+        return SSEParser.tokens(characters) + pictures.reduce(0) { $0 + ($1.seenWidth * $1.seenHeight + 783) / 784 }
     }
 
     /// The 5-minute cache: a conversation's replies come minutes apart at most.
@@ -124,7 +124,8 @@ struct ClaudeProvider: ModelProvider {
         if let cached = request.cached {
             content.append(["type": "text", "text": cached, "cache_control": ephemeral])
         }
-        if let image = request.image {
+        // The screenshot first, then the sharp close-up (R9): the text says positions are in the first.
+        for image in [request.image, request.crop].compactMap({ $0 }) {
             content.append(["type": "image",
                             "source": ["type": "base64", "media_type": "image/png", "data": image.base64EncodedString()]])
         }

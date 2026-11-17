@@ -61,6 +61,8 @@ struct ModelRequest: Sendable {
     /// the picture, with its own cache mark. Already filtered, like `text`.
     var cached: String? = nil
     var image: Data? = nil
+    /// R9: the sharp close-up (`ContextPacket.sharpCrop`), sent right after `image`. Positions stay in `image`'s pixels.
+    var crop: Data? = nil
     /// JSON schema the answer must follow (structured output). The answer then streams as JSON text.
     var schema: String? = nil
     /// Interactive overlay: time to the first word matters more than depth.
@@ -79,7 +81,7 @@ struct ModelRequest: Sendable {
     /// Sent only with tools. Always at most one call per reply.
     var toolChoice = ToolChoice.auto
     /// A cache mark on the last tool results, so each round reads the rounds before it from the cache (the Runner's
-    /// rounds carry whole web pages). Off for the Guide, whose two rounds at most were measured without it.
+    /// rounds carry whole web pages), and the Guide's when it reads more (R10). Off for its two search rounds, measured without it.
     var cacheRounds = false
     /// The task this call works for, for calls.log only (PA.5). Nil outside a task.
     var task: Int? = nil

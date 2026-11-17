@@ -55,6 +55,15 @@ struct ScreenshotSize: Equatable {
         return context.makeImage().flatMap(png)
     }
 
+    /// `rect`, in points from the top-left of a picture `points` wide, cut from its captured pixels (`image`, at any
+    /// sharpness): `sharp` keeps every captured pixel, otherwise it is drawn at one pixel per point. In memory only.
+    static func cut(_ image: CGImage, points: CGFloat, rect: CGRect, sharp: Bool) -> Data? {
+        let s = CGFloat(image.width) / points
+        let pixels = CGRect(x: rect.minX * s, y: rect.minY * s, width: rect.width * s, height: rect.height * s).integral
+        guard let piece = image.cropping(to: pixels) else { return nil }
+        return sharp || piece.width == Int(rect.width) ? png(piece) : scaled(piece, width: Int(rect.width), height: Int(rect.height))
+    }
+
     /// The image as a PNG, in memory only; nil on failure.
     static func png(_ image: CGImage) -> Data? {
         let data = NSMutableData()

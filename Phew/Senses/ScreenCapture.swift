@@ -13,7 +13,8 @@ enum ScreenCapture {
 
     /// PNG of the picture `picksWindow` chooses, and where it sits on screen (screen points, top-left origin,
     /// Accessibility coordinates). One pixel per point, so frame origin + picture pixel = screen point.
-    /// Phew's own windows are left out. Nil without Screen Recording permission or on failure.
+    /// Phew's own windows are left out. Nil without Screen Recording permission or on failure. `image`: the captured
+    /// pixels, a window's at the screen's full sharpness (R9).
     /// `windowOnly` (live acting tests, PH.10): the front window wherever the mouse is, and never the whole display.
     /// `display`: the picture is the whole display, which the Brain sends smaller (A3); captured at full size here.
     static func picture(pid: pid_t, windowFrame: CGRect?, mouse: CGPoint, windowOnly: Bool = false,
@@ -44,13 +45,15 @@ enum ScreenCapture {
                 origin = CGDisplayBounds(display.displayID).origin
                 whole = true
             }
-            // shortcut: 1 pixel per point halves Retina detail; capture at 2x if small text is misread.
+            // R9: a window at the screen's full sharpness, for the sharp crop (`ContextPacket.sharpCrop`); its PNG is
+            // still drawn at 1 pixel per point. A whole display at 1 pixel per point: it gets no crop.
+            let scale = whole ? 1 : CGFloat(filter.pointPixelScale)
             let config = SCStreamConfiguration()
-            config.width = Int(filter.contentRect.width)
-            config.height = Int(filter.contentRect.height)
+            config.width = Int(filter.contentRect.width * scale)
+            config.height = Int(filter.contentRect.height * scale)
             config.showsCursor = false
             let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
-            guard let png = Self.png(image, display: whole) else { return nil }
+            guard let png = Self.png(image, display: whole, points: filter.contentRect.size) else { return nil }
             return (png, CGRect(origin: origin, size: filter.contentRect.size), whole, image)
         } catch {
             shellLog("screenshot failed: \(error.localizedDescription)")
@@ -60,11 +63,13 @@ enum ScreenCapture {
 
     /// The picture encoded once, at the size it is sent (R58): a whole display over `ScreenshotSize.displayTokens`
     /// drawn at the smaller size the Brain sends (`ScreenshotSize.sent` reads the captured size from the frame);
-    /// anything else as captured.
-    static func png(_ image: CGImage, display: Bool) -> Data? {
-        let capped = ScreenshotSize(width: image.width, height: image.height, maxTokens: ScreenshotSize.displayTokens)
-        guard display, capped.seenWidth < image.width else { return ScreenshotSize.png(image) }
-        return ScreenshotSize.scaled(image, width: capped.seenWidth, height: capped.seenHeight)
+    /// anything else at one pixel per point (`points`, the picture's size in points; nil: as captured).
+    static func png(_ image: CGImage, display: Bool, points: CGSize? = nil) -> Data? {
+        let (w, h) = points.map { (Int($0.width), Int($0.height)) } ?? (image.width, image.height)
+        let capped = display ? ScreenshotSize(width: w, height: h, maxTokens: ScreenshotSize.displayTokens) : nil
+        let (sw, sh) = capped.map { ($0.seenWidth, $0.seenHeight) } ?? (w, h)
+        guard sw < image.width else { return ScreenshotSize.png(image) }
+        return ScreenshotSize.scaled(image, width: sw, height: sh)
     }
 
     /// Whether a whole-display picture leaves out the app `pid` (`bundleID`), when Phew was called on `front` (R1):

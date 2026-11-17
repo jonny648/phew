@@ -310,10 +310,11 @@ enum Doer {
         // NC.9: the kept skills, already a block or a fixed line, change only when one is written: in the cached part
         // too. The last run's result is already in its own block.
         let cached = [menus, skills].compactMap { $0 }
-        let parts = [block("screen", Guide.context(packet, shot: shot)), block("actions", actions), skill, skills == nil ? noSkills : nil,
+        let crop = shot != nil && done.isEmpty ? packet.sharpCrop() : nil  // R9: the job's first round only
+        let parts = [block("screen", Guide.context(packet, shot: shot, crop: crop != nil)), block("actions", actions), skill, skills == nil ? noSkills : nil,
                      "Now: \(nowFormat.string(from: now))", Spoken.after("Request: \(request)", spoken)].compactMap { $0 }
         return ModelRequest(agent: "doer", tier: .main, system: system, text: parts.joined(separator: "\n\n"),
                             cached: cached.isEmpty ? nil : cached.joined(separator: "\n\n"),
-                            image: shot == nil ? nil : packet.screenshot, schema: schema, maxTokens: 2048)
+                            image: shot == nil ? nil : packet.screenshot, crop: crop, schema: schema, maxTokens: 2048)
     }
 }

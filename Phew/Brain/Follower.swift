@@ -119,14 +119,15 @@ enum Follower {
     static func less(_ packet: ContextPacket, steps: [GuideStep], current: Int) -> (ContextPacket, offset: (x: Int, y: Int)) {
         var look = packet
         look.visibleText = String(packet.visibleText.prefix(maxText))
+        look.moreText = ""  // R10: a look reads no pieces
         look.pointables = elements(packet, steps: Array(steps.dropFirst(current)))
         // R58: cut from the captured pixels when the look has them: no PNG decoded, and a whole display sent smaller
-        // is still cut at full size.
+        // is still cut at full size. A window captured sharper (R9) is cut at one pixel per point, as the PNG.
         let image = packet.image
         guard let png = packet.screenshot, let frame = packet.screenshotFrame, let mouse = packet.mouse,
-              let size = image.map({ ScreenshotSize(width: $0.width, height: $0.height) }) ?? ScreenshotSize(png: png),
+              let size = image != nil ? ScreenshotSize(width: Int(frame.width), height: Int(frame.height)) : ScreenshotSize(png: png),
               let rect = cutRect(size: size, mouse: CGPoint(x: mouse.x - frame.minX, y: mouse.y - frame.minY)),
-              let cut = image.map({ $0.cropping(to: rect).flatMap(ScreenshotSize.png) }) ?? crop(png, to: rect)
+              let cut = image.map({ ScreenshotSize.cut($0, points: frame.width, rect: rect, sharp: false) }) ?? crop(png, to: rect)
         else { return (look, (0, 0)) }
         look.screenshot = cut
         look.screenshotFrame = CGRect(x: frame.minX + rect.minX, y: frame.minY + rect.minY, width: rect.width, height: rect.height)

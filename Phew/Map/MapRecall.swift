@@ -578,9 +578,11 @@ extension MapStore {
             """, [.int(id)])) ?? []).first.flatMap(Self.node)
     }
 
-    /// A path as it is; a web address without anything after `?` or `#` (5.9).
+    /// A path as it is; a web address as the screen read keeps it (5.9, R11: the query only for a few sites); anything
+    /// else without what follows `?` or `#`.
     static func label(_ pathOrAddress: String) -> String {
-        pathOrAddress.hasPrefix("/") ? pathOrAddress : String(pathOrAddress.prefix { $0 != "?" && $0 != "#" })
+        pathOrAddress.hasPrefix("/") ? pathOrAddress
+            : WindowReader.documentPath(pathOrAddress as CFString) ?? String(pathOrAddress.prefix { $0 != "?" && $0 != "#" })
     }
 
     /// Same name or other name, ignoring capitals and accents (5.9).

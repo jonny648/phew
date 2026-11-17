@@ -94,6 +94,12 @@ enum Guide {
         let packet = sent?.0, shot = sent?.1 ?? nil
         var request = request(question, packet: packet, route: route, shot: shot, earlier: earlier, recall: recall, about: about,
                               aboutPhew: aboutPhew, projectMemory: projectMemory, spoken: spoken)
+        // R10: an explanation may read the rest of the window text in pieces; the loop then allows those calls too.
+        let more = route == .explain && packet?.neverRead == false ? packet?.moreText ?? "" : ""
+        let runner: (any ToolRunner)? = more.isEmpty ? tools : ScreenTools(more: more, map: tools)
+        let maxCalls = ToolLoop.maxCalls + (more.isEmpty ? 0 : ScreenTools.maxPieces)
+        // Up to 6 rounds, each sending the pictures again: each reads the ones before it from the cache.
+        request.cacheRounds = !more.isEmpty
         var shown = false  // explanation words already on the card
         var answer: Output?
         // PS.16: a blank answer (an empty skeleton, or one-character fields) is asked once more and never shown.
@@ -102,7 +108,7 @@ enum Guide {
             let quiet = shown
             var json = "", stop = "", held = ""
             var explanation = ExplanationStream()
-            for try await event in ToolLoop.stream(request, runner: tools, provider: provider) {
+            for try await event in ToolLoop.stream(request, runner: runner, provider: provider, maxCalls: maxCalls) {
                 switch event {
                 case .text(let piece):
                     json += piece
@@ -160,7 +166,9 @@ enum Guide {
         // empty skeleton, every field blank, with "Explain briefly". In the user turn, so the cached prefix stays.
         let task = route == .guide ? "Route: guide. First the explanation: one or two sentences, never empty. Then the steps, each with its instruction."
             : "Route: explain. Leave the steps empty."
-        let screen = packet.map { screenBlock(context(route == .guide ? $0 : withoutElements($0), shot: shot)) } ?? "No screen context."
+        // R9: the sharp close-up, with the picture only. Positions stay in the screenshot's pixels.
+        let crop = shot == nil ? nil : packet?.sharpCrop()
+        let screen = packet.map { screenBlock(context(route == .guide ? $0 : withoutElements($0), shot: shot, crop: crop != nil)) } ?? "No screen context."
         // An empty recall adds nothing, like an empty list in 5.11.
         let map = recall.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : [mapBlock($0)] } ?? []
         // The whole history leaves the Mac again with every reply, so it is filtered again every time (3.10).
@@ -173,7 +181,7 @@ enum Guide {
         // PB.2: the project's Claude Code notes, already filtered and in their own data block; filtered again (cheap).
         let notes = projectMemory.map { [SecretsFilter.clean($0)] } ?? []
         return ModelRequest(agent: "guide", tier: .main, system: himself ? system : guideSystem, text: (map + me + notes + [screen, task, Spoken.after(asked(question), spoken)]).joined(separator: "\n\n"),
-                            image: shot == nil ? nil : packet?.screenshot, schema: schema, maxTokens: 8192, earlier: history)
+                            image: shot == nil ? nil : packet?.screenshot, crop: crop, schema: schema, maxTokens: 8192, earlier: history)
     }
 
     /// An explanation has no steps to point with, so it gets no list of elements (PS.12): up to 80 lines, about
@@ -221,8 +229,8 @@ enum Guide {
 
     /// The packet as plain lines. With a screenshot, positions are in the pixels the model sees: from the
     /// screenshot's top-left corner, scaled like the image when the API downsizes it, so they match the points it
-    /// returns. Without one, in window pixels.
-    static func context(_ packet: ContextPacket, shot: ScreenshotSize?) -> String {
+    /// returns. Without one, in window pixels. `crop`: the sharp close-up (R9) goes after the screenshot.
+    static func context(_ packet: ContextPacket, shot: ScreenshotSize?, crop: Bool = false) -> String {
         let frame = shot == nil ? nil : packet.screenshotFrame
         let origin = frame?.origin ?? packet.windowFrame?.origin ?? .zero
         let sx = shot.map { CGFloat($0.seenWidth) / CGFloat($0.width) } ?? 1
@@ -243,9 +251,16 @@ enum Guide {
             }
         }
         lines.append(shot.map { "Screenshot: attached, \($0.seenWidth)×\($0.seenHeight) pixels." } ?? "Screenshot: none.")
-        lines += ["Visible text:", packet.visibleText.isEmpty ? "(none)" : packet.visibleText]
+        if crop && shot != nil { lines.append(cropLine) }
+        // R10: the count of all the text read, when more was read than is here.
+        lines.append(packet.moreText.isEmpty ? "Visible text:"
+            : "Visible text, the part nearest the mouse pointer (\(packet.visibleText.count) of the \(packet.visibleText.count + packet.moreText.count) characters read from the window):")
+        lines.append(packet.visibleText.isEmpty ? "(none)" : packet.visibleText)
         return lines.joined(separator: "\n")
     }
+
+    /// R9: the one sentence that says what the second picture is.
+    static let cropLine = "Close-up: a second picture, after the screenshot, shows the area around the mouse pointer at full sharpness, for small text; every position and point is in the screenshot's pixels, never the close-up's."
 
     /// Keeps a target only when it is real: an id from the packet, or a point inside the screenshot. Anything
     /// else becomes "no target", never a guess.

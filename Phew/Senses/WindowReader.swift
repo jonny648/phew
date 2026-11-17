@@ -87,8 +87,25 @@ enum WindowReader {
         return (root.title ?? "", root.frame, path, found.texts.filter { $0.string != root.title }, found.pointables)
     }
 
-    /// A file URL as a plain path; a web address without its query, fragment or login (docs/05-map.md 5.9).
-    /// Nil for anything else (about:blank, a browser's own pages).
+    /// R11: the sites whose address needs part of its query to name the page, and the parameters kept for each (the
+    /// host or any of its subdomains). Every other host, and every other parameter, loses its query.
+    static let pageQueries: [String: Set<String>] = [
+        "youtube.com": ["v", "list", "t"],
+        "figma.com": ["node-id"],
+        "notion.so": ["p", "v"],
+    ]
+
+    /// The query items an address keeps (`pageQueries`), each value through the secrets filter; nil when none.
+    static func pageQuery(_ url: URLComponents) -> [URLQueryItem]? {
+        guard let host = url.host?.lowercased(),
+              let names = pageQueries.first(where: { host == $0.key || host.hasSuffix("." + $0.key) })?.value else { return nil }
+        let kept = (url.queryItems ?? []).filter { names.contains($0.name) }
+            .map { URLQueryItem(name: $0.name, value: $0.value.map(SecretsFilter.clean)) }
+        return kept.isEmpty ? nil : kept
+    }
+
+    /// A file URL as a plain path; a web address without its fragment or login, and without its query except the
+    /// parameters `pageQueries` keeps (docs/05-map.md 5.9, R11). Nil for anything else (about:blank, a browser's own pages).
     static func documentPath(_ value: CFTypeRef?) -> String? {
         guard let raw = (value as? URL)?.absoluteString ?? value as? String, !raw.isEmpty else { return nil }
         // Electron apps (Notion) give their own page inside the app: not the user's document.
@@ -99,7 +116,7 @@ enum WindowReader {
         case "file":
             return userFile(url.path)
         case "http", "https":
-            url.query = nil
+            url.queryItems = pageQuery(url)
             url.fragment = nil
             url.user = nil
             url.password = nil

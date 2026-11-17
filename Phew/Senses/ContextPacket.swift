@@ -26,8 +26,12 @@ struct ContextPacket: Codable {
     /// `ScreenshotSize.sent`). Its pixels and `screenshotFrame` stay as captured.
     var wholeDisplay = false
     /// The captured pixels behind `screenshot`, full size: a guide look cuts from them without decoding the PNG
-    /// (R58). Memory only, gone with the packet; never sent or written.
+    /// (R58). A window's are at the screen's full sharpness (R9), for `sharpCrop`. Memory only, gone with the packet;
+    /// never sent or written as they are.
     var image: CGImage? = nil
+    /// R10: the window text read but not in `visibleText`, in reading order, up to `readCap` with it. Filtered like it.
+    /// The Guide's `read_more` sends it in pieces. Memory only, gone with the packet, left out of the JSON.
+    var moreText = ""
     /// The open document's file path or page address, when the app gives one (`WindowReader.documentPath`).
     /// A label for project detection (docs/05-map.md 5.11), not capture: the Map may keep it.
     var documentPath: String? = nil
@@ -43,8 +47,36 @@ struct ContextPacket: Codable {
     }
 
     static let textCap = 4000
+    /// R10: the most window text read, nearest the cursor first; `textCap` of it is sent, the rest only by `read_more`.
+    static let readCap = 20000
     static let pointableCap = 80
     static let labelCap = 60
+    /// R9: the most the sharp crop covers, in points, and never more than the window.
+    static let cropCap = CGSize(width: 800, height: 600)
+
+    /// R9: a close-up around the element under the mouse (around the mouse when there is none, or when the element is
+    /// larger than `cropCap`), cut from the captured pixels at the screen's full sharpness. Only for a window picture
+    /// with the mouse inside it, captured sharper than the PNG; nil otherwise, and for an app never read. In memory only.
+    func sharpCrop() -> Data? {
+        guard !neverRead, !wholeDisplay, let image, let frame = screenshotFrame, let mouse, frame.contains(mouse),
+              CGFloat(image.width) > frame.width, let rect = Self.cropRect(frame: frame, mouse: mouse, element: cursor?.frame)
+        else { return nil }
+        return ScreenshotSize.cut(image, points: frame.width, rect: rect, sharp: true)
+    }
+
+    /// The crop in points from the picture's top-left: `cropCap` or the picture if smaller, centred on the element's
+    /// middle when it fits within the cap, else on the mouse, and kept inside the picture.
+    static func cropRect(frame: CGRect, mouse: CGPoint, element: CGRect?) -> CGRect? {
+        let (w, h) = (min(cropCap.width, frame.width).rounded(.down), min(cropCap.height, frame.height).rounded(.down))
+        guard w >= 1, h >= 1 else { return nil }
+        var centre = mouse
+        if let e = element, e.width <= w, e.height <= h, frame.contains(CGPoint(x: e.midX, y: e.midY)) {
+            centre = CGPoint(x: e.midX, y: e.midY)
+        }
+        let x = min(max((centre.x - frame.minX - w / 2).rounded(), 0), frame.width - w)
+        let y = min(max((centre.y - frame.minY - h / 2).rounded(), 0), frame.height - h)
+        return CGRect(x: x, y: y, width: w, height: h)
+    }
 
     /// Where a guide step points, in screen points, top-left origin: an element's frame, or a zero-size rect at a
     /// screenshot point. Nil for an id not in `pointables`, or a point without a `screenshotFrame`.
@@ -65,6 +97,7 @@ struct ContextPacket: Codable {
         p.windowTitle = SecretsFilter.clean(windowTitle)
         p.documentPath = documentPath.map(SecretsFilter.clean)
         p.visibleText = SecretsFilter.clean(visibleText)
+        p.moreText = SecretsFilter.clean(moreText)
         p.menus = SecretsFilter.clean(menus)
         p.cursor?.label = SecretsFilter.clean(cursor?.label ?? "")
         p.cursor?.value = SecretsFilter.clean(cursor?.value ?? "")
@@ -79,6 +112,21 @@ struct ContextPacket: Codable {
 
     /// Keeps the texts nearest `point` until `cap` characters are used, then restores reading order.
     static func trim(_ texts: [WindowReader.Text], near point: CGPoint, cap: Int = textCap) -> String {
+        let kept = nearest(texts, near: point, cap: cap)
+        return texts.indices.compactMap { kept[$0] }.joined(separator: "\n")
+    }
+
+    /// R10: what `trim` leaves out of the `read` characters nearest `point`, in reading order: the lines it dropped,
+    /// and the end of the line it cut.
+    static func rest(_ texts: [WindowReader.Text], near point: CGPoint, sent: Int = textCap, read: Int = readCap) -> String {
+        let (all, kept) = (nearest(texts, near: point, cap: read), nearest(texts, near: point, cap: sent))
+        return texts.indices.compactMap { i in
+            all[i].flatMap { $0.count > (kept[i]?.count ?? 0) ? $0.dropFirst(kept[i]?.count ?? 0) : nil }
+        }.joined(separator: "\n")
+    }
+
+    /// The start of each text kept, nearest `point` first, until `cap` characters are used.
+    private static func nearest(_ texts: [WindowReader.Text], near point: CGPoint, cap: Int) -> [Int: Substring] {
         func distance(_ f: CGRect?) -> CGFloat { WindowReader.distance(f, point) }
         let nearestFirst = texts.indices.sorted { (distance(texts[$0].frame), $0) < (distance(texts[$1].frame), $1) }
         var kept: [Int: Substring] = [:]
@@ -87,7 +135,7 @@ struct ContextPacket: Codable {
             kept[i] = texts[i].string.prefix(room)
             room -= kept[i]!.count + 1  // + the line break
         }
-        return texts.indices.compactMap { kept[$0] }.joined(separator: "\n")
+        return kept
     }
 
     /// One of each element (same role, label and frame), the `cap` nearest `point`, back in reading order,

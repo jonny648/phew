@@ -160,6 +160,28 @@ final class SensesRulesTests: XCTestCase {
         XCTAssertEqual(WindowReader.documentPath(URL(string: "https://example.org/x?y=1")! as CFURL), "https://example.org/x")
     }
 
+    /// R11: a listed site keeps the parameters that name its page; any other parameter, and any other site, is cut.
+    func testListedSitesKeepTheQueryThatNamesThePage() {
+        func path(_ s: String) -> String? { WindowReader.documentPath(s as CFString) }
+        XCTAssertEqual(path("https://www.youtube.com/watch?v=MadeUp123&t=42&si=tracking#c"), "https://www.youtube.com/watch?v=MadeUp123&t=42")
+        XCTAssertEqual(path("https://youtube.com/playlist?list=PLmadeup&token=abc"), "https://youtube.com/playlist?list=PLmadeup")
+        XCTAssertEqual(path("https://www.figma.com/design/AbC123/Made-Up?node-id=12-34&t=sharetoken"),
+                       "https://www.figma.com/design/AbC123/Made-Up?node-id=12-34")
+        XCTAssertEqual(path("https://www.notion.so/Made-Up-1a2b?p=3c4d&pvs=4&v=5e6f"), "https://www.notion.so/Made-Up-1a2b?p=3c4d&v=5e6f")
+        // A listed host with only unlisted parameters (a token): the whole query goes.
+        XCTAssertEqual(path("https://www.figma.com/file/AbC123?access_token=made-up-token"), "https://www.figma.com/file/AbC123")
+        // Unlisted hosts, Google's among them, and a look-alike host: cut as before.
+        XCTAssertEqual(path("https://docs.google.com/document/d/1MadeUp/edit?v=1&usp=sharing"), "https://docs.google.com/document/d/1MadeUp/edit")
+        XCTAssertEqual(path("https://notyoutube.com/watch?v=MadeUp123"), "https://notyoutube.com/watch")
+        XCTAssertEqual(path("https://example.com/watch?v=MadeUp123"), "https://example.com/watch")
+        // A kept value still passes the secrets filter.
+        let key = "sk-ant-api03-" + String(repeating: "x", count: 40)
+        XCTAssertFalse(path("https://www.youtube.com/watch?v=\(key)")?.contains(key) ?? true)
+        // The Map's label keeps the same rule.
+        XCTAssertEqual(MapStore.label("https://www.youtube.com/watch?v=MadeUp123&utm_source=x#top"), "https://www.youtube.com/watch?v=MadeUp123")
+        XCTAssertEqual(MapStore.label("https://example.com/pricing?ref=mail#top"), "https://example.com/pricing")
+    }
+
     func testNoDocumentPathStaysNil() {
         XCTAssertNil(WindowReader.documentPath(nil))
         XCTAssertNil(WindowReader.documentPath("" as CFString))

@@ -558,7 +558,13 @@ extension MapStore {
                 SELECT id FROM all_events WHERE project \(inSet) OR EXISTS (SELECT 1 FROM json_each(mentions) WHERE value \(inSet))
                 """, [set]).compactMap { $0.int("id") }
             // D3 (5.8.1): the saved conversations of a forgotten Project go with it.
-            let threads = try db.query("SELECT id FROM all_threads WHERE project \(inSet)", [set]).compactMap { $0.int("id") }
+            // And, since a thread holds whole answers, every saved conversation that names a forgotten thing goes too
+            // (17 November): "forget Marta" must not leave her in an earlier conversation. Names under 3 letters are
+            // not searched for: they would take unrelated conversations.
+            let names = roots.map(\.name).filter { $0.count >= 3 }
+            let named = names.indices.map { " OR instr(lower(turns), lower(?\($0 + 2))) > 0" }.joined()
+            let threads = try db.query("SELECT id FROM all_threads WHERE project \(inSet)\(named)", [set] + names.map { .text($0) })
+                .compactMap { $0.int("id") }
 
             let label = try forgetLabel(first, nodes: nodes, edges: edges, events: events, threads: threads.count, title: title)
             let sensitive = try db.scalar("""

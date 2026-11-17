@@ -110,6 +110,13 @@ final class WatcherTests: XCTestCase {
 
     // MARK: What a task's notification holds
 
+    /// A key typed in a task's first words must not land in the notification centre.
+    func testATasksNotificationPassesTheSecretsFilter() {
+        let line = Notices.line(task: "check sk-ant-madeUpQuestionKey000000000000000 now please", ended: .ready)
+        XCTAssertEqual(line?.contains("sk-ant-madeUp"), false)
+        XCTAssertEqual(line?.hasSuffix(": done"), true)
+    }
+
     func testATasksNotificationHoldsOnlyItsTitleAndHowItEnded() {
         XCTAssertEqual(Notices.line(task: "Research made-up fonts", ended: .ready), "Research made-up fonts: done")
         XCTAssertEqual(Notices.line(task: "Research made-up fonts", ended: .failed(.limited(.minute))), "Research made-up fonts: stopped at a limit")

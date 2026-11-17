@@ -265,16 +265,25 @@ struct Shortcut: Codable, Equatable {
             .reduce(UInt32(0)) { modifiers & $1.0 != 0 ? $0 | UInt32($1.1) : $0 }
     }
 
-    /// Command with Space, Tab, Q, W, C, V, X, Z, A or S: the Mac's and every app's own.
-    private static let commandKeys: Set<UInt16> = [49, 48, 12, 13, 8, 9, 7, 6, 0, 1]
+    /// With Command: Space, Tab, Escape, Q, W, C, V, X, Z, A, S, H, M, N, 3, 4, 5, D: the Mac's and every app's own.
+    private static let commandKeys: Set<UInt16> = [49, 48, 53, 12, 13, 8, 9, 7, 6, 0, 1, 4, 46, 45, 20, 21, 23, 2]
 
     /// Why it cannot be used, in one plain line; nil when it can.
     var refusal: String? {
+        let taken = "The Mac and most apps already use that one. Try another."
+        // How many of ⌃, ⌥, ⇧ and ⌘ are held, left and right counted once.
+        let kinds = [Self.control, Self.option, Self.shift, Self.command].filter { modifiers & $0 != 0 }.count
         guard let key else {
-            return keys.nonzeroBitCount < 2 ? "One key alone is too easy to press by chance. Use two or more." : nil
+            if (keys & Self.deviceKeys).nonzeroBitCount < 2 { return "One key alone is too easy to press by chance. Use two or more." }
+            // Both Shift keys, both Command keys: one hand resting on the keyboard presses them.
+            return kinds < 2 ? "Use two different keys, such as ⌥ and ⌘, not the same key on both sides." : nil
         }
         if modifiers & (Self.control | Self.option | Self.command) == 0 { return "Hold ⌃, ⌥ or ⌘ with the key." }
-        if modifiers == Self.command, Self.commandKeys.contains(key) { return "The Mac and most apps already use that one. Try another." }
+        // One key held with a letter is an app's own shortcut (⌘N), and ⌥ or ⇧⌥ with a letter types a character:
+        // two are needed, ⌃ or ⌘ among them.
+        if kinds < 2 || modifiers & (Self.control | Self.command) == 0 { return "Hold two of ⌃, ⌥, ⇧ and ⌘ with the key, ⌃ or ⌘ among them." }
+        // The keys of the Mac's own shortcuts with Command, whatever else is held (⌥⌘Esc force quits, ⇧⌘Q logs out).
+        if modifiers & Self.command != 0, Self.commandKeys.contains(key) { return taken }
         return nil
     }
 

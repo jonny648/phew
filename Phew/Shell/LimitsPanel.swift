@@ -43,7 +43,7 @@ struct LimitsView: View {
     var body: some View {
         let today = model.today ?? LimitsToday()
         PanelList(isEmpty: false, emptyLine: "",
-                  help: "Phew sends nothing more today once a limit is reached. It starts again at midnight.") {
+                  help: "Phew sends nothing more today once a limit is reached. It starts again at midnight. Requests always have a limit: 50 to 2,000 a day, 5 to 60 a minute.") {
             Row(title: "Spent today", detail: String(format: "$%.2f", today.spentUSD) + " of " + LimitsModel.dollars(today.usdPerDay).lowercased()) {
                 EmptyView()
             }

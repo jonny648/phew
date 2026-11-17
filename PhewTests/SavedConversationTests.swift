@@ -368,6 +368,25 @@ final class SavedConversationTests: XCTestCase {
         XCTAssertEqual(kept.map(\.id), [other])
     }
 
+    /// Forgetting a person takes the saved conversations that name her, and Recently deleted brings them back.
+    func testForgettingAPersonTakesTheConversationsThatNameHer() async throws {
+        let store = try MapStore()
+        let person = try await store.add(MapNode(mapClass: .person, name: "Marta Quillfen", origin: .told))
+        let namedThread = try await store.saveThread(id: nil, turns: [Turn(question: "Question: who signs?", answer: "marta quillfen signs it.")], project: nil)
+        let named = try XCTUnwrap(namedThread)
+        let otherThread = try await store.saveThread(id: nil, turns: [Turn(question: "Question: else?", answer: "No.")], project: nil)
+        let other = try XCTUnwrap(otherThread)
+        let forget = try await store.forget([person])
+        let forgotten = try XCTUnwrap(forget)
+        XCTAssertTrue(forgotten.label.contains("1 conversation"), forgotten.label)
+        let visible = await store.threads()
+        XCTAssertEqual(visible.map(\.id), [other])
+        let restored = try await store.restore(forgotten.id)
+        XCTAssertTrue(restored)
+        let back = await store.threads()
+        XCTAssertEqual(Set(back.map(\.id)), [named, other])
+    }
+
     func testTheCaps() async throws {
         let many = (1...45).map { Turn(question: "Question: q\($0)", answer: "a\($0)") }
         XCTAssertEqual(MapStore.capped(many).map(\.answer), (6...45).map { "a\($0)" }, "the last 40 turns")

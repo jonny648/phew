@@ -17,6 +17,7 @@ enum NeverList {
         "com.apple.keychainaccess", "com.apple.Passwords",
         "com.1password.1password", "com.agilebits.onepassword7", "com.bitwarden.desktop", "com.lastpass.LastPass",
         "com.dashlane.dashlanephonefinal", "in.sinew.Enpass-Desktop", "com.nordpass.macos.NordPass",
+        "org.keepassxc.keepassxc", "com.hicknhacksoftware.MacPass", "com.markmcguill.strongbox", "com.markmcguill.strongbox.mac",
     ]
     /// Terminals: also left out of a whole-display picture.
     static let terminals: Set<String> = [

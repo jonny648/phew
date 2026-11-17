@@ -138,13 +138,29 @@ final class ShortcutTests: XCTestCase {
             XCTAssertFalse(line?.contains("\n") ?? true)
         }
         for shortcut in [Shortcut.default, Shortcut(keys: 0x21), Shortcut(keys: 0x0C), Shortcut(keys: 0x21, key: 49),
-                         Shortcut(keys: 0x0A, key: 40), Shortcut(keys: 0x08, key: 40)] {
+                         Shortcut(keys: 0x0A, key: 40)] {
             XCTAssertNil(shortcut.refusal, shortcut.name)
         }
         XCTAssertEqual(Shortcut.default.name, "right ⌥ + right ⌘")
         XCTAssertEqual(Shortcut(keys: 0x21, key: 49, keyName: Shortcut.keyName(49, characters: " ")).name, "⌃⌥Space")
         XCTAssertEqual(Shortcut.keyName(40, characters: "k"), "K")
         XCTAssertEqual(Shortcut.keyName(123, characters: "\u{F702}"), "key 123")
+    }
+
+    /// The checker's list of 17 November: an app's own shortcut, a chord that types a character, the same key on both
+    /// sides, the Mac's own with more keys held. And a chord that stays allowed.
+    func testOneModifierWithAKeyAndTheSameKeyTwiceAreRefused() {
+        // The left keys, as the keyboard reports them.
+        let (control, option, shift, command): (UInt, UInt, UInt, UInt) = (0x01, 0x20, 0x02, 0x08)
+        for (keys, key) in [(command, 45), (command, 4), (control, 49), (option, 49), (option, 40), (option | shift, 40), (command | option, 53),
+                            (command | shift, 12), (command | shift, 20)] as [(UInt, UInt16)] {
+            XCTAssertNotNil(Shortcut(keys: keys, key: key, keyName: "x").refusal, "\(keys) \(key)")
+        }
+        for keys in [0x02 | 0x04, 0x08 | 0x10, 0x01 | 0x2000, 0x1_0000_0000 | 0x2_0000_0000] as [UInt] {
+            XCTAssertNotNil(Shortcut(keys: keys).refusal, "\(keys)")
+        }
+        XCTAssertNil(Shortcut(keys: control | option, key: 40, keyName: "K").refusal)
+        XCTAssertNil(Shortcut.default.refusal)
     }
 
     /// None stored, or one the rules refuse: the fixed one, which still calls him.

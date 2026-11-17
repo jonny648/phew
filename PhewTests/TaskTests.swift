@@ -203,7 +203,8 @@ final class TaskTests: XCTestCase {
         // One of the three ends: the oldest waiting one starts by itself, with the screen read it was given.
         provider.finishOldest(report)
         try await waitUntil { provider.requests.count == 4 }
-        XCTAssertEqual(list.items.first?.state, .ready)
+        // Which of the three ended is the provider's oldest request, not always the first task: they start together.
+        XCTAssertEqual(list.items.filter { $0.state == .ready }.count, 1)
         XCTAssertEqual(list.items.first { $0.id == fourth.id }?.state, .running)
         XCTAssertNil(list.held[fourth.id], "the task holds it now, and drops it when it ends")
         XCTAssertTrue(try XCTUnwrap(provider.requests.last).text.contains("Quillmarrow made-up line"))

@@ -60,7 +60,8 @@ final class Notices: ObservableObject {
         case .failed: how = "failed"
         case .queued, .running, .stopped: return nil
         }
-        return "\(title.prefix(titleCap)): \(how)"
+        // The title is your own first words: a key typed there must not land in the notification centre.
+        return "\(SecretsFilter.clean(String(title)).prefix(titleCap)): \(how)"
     }
 
     static func line(watched app: String) -> String { "\(watched) In \(app)." }

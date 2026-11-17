@@ -10,7 +10,7 @@ final class ClaudeCodeDoorTests: XCTestCase {
 
     private var suite = ""
     private var defaults: UserDefaults!
-    private var root: URL!
+    private(set) var root: URL!
     private var saved: (copies: URL, calls: URL, actions: URL)!
 
     override func setUp() async throws {

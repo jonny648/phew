@@ -179,8 +179,16 @@ extension ClaudeCodeDoorTests {
     /// SIGTERM goes with it.
     func testBreak_theKillFallbackLeavesAChildThatIgnoredTerm() async throws {
         let d = door(try fake("trap '' TERM\nsay '\(Self.initLine)'\nsleep 60 &\necho $! > \"$d/child\"\nwait\nwait\n"))
-        let stop = Flag()
-        Task.detached { try? await Task.sleep(for: .milliseconds(700)); stop.on = true }
+        let stop = Flag(), written = root.appending(path: "child").path
+        Task.detached {
+            // Stop once the child is there (a loaded machine may start the script late), 5 seconds at most.
+            let until = Date() + 5
+            while Date() < until, (try? String(contentsOfFile: written, encoding: .utf8))?.isEmpty != false {
+                try? await Task.sleep(for: .milliseconds(20))
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+            stop.on = true
+        }
         let stoppedAt = Date()
         let step = await d.step("Search the made-up launch plan", task: 22, ask: nil, stop: { stop.on })
         XCTAssertEqual(step.end, .stopped)

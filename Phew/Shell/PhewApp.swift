@@ -87,6 +87,10 @@ private struct TaskEntries: View {
         ForEach(tasks.confirms) { item in
             ForEach(item.waits) { wait in
                 Menu(wait.script.map(TaskList.asks) ?? wait.file.map(TaskList.asks) ?? wait.connector.map(TaskList.asks) ?? wait.shortcut.map(TaskList.asks) ?? "") {
+                    // What a write or a shortcut will send, whole, when the row had to cut it. On the Mac only.
+                    if let whole = wait.connector.flatMap(TaskList.whole) ?? wait.shortcut.flatMap(TaskList.whole) {
+                        Menu("All it will send") { ForEach(Array(whole.enumerated()), id: \.offset) { Text($0.element) } }
+                    }
                     Button("Confirm") { Task { await tasks.confirm(item.id, only: wait.id) } }
                     Button("Dismiss") { tasks.dismiss(item.id, only: wait.id) }
                 }

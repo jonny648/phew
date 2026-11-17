@@ -151,17 +151,26 @@ extension ClaudeCodeDoorTests {
 
 @MainActor
 final class BreakingConfirmTests: XCTestCase {
-    /// OPEN (guard 3). The row the user confirms names the server and the tool, or the shortcut, and never what will be
-    /// written or sent: a task steered by a page can put the user's own text there and the user confirms blind.
+    /// CLOSED (guard 3). The row the user confirms shows what will be written or sent: the arguments, keys and values,
+    /// or the shortcut's input, cut on the row, whole in the row's own menu.
     func testTheConfirmRowDoesNotShowWhatWillBeWrittenOrSent() {
         let write = ConnectorCall(server: "madeup", name: "Made-up", tool: "made-create-pages",
-                                  arguments: Data(#"{"title":"EXFIL-MARK-7"}"#.utf8))
-        XCTAssertEqual(TaskList.asks(write), "Waiting for you: write in Made-up with made-create-pages?")
+                                  arguments: Data(#"{"title":"EXFIL-MARK-7","parent":{"id":"p1"},"done":true}"#.utf8))
+        XCTAssertEqual(TaskList.asks(write), #"Waiting for you: write in Made-up with made-create-pages: done: true; parent: {"id":"p1"}; title: EXFIL-MARK-7?"#)
+        XCTAssertNil(TaskList.whole(write), "short: the row shows it all")
         let shortcut = ShortcutCall(name: "Made-up shortcut", input: "EXFIL-INPUT-9")
-        XCTExpectFailure("TaskList.swift:323-326 and :389-390 hold back the words: they are never logged, but they are not shown either") {
-            XCTAssertTrue(TaskList.asks(write).contains("EXFIL-MARK-7"))
-            XCTAssertTrue(TaskList.asks(shortcut).contains("EXFIL-INPUT-9"))
-        }
+        XCTAssertEqual(TaskList.asks(shortcut), "Waiting for you: run the shortcut “Made-up shortcut” with “EXFIL-INPUT-9”?")
+        XCTAssertEqual(TaskList.asks(ShortcutCall(name: "Made-up shortcut")), "Waiting for you: run the shortcut “Made-up shortcut”?")
+        // A long one: cut on the row, whole under it, line by line.
+        let body = String(repeating: "made-up words ", count: 20) + "END-MARK"
+        let long = ConnectorCall(server: "madeup", name: "Made-up", tool: "made-create-pages",
+                                 arguments: try! JSONSerialization.data(withJSONObject: ["body": body]))
+        XCTAssertTrue(TaskList.asks(long).hasSuffix("…?"))
+        XCTAssertFalse(TaskList.asks(long).contains("END-MARK"))
+        let whole = try! XCTUnwrap(TaskList.whole(long))
+        XCTAssertEqual(whole.joined(), "body: " + body)
+        XCTAssertTrue(whole.allSatisfy { $0.count <= TaskList.rowCap })
+        XCTAssertEqual(TaskList.whole(ShortcutCall(name: "s", input: "first\nsecond")), ["first", "second"])
     }
 
     /// OPEN (guard 20). `Hand.startClaudeCode` starts ANY program with ANY arguments and `Hand.openSignIn` opens the

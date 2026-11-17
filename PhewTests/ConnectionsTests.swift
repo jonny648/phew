@@ -301,7 +301,7 @@ final class ConnectionsTests: XCTestCase {
         XCTAssertEqual(try result(script, 1), "<connector>\nMade-up answer.\n</connector>")
         let wait = try XCTUnwrap(item.waits.first?.connector)
         XCTAssertEqual(wait.tool, "made-create-pages")
-        XCTAssertEqual(TaskList.asks(wait), "Waiting for you: write in Made-up with made-create-pages?")
+        XCTAssertEqual(TaskList.asks(wait), "Waiting for you: write in Made-up with made-create-pages: title: Made-up page?")
         let markdown = try XCTUnwrap(item.report?.markdown)
         XCTAssertTrue(markdown.contains("## Waiting for your confirm in Phew's menu\n\n- In Made-up: “made-create-pages”"))
         XCTAssertTrue(markdown.hasSuffix("## Connections he used\n\n- Made-up"))

@@ -320,9 +320,44 @@ final class TaskList: ObservableObject {
         return lines.count > 1 ? first + " …" : first
     }
 
-    /// NB.3: the confirm row of a connector write: the server and the tool, never its arguments' words.
+    /// NB.3: the confirm row of a connector write: the server, the tool and what it will send (its arguments, keys and
+    /// values), on one line and cut; the whole of it under the row (`whole`). Shown on the Mac only, never logged.
     static func asks(_ call: ConnectorCall) -> String {
-        "Waiting for you: write in \(call.name) with \(call.tool)?"
+        let sent = sent(call.arguments)
+        return "Waiting for you: write in \(call.name) with \(call.tool)" + (sent.isEmpty ? "" : ": \(cut(sent))") + "?"
+    }
+
+    /// The arguments as the user reads them: "key: value; key: value", keys in order, a value that is not text as JSON.
+    static func sent(_ arguments: Data) -> String {
+        guard let object = (try? JSONSerialization.jsonObject(with: arguments)) as? [String: Any] else {
+            return String(decoding: arguments, as: UTF8.self)
+        }
+        return object.keys.sorted().map { key in
+            let value = object[key]!
+            let text = value as? String ?? (try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .fragmentsAllowed]))
+                .map { String(decoding: $0, as: UTF8.self) } ?? ""
+            return "\(key): \(text)"
+        }.joined(separator: "; ")
+    }
+
+    /// A confirm row's words on one line, at most `rowCap` characters, "…" when cut.
+    static let rowCap = 80
+    private static func cut(_ text: String) -> String {
+        let line = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return line.count > rowCap ? line.prefix(rowCap) + "…" : line
+    }
+
+    /// The whole of what a write or a shortcut will send, in lines for the row's own menu; nil when the row shows it all.
+    static func whole(_ call: ConnectorCall) -> [String]? { whole(sent(call.arguments)) }
+    static func whole(_ call: ShortcutCall) -> [String]? { whole(call.input) }
+
+    private static func whole(_ text: String) -> [String]? {
+        guard cut(text) != text else { return nil }
+        return text.split(separator: "\n", omittingEmptySubsequences: false).flatMap { line -> [String] in
+            var rest = Substring(line), lines: [String] = []
+            repeat { lines.append(String(rest.prefix(rowCap))); rest = rest.dropFirst(rowCap) } while !rest.isEmpty
+            return lines
+        }
     }
 
     /// The menu's Dismiss of one row (`only`), or of all (nil): the stored actions are dropped, nothing runs.
@@ -386,8 +421,11 @@ final class TaskList: ObservableObject {
         return (refused ? AddItemTool.refused : result.end.rawValue, result.output ?? "")
     }
 
-    /// NB.5: the confirm row of a shortcut: its name, never its input.
-    static func asks(_ call: ShortcutCall) -> String { "Waiting for you: run the shortcut “\(call.name)”?" }
+    /// NB.5: the confirm row of a shortcut: its name and its input, cut; the whole input under the row (`whole`).
+    static func asks(_ call: ShortcutCall) -> String {
+        let input = cut(call.input)
+        return "Waiting for you: run the shortcut “\(call.name)”" + (input.isEmpty ? "" : " with “\(input)”") + "?"
+    }
 
     /// Confirm of one file change: the Brain moves the old file to the Trash, then writes the new text. A line then
     /// says how it ended.

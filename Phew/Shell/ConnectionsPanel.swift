@@ -6,9 +6,9 @@ import SwiftUI
 final class ConnectionsModel: ObservableObject {
     /// Door 2: Phew's own sign-in, the fixed list.
     @Published private(set) var own: [ConnectorStatus] = []
-    /// Door 1 (NB.9): the connectors of the user's Claude account, through Claude Code. Its section and its switch
-    /// "Use my Claude account" are added by the door 1 builder; empty until then.
+    /// Door 1 (NB.9): the connectors of the user's Claude account, through Claude Code, and its switches.
     @Published private(set) var claudeAccount: [ConnectorStatus] = []
+    @Published private(set) var account = ClaudeAccount()
     @Published private(set) var problem: String?
     /// The server being connected, while its sign-in runs.
     @Published private(set) var busy: String?
@@ -27,7 +27,36 @@ final class ConnectionsModel: ObservableObject {
         let all = await brain.connectors()
         own = all.filter { $0.door == .own }
         claudeAccount = all.filter { $0.door == .claudeAccount }
+        account = await brain.claudeAccount()
         changed()
+    }
+
+    /// Door 1's busy mark while Claude Code lists the connectors.
+    static let listing = "claudeAccount"
+
+    /// "Use my Claude account". On: the connectors are listed at once.
+    func use(_ on: Bool) async {
+        busy = Self.listing
+        problem = await brain.useClaudeAccount(on)
+        busy = nil
+        await refresh()
+    }
+
+    func list() async {
+        busy = Self.listing
+        problem = await brain.listClaudeAccount()
+        busy = nil
+        await refresh()
+    }
+
+    func tick(_ id: String, _ on: Bool) async {
+        await brain.tickClaudeConnector(id, on)
+        await refresh()
+    }
+
+    func research(_ on: Bool) async {
+        await brain.researchThroughClaudeAccount(on)
+        await refresh()
     }
 
     func connect(_ id: String) async {
@@ -51,7 +80,7 @@ final class ConnectionsModel: ObservableObject {
 
     /// The row's second line: how many tools read and how many write, or that it is not connected.
     static func summary(_ status: ConnectorStatus) -> String {
-        guard status.connected else { return "Not connected." }
+        guard status.connected else { return status.door == .claudeAccount ? "Not ticked: he does not use it." : "Not connected." }
         let writes = status.tools.filter(\.writes).count, reads = status.tools.count - writes
         return "\(reads) tool\(reads == 1 ? "" : "s") that read. \(writes) that write: each listed on the card, or waiting for your confirm when a task asks."
     }
@@ -65,16 +94,32 @@ struct ConnectionsView: View {
 
     static let help = "He reads in the tools you connect when a task needs them. A change there is listed on the card, "
         + "and one a task asks for waits for your confirm in the menu. Disconnect removes the sign-in from the Keychain."
+    static let door1 = "Claude Code, signed in by you, reaches your account's connectors. Your Claude plan pays. Only a task's words go to it."
+    static let research = "A research task runs through Claude Code with web search and the connectors you tick. Explanations, guides and jobs stay on your API key."
 
     var body: some View {
-        PanelList(isEmpty: model.own.isEmpty && model.claudeAccount.isEmpty, emptyLine: "No tools to connect.",
-                  help: Self.help, problem: model.problem) {
+        PanelList(isEmpty: false, emptyLine: "No tools to connect.", help: Self.help, problem: model.problem) {
             ForEach(model.own) { server in section(server) }
-            // Door 1 (NB.9): the connectors of the user's Claude account go here, under their own heading.
-            if !model.claudeAccount.isEmpty {
-                Text("Through your Claude account").font(Design.Text.small).foregroundStyle(Design.Ink.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading).padding(.top, Design.Space.s12)
-                ForEach(model.claudeAccount) { server in section(server) }
+            // Door 1 (NB.9): the connectors of the user's Claude account, under their own heading.
+            Text("Through your Claude account").font(Design.Text.small).foregroundStyle(Design.Ink.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.top, Design.Space.s12)
+            if model.account.found {
+                Row(title: "Use my Claude account", detail: Self.door1) {
+                    Toggle("", isOn: Binding(get: { model.account.on }, set: { on in Task { await model.use(on) } }))
+                        .labelsHidden().toggleStyle(.switch).disabled(model.busy != nil)
+                }
+                if model.account.on {
+                    Row(title: "Research through my Claude account", detail: Self.research) {
+                        Toggle("", isOn: Binding(get: { model.account.research }, set: { on in Task { await model.research(on) } }))
+                            .labelsHidden().toggleStyle(.switch)
+                    }
+                    ForEach(model.claudeAccount) { server in section(server) }
+                    Button(model.busy == ConnectionsModel.listing ? "Listing…" : "Refresh") { Task { await model.list() } }
+                        .buttonStyle(QuietButton()).disabled(model.busy != nil)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.top, Design.Space.s4)
+                }
+            } else {
+                Row(title: ClaudeCodeDoor.line(.missing)) { EmptyView() }
             }
         }
         .task { await model.refresh() }
@@ -89,6 +134,9 @@ struct ConnectionsView: View {
                     Button(model.busy == server.id ? "Signing in…" : "Connect") { Task { await model.connect(server.id) } }
                         .buttonStyle(MainButton()).disabled(model.busy != nil)
                 }
+            } else {
+                Toggle("", isOn: Binding(get: { server.connected }, set: { on in Task { await model.tick(server.id, on) } }))
+                    .labelsHidden().toggleStyle(.checkbox)
             }
         }
         if let change = server.change {

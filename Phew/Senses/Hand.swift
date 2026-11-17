@@ -705,6 +705,23 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         _ = NSWorkspace.shared.open(url)
     }
 
+    /// NB.9, door 1: starts the unmodified Claude Code program (`ClaudeCodeDoor`) with its standard input and output on
+    /// pipes and its errors dropped. The only program door 1 starts; it lives here, where programs may be started.
+    /// Not an action in an app: every tool call it makes asks Phew first, and a write among them runs only through
+    /// `act` (`connectorWrite`, with a permit made in this file).
+    static func startClaudeCode(_ program: URL, arguments: [String], environment: [String: String], folder: URL) throws -> Process {
+        let process = Process()
+        process.executableURL = program
+        process.arguments = arguments
+        process.environment = environment
+        process.currentDirectoryURL = folder
+        process.standardInput = Pipe()
+        process.standardOutput = Pipe()
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        return process
+    }
+
     /// On unless the menu's switch turned it off (the user's word of 15 November: no Allow to press).
     var allowed: Bool { defaults.object(forKey: Self.allowedKey) as? Bool ?? true }
 

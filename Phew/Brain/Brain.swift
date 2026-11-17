@@ -61,6 +61,9 @@ protocol Brain: Sendable {
     /// nothing on the Mac. `ok`: it worked. `line`: how it ended, for the next round; a run that worked gives its
     /// result in its `<skill>` block. `stop` is asked while a skill runs. A Brain without skills says so.
     func skillStep(_ step: SkillStep, stop: @escaping @Sendable () -> Bool) async -> (ok: Bool, line: String)
+    /// NB.9: a job's connector step through door 1: the words only, never the screen. `ask` runs a write through the
+    /// Hand in the job. Whether it worked, and its answer in its `<connector>` block or one fixed line.
+    func connectorStep(_ words: String, job: Int, ask: @escaping ConnectorAsk, stop: @escaping @Sendable () -> Bool) async -> (ok: Bool, line: String)
 
     /// Drops the earlier questions and answers of the conversation. The Shell calls it when the card closes and on Quit.
     func forgetTurns()
@@ -164,6 +167,17 @@ protocol Brain: Sendable {
     func disconnect(_ server: String) async
     /// The seam the Shell hands the Hand at launch, for connector writes. Nil: no connections.
     var connector: (any HandConnector)? { get }
+    /// NB.9: door 1, through Claude Code: whether the program is on this Mac, and the two switches.
+    func claudeAccount() async -> ClaudeAccount
+    /// The switch "Use my Claude account". Turned on, the connectors are listed at once (the program starts and ends,
+    /// no message sent). Nil, or one line for the panel.
+    func useClaudeAccount(_ on: Bool) async -> String?
+    /// The panel's Refresh: the connectors listed again. Nil, or one line.
+    func listClaudeAccount() async -> String?
+    /// The user ticks a connector he may use, or unticks it. Names only.
+    func tickClaudeConnector(_ server: String, _ on: Bool) async
+    /// NB.10: the switch "Research through my Claude account".
+    func researchThroughClaudeAccount(_ on: Bool) async
 
     // MARK: Limits
 
@@ -207,6 +221,9 @@ extension Brain {
         try await nextAction(request, packet: packet, done: done, spoken: spoken)
     }
     func skillStep(_ step: SkillStep, stop: @escaping @Sendable () -> Bool) async -> (ok: Bool, line: String) { (false, SkillTools.none) }
+    func connectorStep(_ words: String, job: Int, ask: @escaping ConnectorAsk, stop: @escaping @Sendable () -> Bool) async -> (ok: Bool, line: String) {
+        (false, ClaudeCodeDoor.line(.off))
+    }
     func recentlyDeleted() async -> [DeletedItem] { [] }
     func restore(_ id: Int64) async -> Bool { false }
     func deleteNow(_ id: Int64) async -> Bool { false }
@@ -262,6 +279,9 @@ enum NextAction: Sendable, Equatable {
     case front(bundleID: String, name: String)
     /// NC.9: a skill written or run, as a step of the job: it only computes, in the closed box, and acts on nothing.
     case skill(SkillStep)
+    /// NB.9: one step in the user's connected tools through door 1 (Claude Code), in the request's words. It reads
+    /// there, and any write in it goes through the Hand; nothing on screen.
+    case connector(String)
     /// The job is finished: one short line for the card, in the user's language.
     case done(String)
     /// The next action is not possible: one short plain reason for the card. Empty when there is none.
@@ -394,6 +414,11 @@ extension Brain {
     func acceptTools(_ server: String) async -> String? { Connections.line(.notConnected) }
     func disconnect(_ server: String) async {}
     var connector: (any HandConnector)? { nil }
+    func claudeAccount() async -> ClaudeAccount { ClaudeAccount() }
+    func useClaudeAccount(_ on: Bool) async -> String? { ClaudeCodeDoor.line(.missing) }
+    func listClaudeAccount() async -> String? { ClaudeCodeDoor.line(.missing) }
+    func tickClaudeConnector(_ server: String, _ on: Bool) async {}
+    func researchThroughClaudeAccount(_ on: Bool) async {}
     /// A Brain without file tools reads no folder and changes no file.
     func readFolders() -> [URL] { [] }
     func addReadFolder(_ folder: URL) -> Bool { false }

@@ -29,6 +29,9 @@ struct ClaudeBrain: Brain {
     var trash: (@Sendable (URL) throws -> Void)? = nil
     /// NB: the tools the user connected. Nil: none (unit tests, checks); the app passes `Connections.shared`.
     var connections: Connections? = nil
+    /// NB.9, NB.10: door 1, through Claude Code under the user's own Claude plan. Nil: none (unit tests, checks); the
+    /// app passes `ClaudeCodeDoor.shared`, which starts nothing until the user switches it on.
+    var claudeCode: ClaudeCodeDoor? = nil
     /// N4.5, N4.7: the hidden switches. Tests pass their own defaults.
     var switches = CostSwitches()
     /// NB.5: the user's ticks in "Shortcuts he may run". Nil: no shortcut tool (unit tests, checks); the app passes one.
@@ -342,6 +345,12 @@ extension ClaudeBrain {
 
     func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?,
                  change: ChangeFile?, connector: ConnectorAsk?, shortcut: ShortcutAsk?) -> AsyncThrowingStream<TaskEvent, Error> {
+        // NB.10: both switches on: the task runs through Claude Code and the user's plan pays. Only its words go: no
+        // screen read, no Map, no dollars set aside from today's ceiling (the task was counted as a request already).
+        if let claudeCode, claudeCode.researches {
+            return claudeCode.research(words, number: number, folder: folder, connector: connector,
+                                       limits: TaskLimits.asksDeep(words) ? .deep : TaskLimits())
+        }
         let injected = tools, map = map, brain = self, connections = connections
         // The task was counted when its words were routed. N2.12: it sets aside its budget out of today's ceiling, so
         // tasks side by side cannot pass it together; a smaller reserve caps its cost, and past it the task ends
@@ -486,5 +495,30 @@ extension ClaudeBrain {
         let label = (try? await store.undoLastImport())?.label
         await pruneFolders(store)
         return label
+    }
+}
+
+// MARK: Door 1 for the panel (NB.9)
+
+extension ClaudeBrain {
+    func claudeAccount() async -> ClaudeAccount { claudeCode?.account ?? ClaudeAccount() }
+
+    func useClaudeAccount(_ on: Bool) async -> String? {
+        guard let claudeCode else { return ClaudeCodeDoor.line(.missing) }
+        claudeCode.set(on: on)
+        return on ? await claudeCode.list() : nil
+    }
+
+    func listClaudeAccount() async -> String? { await claudeCode?.list() ?? ClaudeCodeDoor.line(.missing) }
+
+    func tickClaudeConnector(_ server: String, _ on: Bool) async { claudeCode?.tick(server, on) }
+
+    func researchThroughClaudeAccount(_ on: Bool) async { claudeCode?.set(research: on) }
+
+    /// NB.9: a job's connector step. Counted apart from the tasks (`task` below zero), one run at a time per job.
+    func connectorStep(_ words: String, job: Int, ask: @escaping ConnectorAsk, stop: @escaping @Sendable () -> Bool) async -> (ok: Bool, line: String) {
+        guard let claudeCode else { return (false, ClaudeCodeDoor.line(.off)) }
+        let step = await claudeCode.step(words, task: -job, ask: ask, stop: stop)
+        return (step.end == .done, step.text)
     }
 }

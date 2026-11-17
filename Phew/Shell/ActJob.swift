@@ -62,6 +62,7 @@ struct ActJob {
         var ran: [Date] = []
         var skill: String?
         var skillsFailed = 0
+        var connectorsFailed = 0  // NB.9
         // R5: the Hand's own pause, told off the main thread, shown on the card on it.
         let paused = paused
         job.pausing = { on in Task { @MainActor in paused(on) } }
@@ -140,11 +141,43 @@ struct ActJob {
                 plan = []  // its result is for the next call to use
                 continue
             }
+            // NB.9: a step in the user's connected tools through Claude Code: the words only, never the screen. A read
+            // runs there; a write in it goes through `Hand.act` in this job and is listed like any action.
+            if case .connector(let words) = next {
+                let same = "connector \(words)"
+                repeats = same == last ? repeats + 1 : 0
+                last = same
+                guard repeats < 2 else { return .stuck(Self.noChange) }
+                if let end = await brake(ran, job) { return .ended(end) }
+                ran.append(clock())
+                starting(Self.connectorLine(doing: true))
+                let hand = hand, wrote = Wrote()
+                let (ok, said) = await brain.connectorStep(words, job: job.number, ask: { call in
+                    let step = HandStep(kind: .connector, pid: 0, name: call.name, connector: call)
+                    let result = await Task.detached { hand.act(step, in: job) }.value
+                    wrote.add(step, result)
+                    return result.end.rawValue
+                }, stop: { job.end != nil })
+                for (step, result) in wrote.all {
+                    ran.append(clock())
+                    done.append("\(Self.line(step)): \(result.end.rawValue)")
+                    if result.end == .done { listed(Self.line(step)); landed(step, result) }
+                }
+                if let end = job.end { return .ended(end) }
+                skilled(Self.connectorLine(), ok)
+                done.append("\(Self.connectorLine()): \(ok ? "done" : "failed")")
+                skill = said  // its answer, as data, for the next call
+                if !ok { connectorsFailed += 1 }
+                guard connectorsFailed < 3 else { return .stuck(Self.connectorsFailed) }
+                reuse = Self.withoutPicture(packet)  // nothing changed on the screen
+                plan = []
+                continue
+            }
             let step: HandStep
             switch next {
             case .done(let line): return .done(line)
             case .stuck(let line): return .stuck(line)
-            case .skill: continue  // handled above
+            case .skill, .connector: continue  // handled above
             case .script(let script):
                 step = HandStep(kind: .script, pid: 0, script: script)  // behind the app: nothing on screen to move aside from
             case let .front(app, name):
@@ -226,6 +259,18 @@ struct ActJob {
     }
 
     static let skillsFailed = "My skills failed three times, so I stopped."
+    static let connectorsFailed = "Your connected tools failed three times, so I stopped."
+
+    /// NB.9: a connector step's line on the card. Fixed words: never the step's own words.
+    static func connectorLine(doing: Bool = false) -> String { doing ? "Using your connected tools" : "Used your connected tools" }
+
+    /// NB.9: the writes a connector step made through the Hand, in order, for the card. Memory only.
+    final class Wrote: @unchecked Sendable {
+        private let lock = NSLock()
+        private var made: [(HandStep, HandResult)] = []
+        func add(_ step: HandStep, _ result: HandResult) { lock.withLock { made.append((step, result)) } }
+        var all: [(HandStep, HandResult)] { lock.withLock { made } }
+    }
 
     /// NC.9: a skill step's line on the card, by the name the model gave. Memory only, never logged.
     static func line(_ step: SkillStep, doing: Bool = false) -> String {

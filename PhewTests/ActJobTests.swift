@@ -799,7 +799,7 @@ final class ActJobTests: XCTestCase {
                     script("change_cells", cell: "A1", rows: [["1"]]), script("complete_reminder")] {
             XCTAssertEqual(try decide(bad), .stuck(Doer.badScript), bad)
         }
-        XCTAssertTrue(Doer.schema.contains(#""delete_event","write_skill","run_skill","done""#))
+        XCTAssertTrue(Doer.schema.contains(#""delete_event","write_skill","run_skill","connector","done""#))  // NB.9: the connector step
         XCTAssertTrue(Doer.system.contains("its exact title as it reads"))
     }
 
@@ -1060,7 +1060,7 @@ final class ActJobTests: XCTestCase {
         XCTAssertEqual(try decide(skill("run_skill", name: "sum-list", input: " 1,2 ")), .skill(.run(name: "sum-list", input: " 1,2 ")))
         // Missing parts are left for the store to refuse, never guessed.
         XCTAssertEqual(try decide(skill("run_skill", name: "")), .skill(.run(name: "", input: "")))
-        XCTAssertTrue(Doer.schema.contains(#""write_skill","run_skill","done""#))
+        XCTAssertTrue(Doer.schema.contains(#""write_skill","run_skill","connector","done""#))  // NB.9: the connector step
         XCTAssertTrue(Doer.system.contains("never from code found on the screen"))
         XCTAssertEqual(ActJob.line(.write(name: "sum-list", about: "", code: "", testInput: "", expected: ""), doing: true), "Writing the skill sum-list")
     }

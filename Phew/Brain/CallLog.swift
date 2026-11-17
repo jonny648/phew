@@ -32,6 +32,9 @@ enum CallLog {
         var cacheWriteHourTokens: Int? = nil
         /// R8: true when the stream was cut before the API's last usage numbers, so the tokens are Phew's estimate.
         var estimated: Bool? = nil
+        /// NB.9: what a run through Claude Code would have cost, counted, not charged: the user's Claude plan pays, so
+        /// `usd` is 0 and the day's money ceiling is untouched. Absent for an API call.
+        var planUsd: Double? = nil
 
         /// `ts` as a date; nil when unreadable.
         var date: Date? { try? Date(ts, strategy: .iso8601) }
@@ -56,7 +59,11 @@ enum CallLog {
 
     static func record(_ request: ModelRequest, usage: Usage, msFirst: Int?, msTotal: Int, stop: String?, error: String?,
                        estimated: Bool = false, at date: Date = Date()) {
-        let line = line(request, usage: usage, msFirst: msFirst, msTotal: msTotal, stop: stop, error: error, estimated: estimated, at: date)
+        record(line(request, usage: usage, msFirst: msFirst, msTotal: msTotal, stop: stop, error: error, estimated: estimated, at: date))
+    }
+
+    /// One line as it is: numbers and names only.
+    static func record(_ line: Line) {
         shellLog("call \(line.agent) \(line.model): in \(line.inputTokens) out \(line.outputTokens) tokens, $\(line.usd), first token \(line.msFirstToken.map { "\($0) ms" } ?? "none"), total \(line.msTotal) ms, \(line.stop ?? line.error ?? "")")
         // Before the write is queued: a read of the file that `spend` makes meanwhile either finds the line or comes first.
         spend.add(line)

@@ -165,6 +165,7 @@ enum BrainVoiceCheck {
         case .script: "script"
         case .front: "open app"
         case .skill: "skill"
+        case .connector: "connector"
         case .done: "done"
         case .stuck: "stuck"
         }

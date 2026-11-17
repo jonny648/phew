@@ -225,7 +225,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A test copy under another bundle id: no Map maintenance at launch, so it never touches the user's Map folder.
         if CommandLine.arguments.contains("--debug-no-map") { return ClaudeBrain(map: BrainMap(maintenance: false), limits: Limits(), answerEarly: false) }
         #endif
-        return ClaudeBrain(skills: SkillTools(), limits: Limits(), answerEarly: false, connections: .shared, shortcutTicks: ShortcutTicks())
+        return ClaudeBrain(skills: SkillTools(), limits: Limits(), answerEarly: false, connections: .shared, claudeCode: .shared, shortcutTicks: ShortcutTicks())
     }()
     let panel = InputPanel()
     let card = TextCard()

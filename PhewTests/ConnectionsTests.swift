@@ -419,7 +419,7 @@ final class ConnectionsTests: XCTestCase {
         await model.refresh()
         XCTAssertEqual(model.own.map(\.name), ["Made-up"])
         XCTAssertEqual(model.own.first?.connected, false)
-        XCTAssertTrue(model.claudeAccount.isEmpty, "door 1 is the next builder's")
+        XCTAssertTrue(model.claudeAccount.isEmpty, "no door 1 in this Brain")
         XCTAssertEqual(ConnectionsModel.summary(try XCTUnwrap(model.own.first)), "Not connected.")
         await model.connect("madeup")
         XCTAssertNil(model.problem)

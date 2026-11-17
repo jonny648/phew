@@ -89,6 +89,10 @@ struct ConnectorCall: Sendable, Equatable {
     var tool: String
     /// The arguments, a JSON object.
     var arguments: Data
+    /// NB.9: the door it goes through. For door 1, `server` is Claude Code's own name of the server.
+    var door = ConnectorDoor.own
+    /// NB.9: door 1's key of the tool call waiting in a live run; nil, or a run that ended: a fresh short run.
+    var request: String? = nil
 }
 
 /// How a door reaches a server: list its tools, call one. Door 2 is `OwnClient`; door 1 and the tests' fakes plug in.
@@ -444,7 +448,7 @@ final class UsedConnectors: @unchecked Sendable {
 // MARK: The Brain's door for the panel
 
 extension ClaudeBrain {
-    func connectors() async -> [ConnectorStatus] { connections?.status() ?? [] }
+    func connectors() async -> [ConnectorStatus] { (connections?.status() ?? []) + (claudeCode?.status() ?? []) }
 
     func connect(_ server: String, open: @escaping @Sendable (URL) -> Void) async -> String? {
         guard let connections else { return Connections.line(.notConnected) }
@@ -457,6 +461,7 @@ extension ClaudeBrain {
     }
 
     func acceptTools(_ server: String) async -> String? {
+        if let claudeCode, claudeCode.accept(server) { return nil }  // door 1
         do {
             try await connections?.accept(server)
             return nil
@@ -467,7 +472,9 @@ extension ClaudeBrain {
 
     func disconnect(_ server: String) async { connections?.disconnect(server) }
 
-    var connector: (any HandConnector)? { connections }
+    var connector: (any HandConnector)? {
+        connections == nil && claudeCode == nil ? nil : ConnectorDoors(own: connections, claudeCode: claudeCode)
+    }
 }
 
 extension Connections {

@@ -1,5 +1,7 @@
 # 17. Limits review (phase NA)
 
+> Changed since, where a row below is now wrong: request counts always have a ceiling (50 to 2,000 a day, 5 to 60 a minute, set in the Limits panel), so "0 means none" holds for money only (L80, L103); "Send as it is" exists (L87); a shortcut can be set (L101).
+>
 > Decided on 17 November 2026 (`07-decisions.md` 7.1) and built the same day: R1 to R13 and R15, P1 and P2, the two changes to the safety core, F2 to F4. The tables below describe the state BEFORE that; `CLAUDE.md` holds the rules as they are now.
 >
 > Written 16 November 2026 before the review's fixes. Since then: the Observer's code is removed (L18, C16, R10's second half), and a conversation past 8 turns keeps its last 4 (L63).

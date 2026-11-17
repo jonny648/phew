@@ -323,21 +323,18 @@ final class HandInputTests: XCTestCase {
 
     // MARK: - F3: script titles, and an agent's task as one job
 
-    func testScriptTitlesAreCheckedForPasswordAndPayingWords() {
+    func testScriptTitlesAreCheckedForPasswordWords() {
         func end(_ script: HandScript) -> HandEnd { let hand = self.hand(); return hand.act(HandStep(kind: .script, pid: 0, script: script), in: hand.begin(watchUser: false)).end }
         let refused: [(HandScript, HandEnd)] = [
             (.note(title: "Password list", body: "made up"), .password),
-            (.reminder(title: "Pay the made-up rent", due: nil), .paying),
-            (.event(title: "Checkout review", start: Date(timeIntervalSince1970: 2_000_000_000), end: Date(timeIntervalSince1970: 2_000_003_600)), .paying),
-            (.rename(.note, title: "Made-up ideas", to: "Card number ideas"), .paying),
             (.noteBody(title: "Codice di sicurezza", body: "made up"), .password),
-            (.complete(title: "Paga la bolletta"), .paying),
-            (.delete(.event, title: "Order"), .paying),
-            (.changeCells(book: "Billing made up", top: "A1", rows: [["1"]]), .paying),
         ]
         for (script, reason) in refused { XCTAssertEqual(end(script), reason, "\(script)") }
         XCTAssertTrue(fake.scripts.isEmpty && fake.changed.isEmpty, "nothing ran")
-        // Sign-in words are not judged in a title: a reminder to log in is a reminder. Body text is not judged.
+        // Paying and sign-in words are not judged in a title: a reminder to pay or to log in is a reminder.
+        XCTAssertEqual(end(.reminder(title: "Pay the made-up rent", due: nil)), .done)
+        for title in ["Buy milk", "Paga la bolletta", "Checkout review", "Order"] { XCTAssertNil(NeverList.refusal(titles: [title]), title) }
+        // Body text is not judged.
         XCTAssertEqual(end(.reminder(title: "Log in to the made-up portal", due: nil)), .done)
         XCTAssertEqual(end(.note(title: "Made-up plan", body: "pay the password")), .done)
     }

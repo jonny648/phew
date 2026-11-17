@@ -65,9 +65,10 @@ enum NeverList {
         return word(in: texts, among: [.password, .paying, .signIn])
     }
 
-    /// F3: the titles a script makes or names, against the password and paying words only: a reminder "Log in to
-    /// the made-up portal" is a reminder, not a sign-in.
-    static func refusal(titles: [String]) -> HandEnd? { word(in: titles, among: [.password, .paying]) }
+    /// F3: the titles a script makes or names, against the password words only. Not the paying or sign-in words: a
+    /// reminder "Pay the rent" or "Log in to the portal" is a reminder, it pays and signs in nothing (17 November:
+    /// with the paying words, "Buy milk" was refused).
+    static func refusal(titles: [String]) -> HandEnd? { word(in: titles, among: [.password]) }
 
     /// The first never word of `reasons` in any of `texts`, in the order of `words`.
     private static func word(in texts: [String], among reasons: Set<HandEnd>) -> HandEnd? {

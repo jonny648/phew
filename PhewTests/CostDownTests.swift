@@ -148,6 +148,21 @@ final class CostDownTests: XCTestCase {
         XCTAssertEqual(librarians(fake).count, 1)
     }
 
+    /// Quit: the conversation still open is learned before `finishLearning` returns, with no card closed first and no
+    /// timer; the Shell waits for it, capped, before the app ends.
+    func testQuitLearnsThePendingConversationBeforeItReturns() async throws {
+        let (brain, fake, store) = try conversation()
+        try await ask(brain, "What is quokka grammar?")
+        try await ask(brain, "And its plural?")
+        XCTAssertTrue(librarians(fake).isEmpty)
+        await brain.finishLearning()
+        XCTAssertEqual(librarians(fake).count, 1, "learned before it returned")
+        let nodes = await store.visibleNodes()
+        XCTAssertTrue(nodes.contains { $0.name == "Quokka grammar" }, "its facts are in the Map")
+        await brain.finishLearning()
+        XCTAssertEqual(librarians(fake).count, 1, "nothing learned twice")
+    }
+
     /// What must see the facts (remember, forget, export, Recently deleted) learns them first.
     func testWhatReadsTheFactsLearnsThemFirst() async throws {
         let (brain, fake, _) = try conversation()

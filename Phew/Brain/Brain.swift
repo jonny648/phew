@@ -67,6 +67,8 @@ protocol Brain: Sendable {
 
     /// Drops the earlier questions and answers of the conversation. The Shell calls it when the card closes and on Quit.
     func forgetTurns()
+    /// N4.6, on Quit: the conversation ends and returns once the Librarian has learned from it (the Shell caps the wait).
+    func finishLearning() async
 
     /// Each forget waiting in Recently deleted, for the menu's list.
     func recentlyDeleted() async -> [DeletedItem]
@@ -213,6 +215,7 @@ extension Brain {
     func heardAs() async -> [String: String] { [:] }
     func learnHeard(_ heard: String, meant: String) async -> Bool { false }
     func forgetTurns() {}
+    func finishLearning() async { forgetTurns() }
     func nextAction(_ request: String, packet: ContextPacket?, done: [String]) async throws -> NextAction { .stuck("") }
     func nextAction(_ request: String, packet: ContextPacket?, done: [String], spoken: [Hearing]) async throws -> NextAction {
         try await nextAction(request, packet: packet, done: done)

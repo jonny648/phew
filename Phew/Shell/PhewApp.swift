@@ -292,6 +292,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setup.showAtLaunch()
     }
 
+    /// N4.6: the longest Quit waits for the Librarian to learn from the conversation still open.
+    static let quitWait: TimeInterval = 5
+    private var quitAnswered = false
+
+    /// N4.6: the conversation's facts are learned before the app ends, waited for `quitWait` at most.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let brain = brain
+        let answer: @MainActor () -> Void = { [weak self] in
+            guard let self, !quitAnswered else { return }
+            quitAnswered = true
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        Task { @MainActor in
+            await brain.finishLearning()
+            answer()
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(Self.quitWait))
+            answer()
+        }
+        return .terminateLater
+    }
+
     /// The conversation's turns do not outlive the app (closing the card also forgets them).
     func applicationWillTerminate(_ notification: Notification) {
         brain.forgetTurns()

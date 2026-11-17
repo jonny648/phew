@@ -32,12 +32,18 @@ actor BrainMap {
     /// The Map, once every Librarian run started before has finished. Nil when it cannot be opened. For what must
     /// see the last answer's facts: remember and forget, Recently deleted, the export.
     func ready() async -> MapStore? {
-        endConversation()  // N4.6: what is still to learn is learned first
+        await learned()
+        return opened()
+    }
+
+    /// N4.6: what is still to learn is learned, and every Librarian run started before has finished. Opens nothing:
+    /// on Quit, the Shell waits for this (a short cap) before the app ends.
+    func learned() async {
+        endConversation()
         while let task = learning {
             await task.value
             if learning == task { learning = nil }
         }
-        return opened()
     }
 
     /// The Map as it is now, without waiting for a Librarian still running (PS.12): for the recall and the search

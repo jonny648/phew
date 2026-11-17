@@ -125,6 +125,11 @@ struct ClaudeBrain: Brain {
         Task { [map] in await map.endConversation() }  // N4.6: the card closed or Phew quits: the Librarian learns now
     }
 
+    func finishLearning() async {
+        memory.clear()
+        await map.learned()
+    }
+
     func spokenNames() async -> [String] { await map.spokenNames() }
 
     func heardAs() async -> [String: String] { await map.heardAs() }

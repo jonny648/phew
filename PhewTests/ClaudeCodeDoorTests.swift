@@ -77,7 +77,10 @@ final class ClaudeCodeDoorTests: XCTestCase {
             """
         if reads { script += "IFS= read -r line\nprintf '%s\\n' \"$line\" > \"$d/stdin\"\n" }
         script += body
-        let url = root.appending(path: "claude-\(UUID().uuidString)")
+        // Named `claude`, the only name `Hand.startClaudeCode` starts, in a folder of its own.
+        let folder = root.appending(path: "program-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appending(path: "claude")
         try script.write(to: url, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
         return url

@@ -1042,9 +1042,13 @@ final class HandTests: XCTestCase {
             || $0.contains("(`Hand.removeTestItems`)") },
     ]
 
+    /// The Hand's static doors, which start a program or open the browser with no job: each called from its one file.
+    static let doors = ["Hand.startClaudeCode": "Brain/ClaudeCodeDoor.swift", "Hand.openSignIn": "Shell/PhewApp.swift"]
+
     /// Whether `line` of `relative` (a path under Phew/) could act outside the Hand.
     static func acts(_ relative: String, _ line: String) -> Bool {
         guard relative != "Senses/Hand.swift" else { return false }
+        if doors.contains(where: { line.contains($0.key) && relative != $0.value }) { return true }
         return (acting + surfaces).contains(where: line.contains) && exceptions[relative]?(line) != true
     }
 

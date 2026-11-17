@@ -709,7 +709,10 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     /// pipes and its errors dropped. The only program door 1 starts; it lives here, where programs may be started.
     /// Not an action in an app: every tool call it makes asks Phew first, and a write among them runs only through
     /// `act` (`connectorWrite`, with a permit made in this file).
+    /// Only a program named `claude`: no other program can be started through this door. The name it was found under,
+    /// as the installers name it; the file it leads to may carry a version number (the native installer's does).
     static func startClaudeCode(_ program: URL, arguments: [String], environment: [String: String], folder: URL) throws -> Process {
+        guard program.isFileURL, program.standardizedFileURL.lastPathComponent == "claude" else { throw POSIXError(.EACCES) }
         let process = Process()
         process.executableURL = program
         process.arguments = arguments

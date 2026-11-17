@@ -95,15 +95,16 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
 
     // MARK: The program, the command, the environment
 
-    /// The `claude` program where its installers put it, as its real path. No shell, nothing run.
+    /// The `claude` program where its installers put it, by the name it has there (the file it leads to may be named by
+    /// its version, and `Hand.startClaudeCode` starts only a program named `claude`). No shell, nothing run.
     static func find(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL? {
         let places = [home.appending(path: ".local/bin/claude").path, home.appending(path: ".claude/local/claude").path,
                       "/usr/local/bin/claude", "/opt/homebrew/bin/claude"]
         for place in places {
             guard let real = realpath(place, nil) else { continue }
-            let url = URL(filePath: String(cString: real))
+            let path = String(cString: real)
             free(real)
-            if FileManager.default.isExecutableFile(atPath: url.path) { return url }
+            if FileManager.default.isExecutableFile(atPath: path) { return URL(filePath: place) }
         }
         return nil
     }

@@ -226,16 +226,18 @@ final class BreakingConfirmTests: XCTestCase {
         XCTAssertEqual(TaskList.whole(ShortcutCall(name: "s", input: "first\nsecond")), ["first", "second"])
     }
 
-    /// OPEN (guard 20). `Hand.startClaudeCode` starts ANY program with ANY arguments and `Hand.openSignIn` opens the
-    /// browser: both are static, take no permit and check nothing, and the scan of `testOnlyHandActs` passes a call to
-    /// them from anywhere because they are not on its word lists.
-    func testTheScanDoesNotSeeTheHandsStaticDoors() {
-        for line in ["let p = try Hand.startClaudeCode(URL(filePath: \"/bin/sh\"), arguments: [\"-e\", made], environment: [:], folder: f)",
-                     "Hand.openSignIn(URL(string: \"https://made-up.test\")!)"] {
-            XCTAssertFalse(HandTests.acts("Brain/MadeUpTool.swift", line), "the hole: the scan lets this line through")
-            XCTExpectFailure("add `Hand.startClaudeCode` and `Hand.openSignIn` to HandTests.surfaces, and make the first take only the claude program") {
-                XCTAssertTrue(HandTests.acts("Brain/MadeUpTool.swift", line), line)
-            }
+    /// CLOSED (guard 20). `Hand.startClaudeCode` and `Hand.openSignIn` may be called from their one file each, and the
+    /// first starts only a program named `claude`.
+    func testTheScanDoesNotSeeTheHandsStaticDoors() throws {
+        let start = "let p = try Hand.startClaudeCode(URL(filePath: \"/bin/sh\"), arguments: [\"-e\", made], environment: [:], folder: f)"
+        let open = "Hand.openSignIn(URL(string: \"https://made-up.test\")!)"
+        for line in [start, open] { XCTAssertTrue(HandTests.acts("Brain/MadeUpTool.swift", line), line) }
+        XCTAssertFalse(HandTests.acts("Brain/ClaudeCodeDoor.swift", start))
+        XCTAssertFalse(HandTests.acts("Shell/PhewApp.swift", open))
+        XCTAssertTrue(HandTests.acts("Shell/PhewApp.swift", start))
+        let folder = FileManager.default.temporaryDirectory
+        for program in ["/bin/sh", "/bin/claude-not", "/usr/bin/true"] {
+            XCTAssertThrowsError(try Hand.startClaudeCode(URL(filePath: program), arguments: [], environment: [:], folder: folder), program)
         }
     }
 

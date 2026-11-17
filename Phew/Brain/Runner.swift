@@ -172,14 +172,15 @@ enum Runner {
     /// R9: the most one request can cost when it asks for `searches` and `pages` in the dearest order (every page
     /// first, each read again by every later step) and writes `maxTokens`. Server tools write the cache after their
     /// results when the request uses caching (docs: prompt caching), so each piece of context is written once and
-    /// read by every later sampling step. `prompt`: the request's own tokens.
-    static func worstUSD(prompt: Int, searches: Int, pages: Int) -> Double {
-        let model = Tier.main.model
+    /// read by every later sampling step. `prompt`: the request's own tokens. A worker (NB.8): the small model, its
+    /// own output cap.
+    static func worstUSD(prompt: Int, searches: Int, pages: Int, tier: Tier = .main, output: Int = maxTokens) -> Double {
+        let model = tier.model
         let results = Array(repeating: pageTokens, count: pages) + Array(repeating: searchTokens, count: searches)
         let n = Double(results.count)
         var tokens = Double(prompt) * (model.cacheWrite + model.cacheRead * n)
         for (i, size) in results.enumerated() { tokens += Double(size) * (model.cacheWrite + model.cacheRead * (n - Double(i) - 1)) }
-        return (tokens + Double(maxTokens) * model.output) / 1_000_000 + Double(searches) * Model.perSearch
+        return (tokens + Double(output) * model.output) / 1_000_000 + Double(searches) * Model.perSearch
     }
 
     /// R9: the searches and pages a task may ask for, at most its limits, fewer when even one request using them all

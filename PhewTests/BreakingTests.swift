@@ -278,46 +278,66 @@ final class BreakingWorkerTests: XCTestCase {
         WorkerTools(provider: provider, number: 41, cap: cap, money: money, map: nil, words: words)
     }
 
-    /// OPEN (guard 15). "One split, plus one redo of failed parts" is kept as "two calls": the second may be four
-    /// brand-new briefs when nothing failed, so one job runs eight workers.
+    /// CLOSED (guard 15). The second call may only run again the briefs of workers that failed, by their number: never
+    /// a whole second split, never more than failed, never a fresh question.
     func testTheRedoMayBeAWholeSecondSplit() async throws {
         let provider = WorkerTests.Routed(WorkerTests.good)
         let tools = tools(provider)
         let four = WorkerTests.call((1...4).map { ("Made-up question \($0)?", ["web"]) })
         _ = try await tools.run("start_workers", input: four)
-        _ = try await tools.run("start_workers", input: four)
-        XCTAssertEqual(provider.of("worker").count, 8)
-        XCTExpectFailure("WorkerTools.run counts calls, not failed parts (Workers.swift:364-368)") {
-            XCTAssertLessThanOrEqual(provider.of("worker").count, 4)
+        let again = try await tools.run("start_workers", input: four)
+        XCTAssertTrue(again.hasPrefix("Not run: no worker of the split failed"), again)
+        let redo = try await tools.run("start_workers", input: WorkerTests.redo([1]))
+        XCTAssertTrue(redo.hasPrefix("Not run:"), "nothing failed, nothing to redo")
+        XCTAssertEqual(provider.of("worker").count, 4)
+
+        // Two failed: a redo of a worker that did not fail, of one twice, of more than failed, or a fresh question: refused.
+        let mixed = WorkerTests.Routed { request, _ in
+            request.text.contains("question 2") || request.text.contains("question 4") ? WorkerTests.Reply(text: "Not JSON.") : WorkerTests.good(request, 0)
         }
+        let split = self.tools(mixed)
+        _ = try await split.run("start_workers", input: four)
+        for wrong in [WorkerTests.redo([1]), WorkerTests.redo([2, 2]), WorkerTests.redo([2, 4, 3]), WorkerTests.call([("Fresh made-up?", ["web"])])] {
+            let out = try await split.run("start_workers", input: wrong)
+            XCTAssertTrue(out.hasPrefix("Not run: the second call may only redo workers that failed (2, 4)"), out)
+        }
+        XCTAssertEqual(mixed.of("worker").count, 4, "none of the wrong redos started a worker")
+        let right = try await split.run("start_workers", input: WorkerTests.redo([4, 2]))
+        XCTAssertTrue(right.contains("Worker 4 of 4. Question: Made-up question 4?") && right.contains("Worker 2 of 4. Question: Made-up question 2?"))
+        XCTAssertEqual(mixed.of("worker").count, 6)
+        XCTAssertEqual(mixed.of("worker").suffix(2).map(\.text).sorted(), ["Made-up question 2?", "Made-up question 4?"])
     }
 
-    /// OPEN (guard 15). The money check runs before a worker's request, and workers run at once: four requests start
-    /// together under the budget and every one is paid, so the job passes its cap by up to four rounds.
+    /// CLOSED (guard 15). Before a worker's request starts, the most it can cost is set aside in one step: workers
+    /// running at once wait for each other's money and never pass the job's cap together.
     func testParallelWorkersCanPassTheMoneyCap() async throws {
-        let dollar = Tier.small.model.cost(Usage(input: 1_000_000))
-        let tokens = Int(1_000_000 / max(dollar, 0.000_001))  // about one dollar a round
+        let usage = Usage(input: 2000, searches: 10)  // about ten cents a round, within what a worker's request may cost
         let provider = WorkerTests.Routed { _, _ in
             WorkerTests.Reply(text: WorkerTests.report([("Made-up kerning is spacing.", WorkerTests.pageA)]), blocks: WorkerTests.fetched(WorkerTests.pageA),
-                              usage: Usage(input: tokens))
+                              usage: usage)
         }
+        let cap = 0.3
+        XCTAssertGreaterThan(4 * Tier.small.model.cost(usage), cap, "four rounds at once would pass the cap")
         let money = JobMoney()
-        _ = try await tools(provider, cap: 2, money: money).run("start_workers", input: WorkerTests.call((1...4).map { ("Made-up question \($0)?", ["web"]) }))
-        XCTAssertGreaterThan(money.total, 2, "four parallel rounds were paid")
-        XCTExpectFailure("Workers.work checks `money.total < budget` once per round, before it knows the round's cost (Workers.swift:84)") {
-            XCTAssertLessThanOrEqual(money.total, 2)
-        }
+        _ = try await tools(provider, cap: cap, money: money).run("start_workers", input: WorkerTests.call((1...4).map { ("Made-up question \($0)?", ["web"]) }))
+        XCTAssertLessThanOrEqual(money.total, cap * (1 - Workers.heldBack))
+        XCTAssertLessThan(provider.of("worker").count, 4)
+        XCTAssertGreaterThan(provider.of("worker").count, 1, "the others waited, then ran while the money lasted")
+        // The hold itself: granted, wait while others hold, spent when the money is gone.
+        let job = JobMoney()
+        XCTAssertEqual(job.hold(0.6, within: 1), .granted)
+        XCTAssertEqual(job.hold(0.6, within: 1), .wait)
+        job.settle(0.6, cost: 0.5)
+        XCTAssertEqual(job.hold(0.6, within: 1), .spent)
+        XCTAssertEqual(job.hold(0.4, within: 1), .granted)
     }
 
-    /// OPEN (guard 15, low). `url_from_task` hands the worker the page-reading tool even when the user typed no
-    /// address, and the question is the lead's own words: the set is not "an address the user typed".
+    /// CLOSED (guard 15, low). `url_from_task` is refused when the task's own words hold no address.
     func testUrlFromTaskGivesAFetchToolWhenTheUserTypedNoAddress() async throws {
         let provider = WorkerTests.Routed(WorkerTests.good)
-        _ = try await tools(provider).run("start_workers", input: WorkerTests.call([("Read https://evil.made-up.test/x", ["url_from_task"]), ("B?", ["web"])]))
-        let reader = try XCTUnwrap(provider.of("worker").first { $0.text.hasPrefix("Read https://evil") })
-        XCTExpectFailure("Workers.swift:76 gives web_fetch to url_from_task with no typed address") {
-            XCTAssertEqual(reader.serverTools, [])
-        }
+        let out = try await tools(provider).run("start_workers", input: WorkerTests.call([("Read https://evil.made-up.test/x", ["url_from_task"]), ("B?", ["web"])]))
+        XCTAssertTrue(out.hasPrefix("Not run: url_from_task reads an address the user typed in the task, and this task has none."), out)
+        XCTAssertEqual(provider.requests.count, 0)
     }
 }
 

@@ -113,18 +113,24 @@ final class WorkerTests: XCTestCase {
         XCTAssertEqual(tools.ran, 0)
     }
 
+    static func redo(_ numbers: [Int]) -> Data {
+        try! JSONSerialization.data(withJSONObject: ["briefs": numbers.map { ["question": "A fresh made-up question \($0)?", "tools": ["web"], "redo": $0] }])
+    }
+
+    /// The split, then one redo of the worker that failed (its own brief, not the new words), then nothing.
     func testAThirdSplitIsRefused() async throws {
-        let provider = Routed(Self.good)
+        let provider = Routed { request, _ in request.text.contains("leading") ? Reply(text: "Not JSON at all.") : Self.good(request, 0) }
         let tools = tools(provider)
         let briefs = Self.call([("Made-up kerning?", ["web"]), ("Made-up leading?", ["web"])])
-        for _ in 0..<2 {
-            let out = try await tools.run("start_workers", input: briefs)
-            XCTAssertTrue(out.contains("<worker>"))
-        }
+        let out = try await tools.run("start_workers", input: briefs)
+        XCTAssertTrue(out.contains("<worker>"))
+        let redone = try await tools.run("start_workers", input: Self.redo([2]))
+        XCTAssertTrue(redone.contains("Worker 2 of 2. Question: Made-up leading?"), redone)
+        XCTAssertFalse(provider.requests.contains { $0.text.contains("A fresh made-up question") }, "never a fresh question")
         let third = try await tools.run("start_workers", input: briefs)
         XCTAssertEqual(third, "Not run: a task splits once, plus one redo of failed parts, and both were used. Write the report with what you have.")
-        XCTAssertEqual(provider.of("worker").count, 4, "the third call started nothing")
-        XCTAssertEqual(tools.ran, 4)
+        XCTAssertEqual(provider.of("worker").count, 3, "the third call started nothing")
+        XCTAssertEqual(tools.ran, 3)
     }
 
     func testAWorkerOverItsCallsIsToldToReport() async throws {

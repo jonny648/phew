@@ -1017,7 +1017,9 @@ final class HandTests: XCTestCase {
                          "EKEventStore", "OSAScript", "NSUserScriptTask", "NSUserUnixTask", "NSUserAutomatorTask",
                          "NSWorkspace.shared.open", ".activate(", "Process()"]
     /// R21: the Hand's own surfaces, which act with no gate when called directly: only `Hand.act` may call them.
-    static let surfaces = ["AXSurface", "EventKitItems", "HandChanges", "removeTestItems", "showTestNote"]
+    /// NB.3: a connector write needs a permit made in Hand.swift only.
+    static let surfaces = ["AXSurface", "EventKitItems", "HandChanges", "removeTestItems", "showTestNote", "extension ConnectorPermit",
+                           "ConnectorPermit(writing"]
     /// Named exceptions, line by line.
     static let exceptions: [String: (String) -> Bool] = [
         // WindowReader asks Chromium, Electron and Keynote to build their full Accessibility tree, for reading only
@@ -1091,7 +1093,8 @@ final class HandTests: XCTestCase {
                      "NSWorkspace.shared.open(url)", "app.activate(options: [])", "let p = Process()",
                      "AXSurface().send(step, to: el)", "AXSurface().run(script, made: [], stop: { false })",
                      "EventKitItems(stop: { false }).remove(id, .event)", "HandChanges(script: run, items: items).run(.delete(.note, title: t))",
-                     "Hand.shared.removeTestItems()"] {
+                     "Hand.shared.removeTestItems()", "extension ConnectorPermit { init(made: String) { tool = made } }",
+                     "seam.write(call, permit: ConnectorPermit(writing: call), stop: { false })"] {
             XCTAssertTrue(Self.acts("Brain/MadeUpTool.swift", line), line)
         }
         XCTAssertTrue(Self.acts("Shell/MenuPanels.swift", "NSWorkspace.shared.open(url)"), "an exception names its line, not its file")

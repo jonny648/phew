@@ -154,6 +154,8 @@ enum NeverList {
         switch step.kind {
         // A scroll changes nothing; a right click only opens a menu, whose item is a step of its own.
         case .front, .scroll, .rightClick: return false
+        // NB.11: a connector write is never tagged (the user's word of 17 November); an agent's waits all the same.
+        case .connector: return false
         case .set: return replaces
         case .pick, .drag: return worded
         case .press, .click, .doubleClick:

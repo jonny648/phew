@@ -26,12 +26,19 @@ final class TaskList: ObservableObject {
 
     enum State: Equatable { case queued, running, ready, stopped, failed(BrainError) }
 
-    /// One action waiting for the user's confirm, with its own row in the menu: a script for the Hand, or a file
-    /// change (NA.12) for the Brain. Exactly one of the two.
+    /// One action waiting for the user's confirm, with its own row in the menu: a script for the Hand, a file
+    /// change (NA.12) for the Brain, or a connector write (NB.3) for the Hand. Exactly one of the three.
     struct Waiting: Identifiable, Equatable {
         let id: Int
         var script: HandScript? = nil
         var file: FileChange? = nil
+        var connector: ConnectorCall? = nil
+
+        /// For the Hand: a script or a connector write. Nil for a file change.
+        var step: HandStep? {
+            if let script { return HandStep(kind: .script, pid: 0, script: script) }
+            return connector.map { HandStep(kind: .connector, pid: 0, name: $0.name, connector: $0) }
+        }
     }
 
     struct Item: Identifiable {
@@ -137,6 +144,8 @@ final class TaskList: ObservableObject {
             await self?.add(script, task: number) ?? HandEnd.stopped.rawValue
         }, change: { [weak self] change in
             await self?.wait(change, task: number) ?? HandEnd.stopped.rawValue
+        }, connector: { [weak self] call in
+            await self?.ask(call, task: number) ?? HandEnd.stopped.rawValue
         })
         tasks[number] = Task { [weak self] in
             var report: TaskReport?, failure: BrainError?
@@ -229,7 +238,7 @@ final class TaskList: ObservableObject {
         case .append, .workbook, .restore: return AddItemTool.refused
         }
         guard tasks[number] != nil else { return HandEnd.stopped.rawValue }
-        let end = await run(scripts, agent: true, task: number).end
+        let end = await run(scripts.map { HandStep(kind: .script, pid: 0, script: $0) }, agent: true, task: number).end
         // R7: each waits in its own row, up to `mostWaits`; one more is refused, never queued unseen. The Hand did
         // nothing either way.
         let refused = end == .needsConfirm && full(number)
@@ -247,10 +256,10 @@ final class TaskList: ObservableObject {
         guard !all.isEmpty else { return .stopped }
         update(number) { $0.waits.removeAll(where: all.contains) }
         // The Hand's actions first, in one job; then the file changes, through the Brain only (NA.12).
-        let chosen = all.filter { $0.script != nil }, files = all.filter { $0.file != nil }
+        let chosen = all.filter { $0.step != nil }, files = all.filter { $0.file != nil }
         var end = HandEnd.done, tried = 0
         if !chosen.isEmpty {
-            let (ended, job, ran) = await run(chosen.compactMap(\.script), agent: false, task: number)
+            let (ended, job, ran) = await run(chosen.compactMap(\.step), agent: false, task: number)
             (end, tried) = (ended, ran)
             if tried < chosen.count { update(number) { $0.waits.insert(contentsOf: chosen[tried...], at: 0) } }
             if !job.kept.isEmpty { update(number) { $0.undo.append(job) } }
@@ -306,6 +315,11 @@ final class TaskList: ObservableObject {
         return lines.count > 1 ? first + " …" : first
     }
 
+    /// NB.3: the confirm row of a connector write: the server and the tool, never its arguments' words.
+    static func asks(_ call: ConnectorCall) -> String {
+        "Waiting for you: write in \(call.name) with \(call.tool)?"
+    }
+
     /// The menu's Dismiss of one row (`only`), or of all (nil): the stored actions are dropped, nothing runs.
     func dismiss(_ number: Int, only id: Int? = nil) {
         update(number) { item in item.waits.removeAll { id == nil || $0.id == id } }
@@ -321,7 +335,7 @@ final class TaskList: ObservableObject {
 
     private func keep(_ wait: Waiting, task number: Int) {
         lastWait += 1
-        let wait = Waiting(id: lastWait, script: wait.script, file: wait.file)
+        let wait = Waiting(id: lastWait, script: wait.script, file: wait.file, connector: wait.connector)
         update(number) { $0.waits.append(wait) }
     }
 
@@ -334,6 +348,19 @@ final class TaskList: ObservableObject {
         if word == HandEnd.needsConfirm.rawValue { keep(Waiting(id: 0, file: change), task: number) }
         shellLog("task \(number): file change \(word)")
         return word
+    }
+
+    /// NB.3: the Runner's connector write, through the Hand in an agent's job: never sent now. It waits in the menu as
+    /// one more row of the task, inside the same ceiling, for a confirm; then it runs through the Hand as the user's
+    /// own. Returns the Hand's fixed word: `needsConfirm`, `off` with acting off, `refused` at the ceiling.
+    func ask(_ call: ConnectorCall, task number: Int) async -> String {
+        guard tasks[number] != nil else { return HandEnd.stopped.rawValue }
+        let wait = Waiting(id: 0, connector: call)
+        let end = await run([wait.step!], agent: true, task: number).end
+        let refused = end == .needsConfirm && full(number)
+        if end == .needsConfirm, !refused { keep(wait, task: number) }
+        shellLog("task \(number): connector write \(refused ? AddItemTool.refused : end.rawValue)")
+        return refused ? AddItemTool.refused : end.rawValue
     }
 
     /// Confirm of one file change: the Brain moves the old file to the Trash, then writes the new text. A line then
@@ -364,14 +391,13 @@ final class TaskList: ObservableObject {
         }
     }
 
-    /// `tried`: how many scripts reached the Hand, the last one ending `end`.
-    private func run(_ scripts: [HandScript], agent: Bool, task number: Int) async -> (end: HandEnd, job: HandJob, tried: Int) {
+    /// `tried`: how many steps reached the Hand, the last one ending `end`.
+    private func run(_ steps: [HandStep], agent: Bool, task number: Int) async -> (end: HandEnd, job: HandJob, tried: Int) {
         let hand = hand, job = hand.begin(watchUser: false, agent: agent, counted: agent ? acted[number] ?? 0 : 0)
         jobs[number] = job
         var end = HandEnd.done, tried = 0
-        for script in scripts where end == .done {
-            // `kind: .script` always: no target on screen, no click, no app brought to the front.
-            let step = HandStep(kind: .script, pid: 0, script: script)
+        // A script or a connector write only: no target on screen, no click, no app brought to the front.
+        for step in steps where end == .done && [.script, .connector].contains(step.kind) {
             end = await Task.detached { hand.act(step, in: job) }.value.end
             tried += 1
         }

@@ -29,6 +29,8 @@ struct HandStep: Sendable {
         case drag
         /// A key or shortcut (`chord`), or `text` typed through keys, posted to the job's app only.
         case keys
+        /// NB.3: a write in a connected tool (`connector`), through the seam the Hand holds. Nothing on screen.
+        case connector
 
         /// The kinds that may land on a bare point with no control under it (a canvas).
         var pointed: Bool { [.click, .doubleClick, .rightClick, .scroll, .drag].contains(self) }
@@ -58,6 +60,8 @@ struct HandStep: Sendable {
     var amount = 0
     /// For `drag`: where it ends, Accessibility coordinates.
     var to: CGPoint? = nil
+    /// For `connector`: the write asked for. Held in memory only; its arguments are never logged.
+    var connector: ConnectorCall? = nil
 }
 
 /// A key, alone or with modifiers, named from a fixed vocabulary (NA.5). Built only by `parse`, so no word of the
@@ -510,6 +514,18 @@ extension HandSurface {
     func choices(_ script: HandScript) -> [String] { [] }
 }
 
+/// NB.3: where a connector write goes. The real one is `Connections`, set by the Shell from the Brain; tests give a
+/// fake. It sends only with a `ConnectorPermit`, and a permit to write is made only in this file, inside `act`.
+protocol HandConnector: Sendable {
+    /// The write, once, then how it ended: done, failed, timeout, stopped as soon as `stop` says so.
+    func write(_ call: ConnectorCall, permit: ConnectorPermit, stop: @escaping () -> Bool) -> HandEnd
+}
+
+extension ConnectorPermit {
+    /// The only way to a write permit: `Hand.connectorWrite`, inside `act`.
+    fileprivate init(writing call: ConnectorCall) { tool = call.tool }
+}
+
 /// An element as read at the moment of acting. `value` is never read from a secure field.
 struct HandSeen: Equatable {
     var role = "", subrole = "", name = ""
@@ -557,6 +573,7 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     private let acting = NSLock()
     private var recent: [Date] = []  // under `acting`
     private var jobs = 0
+    private var connectorSeam: (any HandConnector)?  // under `lock`
     #if DEBUG
     /// Every script run in this process, how it ended and what it made: for the live tests' report and clean-up
     /// (`removeTestItems`). Memory only.
@@ -566,13 +583,27 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     /// Tests pass a throwaway defaults suite, a fake surface or clock, and may stand in for Phew's own pid.
     init(defaults: UserDefaults = .standard, surface: HandSurface = AXSurface(), list: NeverReadList = .shared,
          ownPID: pid_t = getpid(), now: @escaping () -> Date = Date.init,
-         sleep: @escaping (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }) {
+         sleep: @escaping (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }, connector: (any HandConnector)? = nil) {
+        connectorSeam = connector
         self.defaults = defaults
         self.surface = surface
         self.list = list
         self.ownPID = ownPID
         self.now = now
         self.sleep = sleep
+    }
+
+    /// NB.3: where connector writes go. The Shell sets it once at launch, from the Brain. None: a write fails.
+    var connector: (any HandConnector)? {
+        get { lock.withLock { connectorSeam } }
+        set { lock.withLock { connectorSeam = newValue } }
+    }
+
+    /// NB.2: the browser on a connected tool's sign-in page, only when the user pressed Connect (the browser, once per
+    /// tool, for sign-in: docs/18-capabilities.md 18.1). An https address only. Not an action in an app: no job, no line.
+    static func openSignIn(_ url: URL) {
+        guard url.scheme == "https" else { return }
+        _ = NSWorkspace.shared.open(url)
     }
 
     /// On unless the menu's switch turned it off (the user's word of 15 November: no Allow to press).
@@ -652,7 +683,8 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         // The level, as before: marked or in the class. No word of what changed.
         ActionLog.record(ActionLog.line(job: job.number, step: job.steps, kind: step.kind, role: role, ended: end,
                                         marked: marked || final, ms: Int(Date().timeIntervalSince(start) * 1000),
-                                        chars: end != .done ? 0 : step.kind == .set || step.kind == .keys ? step.text.count : step.script?.chars ?? 0))
+                                        chars: end != .done ? 0 : step.kind == .set || step.kind == .keys ? step.text.count
+                                            : step.kind == .connector ? step.connector?.arguments.count ?? 0 : step.script?.chars ?? 0))
         var result = HandResult(end: end, marked: marked, final: final, left: left)
         if end == .manyFound, let script = step.script { result.choices = Array(surface.choices(script).prefix(5)) }
         return result
@@ -675,6 +707,7 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
                        left: inout Bool) -> HandEnd {
         guard allowed else { return .off }
         if step.kind == .script { return script(step, job: job, final: &final, left: &left) }
+        if step.kind == .connector { return connectorWrite(step, job: job) }
         // An agent in the background acts only through scripts: it never clicks, types or switches app, whoever asks.
         if job.agent { return .failed }
         if step.kind == .front { return front(step.app, job: job) }
@@ -846,6 +879,21 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         lock.withLock { ranHere.append((script, end, made)) }
         #endif
         return end
+    }
+
+    /// Under `acting`. A write in a connected tool (NB.3, NB.11): the never words on the tool's name, the ceilings; an
+    /// agent's waits for the confirm; then the write, once, through the seam, with a permit made here. Never tagged:
+    /// in a job the user watches it is listed like any action (the user's word of 17 November). No Undo: it is not kept.
+    private func connectorWrite(_ step: HandStep, job: HandJob) -> HandEnd {
+        guard let call = step.connector, let seam = connector else { return .failed }
+        if let end = NeverList.refusal(role: "", subrole: "", focusedSecure: false, texts: [call.tool]) { return end }
+        let time = now()
+        if let end = brake(job, time) { return end }
+        if job.agent { return .needsConfirm }
+        if let end = job.end { return end }
+        job.acted += 1
+        recent.append(time)
+        return seam.write(call, permit: ConnectorPermit(writing: call), stop: { job.end != nil })
     }
 
     /// Undo on the card (N2.3): puts back what the job's changes and deletes replaced, newest first, each a `restore`
@@ -1076,7 +1124,7 @@ struct AXSurface: HandSurface {
             guard let events = step.chord.map(Self.keyEvents) ?? Self.typeEvents(step.text) else { return .failed }
             events.forEach { $0.postToPid(step.pid) }
             return .done
-        case .script, .front:
+        case .script, .front, .connector:
             return .failed  // scripts go through `run`, fronts through `activate`
         }
         switch result {

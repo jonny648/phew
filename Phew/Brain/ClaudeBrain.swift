@@ -27,6 +27,8 @@ struct ClaudeBrain: Brain {
     var fileFolders = ReadFolders()
     /// NA.12: where a replaced file goes before its new text is written. Nil: the system's Trash. Tests pass a stand-in.
     var trash: (@Sendable (URL) throws -> Void)? = nil
+    /// NB: the tools the user connected. Nil: none (unit tests, checks); the app passes `Connections.shared`.
+    var connections: Connections? = nil
 
     /// Only when the Map cannot be opened.
     static let cannotRemember = "My memory isn't available right now, so nothing was stored."
@@ -306,7 +308,12 @@ extension ClaudeBrain {
 
     func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?,
                  change: ChangeFile?) -> AsyncThrowingStream<TaskEvent, Error> {
-        let injected = tools, map = map, brain = self
+        runTask(words, packet: packet, number: number, folder: folder, spoken: spoken, add: add, change: change, connector: nil)
+    }
+
+    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?,
+                 change: ChangeFile?, connector: ConnectorAsk?) -> AsyncThrowingStream<TaskEvent, Error> {
+        let injected = tools, map = map, brain = self, connections = connections
         // The task was counted when its words were routed. N2.12: it sets aside its budget out of today's ceiling, so
         // tasks side by side cannot pass it together; a smaller reserve caps its cost, and past it the task ends
         // through its own cost limit, with its report so far. Nothing left: it does not start.
@@ -334,7 +341,12 @@ extension ClaudeBrain {
             await brain.projectMemoryBlock(SecretsFilter.clean(words), packet: packet, store: await map.now()).map(Runner.withoutAddresses)
         }, add: add, skills: skills,
            files: fileFolders.folders.isEmpty ? nil : FileTools(folders: fileFolders, reads: taskLimits.fileReads, change: change),
-           provider: provider, limits: taskLimits)
+           connectors: {
+            // NB.4: only the tools that fit the task, from servers whose tools are as remembered; the task's own words.
+            guard let connections else { return nil }
+            let offered = await connections.offer(for: SecretsFilter.clean(words))
+            return offered.isEmpty ? nil : ConnectorTools(connections: connections, offered: offered, ask: connector)
+        }, provider: provider, limits: taskLimits)
         guard let limits else { return stream }
         // What the task did not spend goes back when it ends, fails or is stopped.
         return AsyncThrowingStream { continuation in

@@ -278,6 +278,8 @@ struct ActJob {
         case .keys:
             if let chord = step.chord { return "\(doing ? "Pressing" : "Pressed") \(chord.symbols)" }
             return "\(doing ? "Typing" : "Typed") \(step.text.count) character\(step.text.count == 1 ? "" : "s")"
+        case .connector:
+            return "\(doing ? "Writing" : "Wrote") in \(step.connector?.name ?? "a connected tool")\(step.connector.map { " (\($0.tool))" } ?? "")"
         case .script:
             switch step.script {
             case .note(let title, _): return "Made the note “\(title)” in Notes"

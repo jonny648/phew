@@ -87,6 +87,10 @@ protocol Brain: Sendable {
     /// user's confirm. The task reads files only in the folders of `readFolders()`; with none it has no file tool.
     func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?,
                  change: ChangeFile?) -> AsyncThrowingStream<TaskEvent, Error>
+    /// NB.3: the same, with the Shell's door for a connector write, which runs it through the Hand in an agent's job,
+    /// so it waits for the user's confirm. Nil: the task's connectors only read.
+    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?,
+                 change: ChangeFile?, connector: ConnectorAsk?) -> AsyncThrowingStream<TaskEvent, Error>
 
     /// NA.11: the menu's "Folders he may read", as plain paths. `addReadFolder` is false for what is not a folder or
     /// is private whatever the user chose (a hidden or keychain folder).
@@ -132,6 +136,21 @@ protocol Brain: Sendable {
     /// NC: the skills Phew wrote for himself, for the menu's list, and deleting one by name.
     func skills() async -> [Skill]
     func deleteSkill(_ name: String) async
+
+    // MARK: Connections (phase NB)
+
+    /// NB.7: the servers on the fixed list, for the menu's Connections panel: connected or not, the tools remembered,
+    /// each marked reads or writes, and a change of its tools waiting for Accept. Names only.
+    func connectors() async -> [ConnectorStatus]
+    /// Connect: the sign-in page opened through `open` (only on the user's press), then the tool list, remembered.
+    /// Nil: connected; else one line for the panel.
+    func connect(_ server: String, open: @escaping @Sendable (URL) -> Void) async -> String?
+    /// The user accepted a changed tool list: it is remembered as it is now. Nil, or one line for the panel.
+    func acceptTools(_ server: String) async -> String?
+    /// The token leaves the Keychain and the remembered list goes.
+    func disconnect(_ server: String) async
+    /// The seam the Shell hands the Hand at launch, for connector writes. Nil: no connections.
+    var connector: (any HandConnector)? { get }
 
     // MARK: Limits
 
@@ -332,6 +351,16 @@ extension Brain {
                  change: ChangeFile?) -> AsyncThrowingStream<TaskEvent, Error> {
         runTask(words, packet: packet, number: number, folder: folder, spoken: spoken, add: add)
     }
+    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?,
+                 change: ChangeFile?, connector: ConnectorAsk?) -> AsyncThrowingStream<TaskEvent, Error> {
+        runTask(words, packet: packet, number: number, folder: folder, spoken: spoken, add: add, change: change)
+    }
+    /// A Brain without connections has none.
+    func connectors() async -> [ConnectorStatus] { [] }
+    func connect(_ server: String, open: @escaping @Sendable (URL) -> Void) async -> String? { Connections.line(.notConnected) }
+    func acceptTools(_ server: String) async -> String? { Connections.line(.notConnected) }
+    func disconnect(_ server: String) async {}
+    var connector: (any HandConnector)? { nil }
     /// A Brain without file tools reads no folder and changes no file.
     func readFolders() -> [URL] { [] }
     func addReadFolder(_ folder: URL) -> Bool { false }

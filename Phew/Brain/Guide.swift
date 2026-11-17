@@ -216,7 +216,7 @@ enum Guide {
     }
 
     static func inert(_ text: String) -> String {
-        text.replacing(#/(?i)<\s*(\/?)\s*(map|self|project_memory|spoken|screen|earlier_screen|menus|actions|skills?|files?)\b/#) { "<\($0.1) \($0.2)" }
+        text.replacing(#/(?i)<\s*(\/?)\s*(map|self|project_memory|spoken|screen|earlier_screen|menus|actions|skills?|files?|connector)\b/#) { "<\($0.1) \($0.2)" }
     }
 
     /// D3: at most this much of the earlier screen's text goes with a reply.

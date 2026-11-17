@@ -43,6 +43,7 @@ struct PhewApp: App {
                 Button("Skills…") { delegate.showSkills() }
                 Button("Folders he may read…") { delegate.showReadFolders() }
             }
+            Button("Connections…") { delegate.showConnections() }
             Menu("Reports") {
                 Button("Choose reports folder…") { delegate.chooseReportsFolder() }
                 ReportFactsEntries(tasks: delegate.tasks) { delegate.reportFacts($0) }
@@ -84,7 +85,7 @@ private struct TaskEntries: View {
         // task with more than one waiting, runs them one after another.
         ForEach(tasks.confirms) { item in
             ForEach(item.waits) { wait in
-                Menu(wait.script.map(TaskList.asks) ?? wait.file.map(TaskList.asks) ?? "") {
+                Menu(wait.script.map(TaskList.asks) ?? wait.file.map(TaskList.asks) ?? wait.connector.map(TaskList.asks) ?? "") {
                     Button("Confirm") { Task { await tasks.confirm(item.id, only: wait.id) } }
                     Button("Dismiss") { tasks.dismiss(item.id, only: wait.id) }
                 }
@@ -223,7 +224,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A test copy under another bundle id: no Map maintenance at launch, so it never touches the user's Map folder.
         if CommandLine.arguments.contains("--debug-no-map") { return ClaudeBrain(map: BrainMap(maintenance: false), limits: Limits(), answerEarly: false) }
         #endif
-        return ClaudeBrain(skills: SkillTools(), limits: Limits(), answerEarly: false)
+        return ClaudeBrain(skills: SkillTools(), limits: Limits(), answerEarly: false, connections: .shared)
     }()
     let panel = InputPanel()
     let card = TextCard()
@@ -255,6 +256,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var hotKey = makeHotKey()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Hand.shared.connector = brain.connector  // NB.3: connector writes go only through the Hand
         ClaudeExportReader.sweep()
         ContextPacket.sweepDebugFiles()
         #if DEBUG
@@ -435,6 +437,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func showNeverRead() {
         menuPanel.show(title: "Never-read apps", NeverReadView(model: NeverReadModel()))
+    }
+
+    /// NB.7: the tools he may reach. Connect opens the sign-in page in the browser, only on the user's press.
+    func showConnections() {
+        let model = ConnectionsModel(brain: brain, open: { url in DispatchQueue.main.async { Hand.openSignIn(url) } })
+        model.changed = { [unowned self] in DispatchQueue.main.async { self.menuPanel.fit(keyboard: false) } }
+        menuPanel.show(title: "Connections", ConnectionsView(model: model))
     }
 
     func showSkills() {

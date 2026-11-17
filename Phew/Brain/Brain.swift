@@ -38,6 +38,11 @@ protocol Brain: Sendable {
     /// target, not `checked`. Key, network and rate errors throw
     /// `BrainError` like `answer`.
     func progress(steps: [GuideStep], current: Int, packet: ContextPacket?) async throws -> GuideProgress
+    /// N4.4: the same after a direct hit on step `current` (the card moved on at once). `before`: the control labels
+    /// of the screen the hit was made on (`ContextPacket.controlLabels`). When that step needs only a click and the
+    /// control the next step names has appeared since, code confirms it with no model call; anything unclear goes to
+    /// the model as in `progress`. Nil `before`: `progress`.
+    func progress(steps: [GuideStep], current: Int, packet: ContextPacket?, before: Set<String>?) async throws -> GuideProgress
 
     /// During a job on the act route (PH.5): from a fresh `packet` and the actions made so far (`done`, one plain line
     /// each, oldest first), the next single action, or that the job is done, or stuck. The Brain never acts: the
@@ -164,6 +169,10 @@ protocol Brain: Sendable {
 }
 
 extension Brain {
+    /// A Brain without the code check asks as always.
+    func progress(steps: [GuideStep], current: Int, packet: ContextPacket?, before: Set<String>?) async throws -> GuideProgress {
+        try await progress(steps: steps, current: current, packet: packet)
+    }
     func answer(_ question: String, packet: ContextPacket?, state: ShellState) -> AsyncThrowingStream<BrainEvent, Error> {
         answer(question, packet: packet)
     }

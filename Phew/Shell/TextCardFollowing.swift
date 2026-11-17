@@ -144,6 +144,7 @@ extension TextCard {
         watch.mark()
         // After a direct hit the look judges from the step the hit left, so it can confirm it or step back.
         let shown = model.current, from = rule.lookFrom(shown), steps = steps, look = rule.looks
+        let before = from != shown ? seen : nil  // N4.4: only to confirm a direct hit
         shellLog("guide: look \(look) of \(FollowRule.ceiling) starts on step \(from + 1) of \(steps.count)\(from != shown ? ", confirming a direct hit" : "")\(since.map { ", \($0) ms after the last start" } ?? "")")
         let capture = Senses.capture()
         lookTask = Task { [weak self] in
@@ -152,13 +153,14 @@ extension TextCard {
             guard !Task.isCancelled, let self else { return }
             let result: GuideProgress
             do {
-                result = try await brain.progress(steps: steps, current: from, packet: packet)
+                result = try await brain.progress(steps: steps, current: from, packet: packet, before: before)
             } catch {
                 guard !Task.isCancelled else { return }
                 return lookFailed(BrainError(error))
             }
             guard !Task.isCancelled else { return }
             lookTask = nil
+            seen = packet?.controlLabels
             let kind = switch result.target { case .element: "element"; case .point: "point"; case nil: "none" }
             shellLog("guide: look \(look) ended, step \(from + 1) to \(result.current + 1) of \(steps.count), target \(kind), capture \(captureMS) ms, total \(Int(Date().timeIntervalSince(now) * 1000)) ms")
             apply(result, shown: shown, packet: packet)

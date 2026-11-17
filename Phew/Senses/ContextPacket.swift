@@ -79,6 +79,15 @@ struct ContextPacket: Codable {
         return CGRect(x: x, y: y, width: w, height: h)
     }
 
+    /// N4.4: the labels of the controls one can point at, as the guide's code check compares them, kept in memory
+    /// while the guide runs. Nil when the list was cut at `pointableCap`, so a control missing from it may still have
+    /// been on screen, or for an app never read.
+    var controlLabels: Set<String>? {
+        neverRead || pointables.count >= Self.pointableCap ? nil : Set(pointables.map { Self.controlLabel($0.label) })
+    }
+
+    static func controlLabel(_ label: String) -> String { label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+
     /// Where a guide step points, in screen points, top-left origin: an element's frame, or a zero-size rect at a
     /// screenshot point. Nil for an id not in `pointables`, or a point without a `screenshotFrame`.
     func screenRect(for target: StepTarget) -> CGRect? {

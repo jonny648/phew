@@ -96,6 +96,25 @@ enum Follower {
         return GuideProgress(current: now, target: target)
     }
 
+    /// N4.4: after a direct hit on a click-only step, the step confirmed by code, with no call: the next step's
+    /// instruction names exactly one control on the fresh screen (its label, 3 characters or more, as whole words) that
+    /// was not on the screen the hit was made on (`before`). That control is the next step's target. Nil whenever it is
+    /// less clear (no such control, two, a step that is not click-only, the last step, an app never read): the model looks.
+    static func confirmed(steps: [GuideStep], current: Int, packet: ContextPacket?, before: Set<String>) -> GuideProgress? {
+        guard steps.indices.contains(current), steps[current].click, current + 1 < steps.count, let packet, !packet.neverRead
+        else { return nil }
+        let next = steps[current + 1].instruction
+        let new = packet.pointables.filter { p in
+            let label = ContextPacket.controlLabel(p.label)
+            return label.count >= 3 && !before.contains(label)
+                && next.range(of: "(?<![\\p{L}\\p{N}])" + NSRegularExpression.escapedPattern(for: label) + "(?![\\p{L}\\p{N}])",
+                              options: [.regularExpression, .caseInsensitive]) != nil
+        }
+        guard new.count == 1, let control = new.first else { return nil }
+        shellLog("follower: step \(current + 1) of \(steps.count) confirmed by code, no call")
+        return GuideProgress(current: current + 1, target: .element(control.id))
+    }
+
     static func request(steps: [GuideStep], current: Int, packet: ContextPacket, shot: ScreenshotSize?) -> ModelRequest {
         ModelRequest(agent: "follower", tier: .main, system: system(steps: steps),
                      text: [Guide.screenBlock(Guide.context(packet, shot: shot)), "The user was on step \(current + 1)."].joined(separator: "\n\n"),

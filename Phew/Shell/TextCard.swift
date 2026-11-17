@@ -32,6 +32,9 @@ final class TextCard: EditPanel {
     var targets: [CGRect?] = []
     /// The guide as the Brain gave it, for the looks that follow the student; empty when no guide runs.
     var steps: [GuideStep] = []
+    /// N4.4: the control labels of the last screen the guide judged (its answer's, then each look's), so a look after
+    /// a direct hit can tell a control that has appeared since. Memory only; dropped when the guide ends.
+    var seen: Set<String>?
     var overlay: PointerOverlay?
     private var escapeMonitor: Any?
     /// Observes the student's clicks, keys and scrolls in other apps while the guide follows them; nil otherwise.
@@ -196,7 +199,7 @@ final class TextCard: EditPanel {
                         if case .route(.task) = event { self?.model.text = self?.onTask?(question, packet, spoken) ?? "" }
                         if case .route(.watch) = event { self?.model.text = self?.onWatch?(packet) ?? "" }
                         if case .steps(let steps) = event, !steps.isEmpty {
-                            self?.startGuide(steps, targets: steps.map { Self.rect(for: $0.target, in: packet) })
+                            self?.startGuide(steps, targets: steps.map { Self.rect(for: $0.target, in: packet) }, seen: packet?.controlLabels)
                         }
                     }
                     return given

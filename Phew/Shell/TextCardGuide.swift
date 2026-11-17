@@ -13,9 +13,10 @@ extension TextCard {
         pointAtCurrentStep()
     }
 
-    func startGuide(_ steps: [GuideStep], targets: [CGRect?]) {
+    func startGuide(_ steps: [GuideStep], targets: [CGRect?], seen: Set<String>? = nil) {
         self.steps = steps
         self.targets = targets
+        self.seen = seen
         model.current = 0
         // No display for a moment while displays change (R43): the steps show without the pointer.
         overlay = (NSScreen.screens.first { $0.frame.contains(frame.origin) } ?? NSScreen.screens.first).map(PointerOverlay.init(on:))
@@ -45,6 +46,7 @@ extension TextCard {
         rule = FollowRule()
         steps = []
         targets = []
+        seen = nil
         guard let overlay else { return }
         overlay.goHome()
         self.overlay = nil

@@ -69,6 +69,11 @@ struct ClaudeBrain: Brain {
         }
     }
 
+    func progress(steps: [GuideStep], current: Int, packet: ContextPacket?, before: Set<String>?) async throws -> GuideProgress {
+        if let before, let done = Follower.confirmed(steps: steps, current: current, packet: packet, before: before) { return done }
+        return try await progress(steps: steps, current: current, packet: packet)
+    }
+
     func progress(steps: [GuideStep], current: Int, packet: ContextPacket?) async throws -> GuideProgress {
         do {
             return try await Follower.progress(steps: steps, current: current, packet: packet, provider: provider)

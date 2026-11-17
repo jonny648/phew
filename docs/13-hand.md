@@ -137,7 +137,7 @@ Your decisions on the limits review (`17-limits.md`, `07-decisions.md` 7.1). Whe
 - **Stops:** a sheet the step is meant to open (Save, Export, Open, Print…) is expected; a typed value is compared after tidying spaces, quotes, numbers and dates; at 20 actions a minute he pauses and goes on; 40 in a job ends it; ten keys or scrolls in a row are allowed.
 - **Scripts:** lines added to a note already there, by exact title; with several matches he lists up to five and changes nothing; events from two years back to five ahead.
 
-- **An agent's job:** only scripts. A press, click, scroll, drag or key in a background job is refused by the acting function itself, whoever asks.
+- **An agent's job:** only scripts. A press, click, scroll, drag, key, typed text or switch of app in a background job is refused by the acting function itself, whoever asks.
 - **Known and left, 17 November:** when the app does not say which control has the keyboard (a canvas), keys are still sent: the password and paying words cannot be looked for there, the secure-field check still is. After a step that is meant to open a sheet (Save), a second sheet such as "Replace?" is not a stop: its button is pressed with the "cannot be undone" tag, in a job you watch. Typed text may hold a new line or a tab, no other control character.
 
 ## 13.5 Levels

@@ -254,6 +254,23 @@ final class FileTests: XCTestCase {
         XCTAssertEqual(end, .done)
         XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "Made-up new line.")
         XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int, 0o600)
+        // And a file others could read stays so: the old mode is put back, not only the closed one it is made with.
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+        let again = try XCTUnwrap(Files.stat(url))
+        let second = FileChange(url: ProjectMemoryReader.real(url), text: "Made-up third line.", modified: again.modified, size: again.size, lines: 1)
+        XCTAssertEqual(Files.replace(second, folders: [ProjectMemoryReader.real(chosen)], trash: { try FileManager.default.removeItem(at: $0) }), .done)
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int, 0o644)
+    }
+
+    /// "Let Phew act" switched off after the change was asked for: the confirm writes nothing.
+    func testWithActingOffAtTheConfirmNothingIsWritten() async throws {
+        try write("Made-up plan", "plan.md")
+        let (list, item, _) = try await askToChange("New made-up plan")
+        XCTAssertEqual(item.waits.count, 1)
+        defaults.set(false, forKey: Hand.allowedKey)
+        _ = await list.confirm(item.id)
+        XCTAssertEqual(try String(contentsOf: chosen.appending(path: "plan.md"), encoding: .utf8), "Made-up plan")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: trashed.path), [])
     }
 
     /// A second name for a file outside the chosen folder (a hard link) is as if it were not there.

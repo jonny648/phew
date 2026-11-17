@@ -159,6 +159,7 @@ final class ShortcutTests: XCTestCase {
         for keys in [0x02 | 0x04, 0x08 | 0x10, 0x01 | 0x2000, 0x1_0000_0000 | 0x2_0000_0000] as [UInt] {
             XCTAssertNotNil(Shortcut(keys: keys).refusal, "\(keys)")
         }
+        XCTAssertNotNil(Shortcut(keys: control | option | 0x100, key: 40, keyName: "K").refusal, "a stray bit")
         XCTAssertNil(Shortcut(keys: control | option, key: 40, keyName: "K").refusal)
         XCTAssertNil(Shortcut.default.refusal)
     }

@@ -271,6 +271,8 @@ struct Shortcut: Codable, Equatable {
     /// Why it cannot be used, in one plain line; nil when it can.
     var refusal: String? {
         let taken = "The Mac and most apps already use that one. Try another."
+        // Only the eight keys the keyboard reports: anything else stored here could never be pressed.
+        if keys & ~Self.deviceKeys != 0 { return "That one cannot be used. Try another." }
         // How many of ⌃, ⌥, ⇧ and ⌘ are held, left and right counted once.
         let kinds = [Self.control, Self.option, Self.shift, Self.command].filter { modifiers & $0 != 0 }.count
         guard let key else {

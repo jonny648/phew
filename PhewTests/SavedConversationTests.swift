@@ -387,6 +387,24 @@ final class SavedConversationTests: XCTestCase {
         XCTAssertEqual(Set(back.map(\.id)), [named, other])
     }
 
+    /// Any case and accents; whole words only: "Ann" is not in "planning".
+    func testForgetMatchesANameInAnyCaseAndOnlyAsAWholeWord() async throws {
+        let store = try MapStore()
+        let emile = try await store.add(MapNode(mapClass: .person, name: "ÉMILE Dupont", origin: .told))
+        let ann = try await store.add(MapNode(mapClass: .person, name: "Ann", origin: .told))
+        let a = try await store.saveThread(id: nil, turns: [Turn(question: "Question: who?", answer: "émile dupont, I think.")], project: nil)
+        let b = try await store.saveThread(id: nil, turns: [Turn(question: "Question: what next?", answer: "Finish the planning.")], project: nil)
+        let c = try await store.saveThread(id: nil, turns: [Turn(question: "Question: who else?", answer: "Ask Ann.")], project: nil)
+        let (accented, planning, named) = (try XCTUnwrap(a), try XCTUnwrap(b), try XCTUnwrap(c))
+        _ = try await store.forget([emile])
+        var left = await store.threads()
+        XCTAssertEqual(Set(left.map(\.id)), [planning, named], "the accented name in another case is found")
+        _ = try await store.forget([ann])
+        left = await store.threads()
+        XCTAssertEqual(left.map(\.id), [planning], "planning does not name Ann")
+        XCTAssertFalse(left.map(\.id).contains(accented))
+    }
+
     func testTheCaps() async throws {
         let many = (1...45).map { Turn(question: "Question: q\($0)", answer: "a\($0)") }
         XCTAssertEqual(MapStore.capped(many).map(\.answer), (6...45).map { "a\($0)" }, "the last 40 turns")

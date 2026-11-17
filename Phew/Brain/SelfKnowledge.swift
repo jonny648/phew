@@ -87,8 +87,8 @@ enum SelfKnowledge {
         - You never read password fields.
         - The Map is encrypted on this Mac and never uploaded as a whole: only the few facts an answer needs go \
         with the question.
-        - A conversation is kept as text in the encrypted Map, under Memory, Conversations, until the user \
-        forgets it. Forgetting a project or a person also removes the conversations that name them.
+        - The last 200 conversations are kept as text in the encrypted Map, under Memory, Conversations, until \
+        the user forgets one; older ones are deleted. Forgetting a project or a person also removes the conversations that name them.
 
         Live facts about your own state may come before the screen, between <self> and </self>. Use them when the \
         user asks about your state. Accessibility lets you hear the shortcut and read the text and buttons on the \

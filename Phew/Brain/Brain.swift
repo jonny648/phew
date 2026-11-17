@@ -53,6 +53,10 @@ protocol Brain: Sendable {
     /// NC.9: the same, with what the job's last skill run gave (`skillStep`, its `<skill>` block), for the model as
     /// data. Nil: none ran.
     func nextAction(_ request: String, packet: ContextPacket?, done: [String], spoken: [Hearing], skill: String?) async throws -> NextAction
+    /// N4.5: the same, as up to five actions from one call, all on `packet`, each with what should show after it
+    /// (`PlannedAction.expect`). Never empty. The Shell carries them out one at a time through the Hand and drops the
+    /// rest when an expectation is not met. A plan never goes past keys, a switch of app, a skill step, done or stuck.
+    func nextActions(_ request: String, packet: ContextPacket?, done: [String], spoken: [Hearing], skill: String?) async throws -> [PlannedAction]
     /// NC.9: a skill step of a job on the act route, written or run in the closed box only: never through the Hand,
     /// nothing on the Mac. `ok`: it worked. `line`: how it ended, for the next round; a run that worked gives its
     /// result in its `<skill>` block. `stop` is asked while a skill runs. A Brain without skills says so.
@@ -169,6 +173,10 @@ protocol Brain: Sendable {
 }
 
 extension Brain {
+    /// A Brain that plans one action at a time.
+    func nextActions(_ request: String, packet: ContextPacket?, done: [String], spoken: [Hearing], skill: String?) async throws -> [PlannedAction] {
+        [PlannedAction(action: try await nextAction(request, packet: packet, done: done, spoken: spoken, skill: skill))]
+    }
     /// A Brain without the code check asks as always.
     func progress(steps: [GuideStep], current: Int, packet: ContextPacket?, before: Set<String>?) async throws -> GuideProgress {
         try await progress(steps: steps, current: current, packet: packet)
@@ -254,6 +262,14 @@ enum NextAction: Sendable, Equatable {
     case done(String)
     /// The next action is not possible: one short plain reason for the card. Empty when there is none.
     case stuck(String)
+}
+
+/// N4.5: one action of a plan, and what should be visible right after it: a control's label or a few words that are
+/// not on the screen the plan was made on. Nil: nothing to check, so the plan ends after it (a script excepted: the
+/// Hand reads it back).
+struct PlannedAction: Sendable, Equatable {
+    var action: NextAction
+    var expect: String? = nil
 }
 
 /// NC.9: what the Doer asked of a skill, as the model gave it; `SkillStore` checks it.

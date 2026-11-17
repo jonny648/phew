@@ -88,6 +88,15 @@ struct ContextPacket: Codable {
 
     static func controlLabel(_ label: String) -> String { label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
 
+    /// N4.5: `text` is on this look: a control's label, or words in the element under the pointer, the window's title
+    /// or the window's text read. Any case; spaces at the ends ignored. False for empty text and an app never read.
+    func shows(_ text: String) -> Bool {
+        let want = Self.controlLabel(text)
+        guard !want.isEmpty, !neverRead else { return false }
+        return pointables.contains { Self.controlLabel($0.label) == want }
+            || [cursor?.label ?? "", cursor?.value ?? "", windowTitle, visibleText, moreText].contains { $0.lowercased().contains(want) }
+    }
+
     /// Where a guide step points, in screen points, top-left origin: an element's frame, or a zero-size rect at a
     /// screenshot point. Nil for an id not in `pointables`, or a point without a `screenshotFrame`.
     func screenRect(for target: StepTarget) -> CGRect? {

@@ -29,6 +29,8 @@ struct ClaudeBrain: Brain {
     var trash: (@Sendable (URL) throws -> Void)? = nil
     /// NB: the tools the user connected. Nil: none (unit tests, checks); the app passes `Connections.shared`.
     var connections: Connections? = nil
+    /// N4.5, N4.7: the hidden switches. Tests pass their own defaults.
+    var switches = CostSwitches()
 
     /// Only when the Map cannot be opened.
     static let cannotRemember = "My memory isn't available right now, so nothing was stored."
@@ -91,12 +93,22 @@ struct ClaudeBrain: Brain {
     }
 
     func nextAction(_ request: String, packet: ContextPacket?, done: [String], spoken: [Hearing], skill: String?) async throws -> NextAction {
+        try await plan(request, packet: packet, done: done, spoken: spoken, skill: skill, batch: false)[0].action
+    }
+
+    /// N4.5: several actions per call, unless the hidden switch is off.
+    func nextActions(_ request: String, packet: ContextPacket?, done: [String], spoken: [Hearing], skill: String?) async throws -> [PlannedAction] {
+        try await plan(request, packet: packet, done: done, spoken: spoken, skill: skill, batch: switches.batch)
+    }
+
+    private func plan(_ request: String, packet: ContextPacket?, done: [String], spoken: [Hearing], skill: String?,
+                      batch: Bool) async throws -> [PlannedAction] {
         do {
             // The packet was filtered by Senses; the words, the lines of done actions and the last skill's result are
             // filtered here. NC.9: the kept skills are listed as data, read again each round (a few small files).
-            return try await Doer.next(SecretsFilter.clean(request), packet: packet, done: done.map(SecretsFilter.clean),
+            return try await Doer.plan(SecretsFilter.clean(request), packet: packet, done: done.map(SecretsFilter.clean),
                                        spoken: spoken, skills: skills.map { $0.block() ?? Doer.noSkillsYet },
-                                       skill: skill.map(SecretsFilter.clean), provider: provider)
+                                       skill: skill.map(SecretsFilter.clean), batch: batch, provider: provider)
         } catch {
             throw BrainError(error)
         }

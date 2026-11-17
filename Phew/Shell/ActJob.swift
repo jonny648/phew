@@ -65,23 +65,53 @@ struct ActJob {
         // R5: the Hand's own pause, told off the main thread, shown on the card on it.
         let paused = paused
         job.pausing = { on in Task { @MainActor in paused(on) } }
+        // N4.5: the rest of the last call's plan, made on `planned`; what the action just made should show (nil: nothing
+        // to check); and the look that action was made on. Gone with the job.
+        var plan: [PlannedAction] = []
+        var planned: ContextPacket?
+        var expect: String?
+        var before: ContextPacket?
         while true {
             if let end = job.end { return .ended(end) }
             let app = job.app
-            var packet = reuse
-            reuse = nil
-            if packet == nil { packet = await capture(app) }
-            // Not for an app on the Never read list: its look came back empty, and so do its menus.
-            if packet?.neverRead == false {
-                if menuNames[app] == nil { menuNames[app] = await menus(app) }
-                packet?.menus = SecretsFilter.clean(menuNames[app] ?? "")
-            }
-            if let end = job.end { return .ended(end) }
+            var packet: ContextPacket?
             let next: NextAction
-            do {
-                next = try await brain.nextAction(request, packet: packet, done: done, spoken: spoken, skill: skill)
-            } catch {
-                return job.end.map(Outcome.ended) ?? .failed(BrainError(error))
+            if !plan.isEmpty {
+                // The plan goes on only when what the last action should show has appeared since the look before it.
+                // Anything else drops the rest and asks again on this fresh look: asked again, never a step on a stale plan.
+                if let want = expect {
+                    let fresh = await capture(app)
+                    if let end = job.end { return .ended(end) }
+                    guard let fresh, fresh.shows(want), before?.shows(want) != true else {
+                        shellLog("act: plan dropped, \(plan.count) actions left, asked again")
+                        plan = []
+                        reuse = fresh
+                        continue
+                    }
+                    before = fresh
+                }
+                packet = planned
+                let item = plan.removeFirst()
+                (next, expect) = (item.action, item.expect)
+            } else {
+                packet = reuse
+                reuse = nil
+                if packet == nil { packet = await capture(app) }
+                // Not for an app on the Never read list: its look came back empty, and so do its menus.
+                if packet?.neverRead == false {
+                    if menuNames[app] == nil { menuNames[app] = await menus(app) }
+                    packet?.menus = SecretsFilter.clean(menuNames[app] ?? "")
+                }
+                if let end = job.end { return .ended(end) }
+                do {
+                    plan = try await brain.nextActions(request, packet: packet, done: done, spoken: spoken, skill: skill)
+                } catch {
+                    return job.end.map(Outcome.ended) ?? .failed(BrainError(error))
+                }
+                guard !plan.isEmpty else { return .failed(.badOutput) }
+                let item = plan.removeFirst()
+                (next, expect) = (item.action, item.expect)
+                (planned, before) = (packet, packet)
             }
             // Stop or the user's own input during the call: nothing is sent.
             if let end = job.end { return .ended(end) }
@@ -107,6 +137,7 @@ struct ActJob {
                 if !ok { skillsFailed += 1 }
                 guard skillsFailed < 3 else { return .stuck(Self.skillsFailed) }
                 reuse = Self.withoutPicture(packet)  // nothing changed on the screen
+                plan = []  // its result is for the next call to use
                 continue
             }
             let step: HandStep
@@ -151,7 +182,13 @@ struct ActJob {
             guard result.end == .done else { return .ended(result.end) }
             listed(line)
             landed(step, result)
-            if step.kind == .script { reuse = Self.withoutPicture(packet) }
+            if step.kind == .script {
+                reuse = Self.withoutPicture(packet)
+                expect = nil  // N4.5: behind the app, nothing to see; the Hand read it back
+            }
+            // N4.5: nothing goes past an action that cannot be undone or leaves the Mac (or that code could not judge),
+            // keys or a switch of app, whatever the plan said: Phew's code decides, as the Hand judged it.
+            if result.final || result.marked || [.keys, .front].contains(step.kind) { plan = [] }
         }
     }
 

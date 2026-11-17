@@ -97,6 +97,27 @@ enum Doer {
         return text
     }()
 
+    /// N4.5: the system prompt when one call may plan several actions. The same but for its one reply line, so each of
+    /// the two stays fixed and cached.
+    static let batchSystem = system.replacingOccurrences(of: singleLine, with: """
+        Reply in actions with the next actions, in order: up to five, each one as described below, or a single done \
+        or stuck. All of them act on the screen as it is now, so use only ids from this list. After each action, give \
+        in expect a short text that is not on the screen now and will be visible right after that action, such as the \
+        label of the control the next action uses, exactly as it will read; null when you cannot tell. Phew checks it \
+        before going on: when it is not there, the rest of the plan is dropped and you are asked again with a fresh \
+        look. Plan an action only when you are sure of the screen it will act on. Nothing is planned after keys, \
+        open_app, write_skill or run_skill: each ends the plan.
+        """)
+    static let singleLine = "Reply with the next single action, or done, or stuck."
+
+    /// N4.5: up to five actions, each the one-action answer with its `expect`.
+    static let batchSchema = #"{"type":"object","properties":{"actions":{"type":"array","items":"#
+        + schema.replacingOccurrences(of: #"}},"required":["action","#, with: #"},"expect":{"type":["string","null"]}},"required":["action","#)
+            .replacingOccurrences(of: #""amount","to"]"#, with: #""amount","to","expect"]"#)
+        + #"}},"required":["actions"],"additionalProperties":false}"#
+    /// At most this many actions from one call.
+    static let mostPlanned = 5
+
     static let schema = #"""
         {"type":"object","properties":{"action":{"type":"string","enum":["press","set","pick","click","double_click","right_click","scroll","drag","keys","open_app","note","append","reminder","event","workbook","cells","rename_note","rename_reminder","rename_event","edit_note","complete_reminder","move_event","change_cells","delete_note","delete_reminder","delete_event","write_skill","run_skill","done","stuck"]},"element":{"type":["string","null"]},"point":{"anyOf":[{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"additionalProperties":false},{"type":"null"}]},"menu":{"type":"array","items":{"type":"string"}},"text":{"type":"string"},"title":{"type":"string"},"start":{"type":["string","null"]},"end":{"type":["string","null"]},"cell":{"type":["string","null"]},"rows":{"type":"array","items":{"type":"array","items":{"type":"string"}}},"code":{"type":["string","null"]},"input":{"type":["string","null"]},"expected":{"type":["string","null"]},"keys":{"type":["string","null"]},"amount":{"type":["integer","null"]},"to":{"anyOf":[{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"additionalProperties":false},{"type":"null"}]}},"required":["action","element","point","menu","text","title","start","end","cell","rows","code","input","expected","keys","amount","to"],"additionalProperties":false}
         """#
@@ -121,7 +142,12 @@ enum Doer {
         var keys: String? = nil
         var amount: Int? = nil
         var to: Guide.Output.Step.Point? = nil
+        /// N4.5: what should show right after this action, in a plan.
+        var expect: String? = nil
     }
+
+    /// N4.5: a plan as the model gives it.
+    struct Batch: Decodable { let actions: [Output] }
 
     /// Code's own lines when the answer cannot be used: never a guess.
     static let noScreen = "I could not read the screen, so I stopped."
@@ -154,23 +180,58 @@ enum Doer {
     /// `skills`: the kept skills as data (NC.9), nil when this Brain has none; `skill`: the last run's result block.
     static func next(_ request: String, packet taken: ContextPacket?, done: [String], spoken: [Hearing] = [],
                      skills: String? = nil, skill: String? = nil, provider: any ModelProvider) async throws -> NextAction {
-        guard let taken, !taken.neverRead else { return .stuck(noScreen) }
+        try await plan(request, packet: taken, done: done, spoken: spoken, skills: skills, skill: skill, batch: false,
+                       provider: provider)[0].action
+    }
+
+    /// The next action, or with `batch` (N4.5) up to `mostPlanned` of them from one call (`planned`). Never empty.
+    static func plan(_ request: String, packet taken: ContextPacket?, done: [String], spoken: [Hearing] = [],
+                     skills: String? = nil, skill: String? = nil, batch: Bool, provider: any ModelProvider) async throws -> [PlannedAction] {
+        guard let taken, !taken.neverRead else { return [PlannedAction(action: .stuck(noScreen))] }
         let (packet, shot) = ScreenshotSize.sent(taken)  // A3: a whole-display picture goes smaller
-        let call = self.request(request, packet: packet, shot: shot, done: done, spoken: spoken, skills: skills, skill: skill)
-        var output: Output?
+        let call = self.request(request, packet: packet, shot: shot, done: done, spoken: spoken, skills: skills, skill: skill, batch: batch)
+        var outputs: [Output]?
         // A runaway or off-schema answer is asked once more, as the Follower does; a refusal is not.
-        for attempt in 1...2 where output == nil {
+        for attempt in 1...2 where outputs == nil {
             do {
-                output = try JSONDecoder().decode(Output.self, from: Data(try await provider.complete(call).utf8))
+                let data = Data(try await provider.complete(call).utf8)
+                // A plan, or one action as before (the switch off).
+                let decoded = try (try? JSONDecoder().decode(Batch.self, from: data).actions) ?? [JSONDecoder().decode(Output.self, from: data)]
+                guard !decoded.isEmpty else { throw BrainError.badOutput }
+                outputs = decoded
             } catch BrainError.badOutput, BrainError.runaway, is DecodingError {
                 try Task.checkCancellation()
                 shellLog("doer: bad answer, try \(attempt) of 2")
             }
         }
-        guard let output else { throw BrainError.badOutput }
-        let action = decide(output, packet: packet, shot: shot)
-        shellLog("doer: \(output.action), \(done.count) done before, \(action == .stuck(noTarget) ? "target dropped" : "kept")")
-        return action
+        guard let outputs else { throw BrainError.badOutput }
+        let plan = planned(outputs, packet: packet, shot: shot)
+        shellLog("doer: \(plan.count) of \(outputs.count) actions kept, first \(outputs[0].action), \(done.count) done before, \(plan[0].action == .stuck(noTarget) ? "target dropped" : "kept")")
+        return plan
+    }
+
+    /// N4.5: the model's actions as a plan, cut by code. At most `mostPlanned`. Done, stuck, a skill step, or an action
+    /// code could not use, is kept only first: later, the rest is asked again on a fresh look. Keys, a switch of app
+    /// and a skill step end the plan. So does an action with no `expect`, which nothing could check, but a script:
+    /// it shows nothing on the screen, and the Hand reads it back.
+    static func planned(_ outputs: [Output], packet: ContextPacket, shot: ScreenshotSize?) -> [PlannedAction] {
+        var plan: [PlannedAction] = []
+        for output in outputs.prefix(mostPlanned) {
+            let action = decide(output, packet: packet, shot: shot)
+            var ends = false
+            switch action {
+            case .done, .stuck, .skill:
+                guard plan.isEmpty else { return plan }
+                ends = true
+            case .front, .input(.keys, _, _, _, _, _): ends = true
+            default: break
+            }
+            let expect = output.expect.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : String($0.prefix(200)) }
+            plan.append(PlannedAction(action: action, expect: expect))
+            if case .script = action { continue }
+            if ends || expect == nil { return plan }
+        }
+        return plan
     }
 
     /// The answer as a `NextAction`, its target kept only when real (`Guide.target`).
@@ -301,7 +362,7 @@ enum Doer {
     }
 
     static func request(_ request: String, packet: ContextPacket, shot: ScreenshotSize?, done: [String], spoken: [Hearing] = [],
-                        skills: String? = nil, skill: String? = nil, now: Date = Date()) -> ModelRequest {
+                        skills: String? = nil, skill: String? = nil, now: Date = Date(), batch: Bool = false) -> ModelRequest {
         // The screen and the done lines are data, in their delimiters; a line cannot close a block early.
         let block = Guide.block
         let actions = done.isEmpty ? "None yet." : done.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
@@ -314,8 +375,9 @@ enum Doer {
         let crop = shot != nil && done.isEmpty ? packet.sharpCrop() : nil  // R9: the job's first round only
         let parts = [block("screen", Guide.context(packet, shot: shot, crop: crop != nil)), block("actions", actions), skill, skills == nil ? noSkills : nil,
                      "Now: \(nowFormat.string(from: now))", Spoken.after("Request: \(request)", spoken)].compactMap { $0 }
-        return ModelRequest(agent: "doer", tier: .main, system: system, text: parts.joined(separator: "\n\n"),
+        return ModelRequest(agent: "doer", tier: .main, system: batch ? batchSystem : system, text: parts.joined(separator: "\n\n"),
                             cached: cached.isEmpty ? nil : cached.joined(separator: "\n\n"),
-                            image: shot == nil ? nil : packet.screenshot, crop: crop, schema: schema, maxTokens: 2048)
+                            image: shot == nil ? nil : packet.screenshot, crop: crop, schema: batch ? batchSchema : schema,
+                            maxTokens: batch ? 4096 : 2048)
     }
 }

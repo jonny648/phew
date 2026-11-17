@@ -94,7 +94,22 @@ struct ContextPacket: Codable {
         let want = Self.controlLabel(text)
         guard !want.isEmpty, !neverRead else { return false }
         return pointables.contains { Self.controlLabel($0.label) == want }
-            || [cursor?.label ?? "", cursor?.value ?? "", windowTitle, visibleText, moreText].contains { $0.lowercased().contains(want) }
+            || [cursor?.label ?? "", cursor?.value ?? "", windowTitle, visibleText, moreText].contains { Self.holds($0, want) }
+    }
+
+    /// `want` (lower case) stands in `text` as whole words: no letter or digit right before or right after it, so
+    /// "save" is not in "Last saved yesterday".
+    static func holds(_ text: String, _ want: String) -> Bool {
+        let text = text.lowercased()
+        var from = text.startIndex
+        while let hit = text.range(of: want, range: from..<text.endIndex) {
+            let joined = { (c: Character?) in c?.isLetter == true || c?.isNumber == true }
+            let before = hit.lowerBound > text.startIndex ? text[text.index(before: hit.lowerBound)] : nil
+            let after = hit.upperBound < text.endIndex ? text[hit.upperBound] : nil
+            if !joined(before), !joined(after) { return true }
+            from = text.index(after: hit.lowerBound)
+        }
+        return false
     }
 
     /// Where a guide step points, in screen points, top-left origin: an element's frame, or a zero-size rect at a

@@ -241,13 +241,17 @@ final class BreakingConfirmTests: XCTestCase {
         }
     }
 
-    /// OPEN (guard 16). The plan's check that "what the action made shows" is a substring match in the window text:
-    /// "Save" is shown by "Last saved yesterday".
+    /// CLOSED (guard 16). The plan's check that "what the action made shows" matches whole words only.
     func testAPlansExpectedTextMatchesInsideALongerWord() {
         let packet = ContextPacket(appName: "Made-up", bundleID: "com.example.madeup", windowTitle: "Made-up", visibleText: "Last saved yesterday", cursor: nil)
-        XCTExpectFailure("ContextPacket.shows lowercases and calls contains (ContextPacket.swift:97)") {
-            XCTAssertFalse(packet.shows("Save"))
-        }
+        XCTAssertFalse(packet.shows("Save"))
+        XCTAssertFalse(packet.shows("ved"))
+        XCTAssertTrue(packet.shows("saved"))
+        XCTAssertTrue(packet.shows("  LAST SAVED "))
+        XCTAssertTrue(packet.shows("Made-up"), "the window title")
+        XCTAssertTrue(ContextPacket.holds("Saved: the made-up page (2)", "made-up page"))
+        XCTAssertFalse(ContextPacket.holds("page2", "page"))
+        XCTAssertTrue(ContextPacket.holds("pages, page", "page"), "a later whole match counts")
     }
 }
 
@@ -320,19 +324,22 @@ final class BreakingWorkerTests: XCTestCase {
 // MARK: The sign-in listener (guard 12)
 
 final class BreakingLoopbackTests: XCTestCase {
-    /// OPEN (low, a denial only). The listener takes the FIRST request of any path: a stray probe before the browser
-    /// ends the sign-in, and the real callback then finds the door closed. No code leaks and no state check is skipped.
+    /// CLOSED (low, a denial only). A stray request, or a callback with another state, gets "Not found." and the
+    /// listener goes on until the right callback.
     func testAStrayFirstRequestEndsTheSignIn() async throws {
-        let loopback = try await Loopback.start()
+        let loopback = try await Loopback.start(state: "s")
         let waiting = Task { try await loopback.answer(within: 5) }
+        let session = URLSession(configuration: .ephemeral)
         let stray = URL(string: "http://127.0.0.1:\(loopback.port)/favicon.ico")!
-        _ = try? await URLSession.shared.data(from: stray)
+        let (_, strayAnswer) = try await session.data(from: stray)
+        XCTAssertEqual((strayAnswer as? HTTPURLResponse)?.statusCode, 404)
+        let forged = URL(string: "http://127.0.0.1:\(loopback.port)/callback?code=x&state=other")!
+        let (_, forgedAnswer) = try await session.data(from: forged)
+        XCTAssertEqual((forgedAnswer as? HTTPURLResponse)?.statusCode, 404)
         let real = URL(string: "http://127.0.0.1:\(loopback.port)/callback?code=c&state=s")!
-        _ = try? await URLSession.shared.data(from: real)
+        _ = try? await session.data(from: real)
         let result = await waiting.result
-        XCTExpectFailure("Loopback.take finishes on the first request, even a 404 (OwnClient.swift:282-298)") {
-            XCTAssertEqual((try? result.get())?["code"], "c")
-        }
+        XCTAssertEqual((try? result.get())?["code"], "c")
         loopback.close()
     }
 }

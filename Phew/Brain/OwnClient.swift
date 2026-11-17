@@ -17,6 +17,8 @@ final class OwnClient: ConnectorTransport, ConnectorSignIn, @unchecked Sendable 
     static let requestTimeout: TimeInterval = 60
 
     let server: ConnectorServer
+    /// Tests shorten it.
+    var signInSeconds = OwnClient.signInWait
     private let store: KeyStore
     private let session: URLSession
     private let lock = NSLock()
@@ -72,7 +74,8 @@ final class OwnClient: ConnectorTransport, ConnectorSignIn, @unchecked Sendable 
     /// (only on the user's Connect), one answer checked against `state`, then the token into the Keychain.
     func signIn(open: @escaping @Sendable (URL) -> Void) async throws {
         let meta = try await metadata()
-        let loopback = try await Loopback.start()
+        let verifier = Self.random(), state = Self.random()
+        let loopback = try await Loopback.start(state: state)
         defer { loopback.close() }
         let redirect = "http://127.0.0.1:\(loopback.port)/callback"
         var registration = URLRequest(url: meta.register)
@@ -82,7 +85,6 @@ final class OwnClient: ConnectorTransport, ConnectorSignIn, @unchecked Sendable 
             "client_name": "Phew", "redirect_uris": [redirect], "grant_types": ["authorization_code", "refresh_token"],
             "response_types": ["code"], "token_endpoint_auth_method": "none", "application_type": "native"])
         guard let client = try await object(registration)["client_id"] as? String else { throw ConnectorError.signIn }
-        let verifier = Self.random(), state = Self.random()
         var page = URLComponents(url: meta.authorize, resolvingAgainstBaseURL: false)!
         page.queryItems = (page.queryItems ?? []) + [
             URLQueryItem(name: "response_type", value: "code"), URLQueryItem(name: "client_id", value: client),
@@ -90,7 +92,7 @@ final class OwnClient: ConnectorTransport, ConnectorSignIn, @unchecked Sendable 
             URLQueryItem(name: "code_challenge_method", value: "S256"), URLQueryItem(name: "state", value: state),
             URLQueryItem(name: "resource", value: server.url.absoluteString)]
         open(page.url!)
-        let answer = try await loopback.answer(within: Self.signInWait)
+        let answer = try await loopback.answer(within: signInSeconds)
         guard answer["state"] == state, let code = answer["code"] else { throw ConnectorError.signIn }
         // RFC 9207: when the answer names its issuer, it is the one the metadata named.
         if let issuer = answer["iss"], issuer != meta.issuer { throw ConnectorError.signIn }
@@ -243,23 +245,25 @@ final class OwnClient: ConnectorTransport, ConnectorSignIn, @unchecked Sendable 
     }
 }
 
-/// The address the browser comes back to after a sign-in: bound to 127.0.0.1 only, on a free port. It takes one
-/// request, answers it with one fixed line, and closes; or closes at the timeout. Reads the query of that request only.
+/// The address the browser comes back to after a sign-in: bound to 127.0.0.1 only, on a free port. It takes the one
+/// request to `/callback` that carries the sign-in's own `state`, answers it with one fixed line, and closes; any other
+/// request gets "Not found." and it keeps listening; or it closes at the timeout. Reads the query of requests only.
 final class Loopback: @unchecked Sendable {  // state under `lock`
     private let listener: NWListener
+    private let state: String
     private let queue = DispatchQueue(label: "phew.loopback")
     private let lock = NSLock()
     private var waiting: CheckedContinuation<[String: String], Error>?
     private var got: Result<[String: String], Error>?
     private(set) var port: UInt16 = 0
 
-    private init(_ listener: NWListener) { self.listener = listener }
+    private init(_ listener: NWListener, state: String) { (self.listener, self.state) = (listener, state) }
 
-    static func start() async throws -> Loopback {
+    static func start(state: String) async throws -> Loopback {
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
         parameters.acceptLocalOnly = true
-        let loopback = Loopback(try NWListener(using: parameters))
+        let loopback = Loopback(try NWListener(using: parameters), state: state)
         try await withCheckedThrowingContinuation { (started: CheckedContinuation<Void, Error>) in
             let once = OnceFlag()
             loopback.listener.stateUpdateHandler = { state in
@@ -278,23 +282,26 @@ final class Loopback: @unchecked Sendable {  // state under `lock`
         return loopback
     }
 
-    /// The first request only; any later one is closed unread.
+    /// Until the answer: a request to `/callback` with this sign-in's `state` ends it; any other is answered "Not found."
+    /// and the listener goes on. After the answer every request is closed unread.
     private func take(_ connection: NWConnection) {
         guard lock.withLock({ got == nil }) else { return connection.cancel() }
         connection.start(queue: queue)
         connection.receive(minimumIncompleteLength: 1, maximumLength: 16_384) { [weak self] data, _, _, _ in
+            guard let self else { return connection.cancel() }
             let head = data.map { String(decoding: $0, as: UTF8.self) } ?? ""
             let line = head.split(separator: "\r\n", maxSplits: 1).first.map(String.init) ?? ""
             let parts = line.split(separator: " ")
             var query: [String: String]?
             if parts.count >= 2, parts[0] == "GET", let target = URLComponents(string: String(parts[1])), target.path == "/callback" {
-                query = Dictionary((target.queryItems ?? []).map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { a, _ in a })
+                let items = Dictionary((target.queryItems ?? []).map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { a, _ in a })
+                if items["state"] == state { query = items }
             }
             let page = query == nil ? "Not found." : "Phew got the sign-in. You can close this tab."
             let reply = "HTTP/1.1 \(query == nil ? "404 Not Found" : "200 OK")\r\nContent-Type: text/plain; charset=utf-8\r\n"
                 + "Content-Length: \(page.utf8.count)\r\nConnection: close\r\n\r\n\(page)"
             connection.send(content: Data(reply.utf8), completion: .contentProcessed { _ in connection.cancel() })
-            self?.finish(query.map { .success($0) } ?? .failure(ConnectorError.signIn))
+            if let query { finish(.success(query)) }
         }
     }
 
@@ -309,7 +316,7 @@ final class Loopback: @unchecked Sendable {  // state under `lock`
         waiting?.resume(with: result)
     }
 
-    /// The query of the one request, or `signIn` after `seconds`.
+    /// The query of the one right request, or `signIn` after `seconds`.
     func answer(within seconds: TimeInterval) async throws -> [String: String] {
         queue.asyncAfter(deadline: .now() + seconds) { [weak self] in self?.finish(.failure(ConnectorError.signIn)) }
         return try await withCheckedThrowingContinuation { continuation in

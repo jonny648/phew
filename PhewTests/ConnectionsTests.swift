@@ -373,6 +373,7 @@ final class ConnectionsTests: XCTestCase {
 
     func testASignInAnswerWithAnotherStateIsRefused() async throws {
         let client = client()
+        client.signInSeconds = 1  // the forged answer is ignored: the sign-in ends at its time
         do {
             try await client.signIn(open: Self.browser(state: "made-up-forged-state"))
             XCTFail("a forged state must be refused")
@@ -394,14 +395,14 @@ final class ConnectionsTests: XCTestCase {
     }
 
     func testTheLoopbackTakesOneRequestOnly() async throws {
-        let loopback = try await Loopback.start()
+        let loopback = try await Loopback.start(state: "s")
         let url = URL(string: "http://127.0.0.1:\(loopback.port)/callback?code=c&state=s")!
         Task.detached { _ = try? await URLSession(configuration: .ephemeral).data(from: url) }
         let answer = try await loopback.answer(within: 5)
         XCTAssertEqual(answer, ["code": "c", "state": "s"])
         let again = try? await URLSession(configuration: .ephemeral).data(from: url)
         XCTAssertNil(again, "closed after one request")
-        let late = try await Loopback.start()
+        let late = try await Loopback.start(state: "s")
         do {
             _ = try await late.answer(within: 0.2)
             XCTFail("a timeout ends it")

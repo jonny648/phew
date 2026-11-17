@@ -115,6 +115,11 @@ struct ActJob {
                 else { return .stuck(Self.noTarget) }
                 step = found
                 if kind != .pick { aside(step.frame) }
+            case let .input(kind, target, to, keys, text, amount):
+                guard let found = Self.input(kind, target: target, to: to, keys: keys, text: text, amount: amount, packet: packet, pid: job.app)
+                else { return .stuck(Self.noTarget) }
+                step = found
+                if kind != .keys { aside(step.frame) }
             }
             // Seen live on 15 November: a click that did not land was asked for 11 times. The same action a third time
             // in a row means nothing changed: he stops, in code, whatever the model says.
@@ -167,13 +172,37 @@ struct ActJob {
             guard !menu.isEmpty else { return nil }
             return HandStep(kind: .pick, pid: pid, role: "AXMenuItem", name: menu.last!, menuPath: menu, opensWindow: opens(menu.last!))
         }
-        guard [.press, .set, .click].contains(kind), let target, let frame = packet.screenRect(for: target) else { return nil }
+        let clicks: [HandStep.Kind] = [.click, .doubleClick, .rightClick]
+        guard ([.press, .set] + clicks).contains(kind), let target, let frame = packet.screenRect(for: target) else { return nil }
         guard case .element(let id) = target, let element = packet.pointables.first(where: { $0.id == id }) else {
-            guard kind == .click, packet.windowFrame?.contains(frame.origin) == true else { return nil }
-            return HandStep(kind: .click, pid: pid, frame: frame)
+            guard clicks.contains(kind), packet.windowFrame?.contains(frame.origin) == true else { return nil }
+            return HandStep(kind: kind, pid: pid, frame: frame)
         }
         let name = element.label.count < ContextPacket.labelCap ? element.label : ""
         return HandStep(kind: kind, pid: pid, role: element.role, name: name, frame: frame, text: text, opensWindow: opens(name))
+    }
+
+    /// R1: a scroll, a drag or keys as the Hand takes them. Keys need no target: they go to the job's app. A scroll or
+    /// a drag starts on an element of the look or a point inside the job's window, as a click does; a drag ends on
+    /// one too.
+    static func input(_ kind: HandStep.Kind, target: StepTarget?, to: StepTarget?, keys: HandChord?, text: String, amount: Int,
+                      packet: ContextPacket?, pid: pid_t) -> HandStep? {
+        if kind == .keys {
+            guard keys != nil || !text.isEmpty else { return nil }
+            return HandStep(kind: .keys, pid: pid, text: keys == nil ? text : "", chord: keys)
+        }
+        guard [.scroll, .drag].contains(kind), let packet, var step = step(.click, target: target, menu: [], text: "", packet: packet, pid: pid)
+        else { return nil }
+        step.kind = kind
+        step.opensWindow = false
+        if kind == .scroll {
+            step.amount = amount
+            return amount == 0 ? nil : step
+        }
+        guard let to, let end = packet.screenRect(for: to) else { return nil }
+        if case .point = to, packet.windowFrame?.contains(end.origin) != true { return nil }
+        step.to = CGPoint(x: end.midX, y: end.midY)
+        return step
     }
 
     /// A Mac command whose name ends in an ellipsis opens a window or sheet: the next step takes it as expected.
@@ -189,6 +218,15 @@ struct ActJob {
         case .pick: return "\(doing ? "Picking" : "Picked") \(step.menuPath.joined(separator: " > "))"
         case .click: return "\(doing ? "Clicking" : "Clicked") \(name ?? "a spot")"
         case .front: return "\(doing ? "Switching" : "Switched") to \(name ?? "another app")"
+        case .doubleClick: return "\(doing ? "Double-clicking" : "Double-clicked") \(name ?? "a spot")"
+        case .rightClick: return "\(doing ? "Right-clicking" : "Right-clicked") \(name ?? "a spot")"
+        case .scroll:
+            let lines = abs(step.amount)
+            return "\(doing ? "Scrolling" : "Scrolled") \(step.amount < 0 ? "up" : "down") \(lines) line\(lines == 1 ? "" : "s")\(name.map { " in \($0)" } ?? "")"
+        case .drag: return "\(doing ? "Dragging" : "Dragged") \(name ?? "from a spot")"
+        case .keys:
+            if let chord = step.chord { return "\(doing ? "Pressing" : "Pressed") \(chord.symbols)" }
+            return "\(doing ? "Typing" : "Typed") \(step.text.count) character\(step.text.count == 1 ? "" : "s")"
         case .script:
             switch step.script {
             case .note(let title, _): return "Made the note “\(title)” in Notes"
@@ -223,6 +261,7 @@ struct ActJob {
         case .password: "I never touch passwords."
         case .paying: "I never pay or enter card details."
         case .signIn: "I never sign in or change account settings."
+        case .neverKeys: "I never press that shortcut: it quits, logs out, locks, empties the Trash or leaves the app."
         case .jobCeiling: "I reached the most actions one job may take, so I stopped."
         case .minuteCeiling: "I reached the most actions in one minute, so I stopped."
         case .gone: "The control is not there any more. I stopped."

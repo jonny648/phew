@@ -42,8 +42,12 @@ final class FakeSurface: HandSurface, @unchecked Sendable {  // state under `loc
     func element(at point: CGPoint, pid: pid_t) -> AnyObject? { reads += 1; return elements.first { $0.seen.frame?.contains(point) == true } }
     func menuItem(_ path: [String], pid: pid_t) -> AnyObject? { reads += 1; return menus[path] }
     func read(_ element: AnyObject) -> HandSeen? { (element as! Element).seen }
-    func windowTitle(of element: AnyObject) -> String { (element as! Element).window }
     func dialogs(_ pid: pid_t) -> Int { reads += 1; return dialogCount }
+    /// NA.5: the element with the keyboard focus. F4: the name of the default button of the sheet or dialog shown.
+    var focusElement: Element?
+    var defaultButton: String?
+    func focused(_ pid: pid_t) -> AnyObject? { reads += 1; return focusElement }
+    func isDefault(_ element: AnyObject) -> Bool { (element as! Element).seen.name == defaultButton }
 
     /// PH.7: apps not running yet, by bundle id, and the pid each comes up with when brought to the front.
     var launchable: [String: pid_t] = [:]
@@ -186,12 +190,18 @@ final class HandTests: XCTestCase {
             let step = fake.add(name, frame: CGRect(x: 600, y: 20 + i * 40, width: 100, height: 30))
             XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)).end, reason, name)
         }
-        // A harmless control in a window that asks for a sign-in or a payment.
-        for title in ["Accedi al tuo account", "Checkout", "Sign in to iCloud"] {
-            let hand = self.hand()
-            let step = fake.add("Continue", frame: CGRect(x: 800, y: fake.elements.count * 40, width: 100, height: 30), window: title)
-            XCTAssertNotEqual(hand.act(step, in: hand.begin(watchUser: false)).end, .done, title)
+        // R3 (17 November): the window's title is not judged, only the control and its menu path. A harmless control
+        // in a window named for a sign-in or a payment acts; a paying control is refused whatever the window.
+        for title in ["Login screen", "Payment plan", "Accedi al tuo account", "Checkout", "Sign in to iCloud", "Made-up notes"] {
+            var hand = self.hand()
+            let bold = fake.add("Bold", frame: CGRect(x: 800, y: fake.elements.count * 40, width: 100, height: 30), window: title)
+            XCTAssertEqual(hand.act(bold, in: hand.begin(watchUser: false)).end, .done, title)
+            hand = self.hand()
+            let pay = fake.add("Pay now", frame: CGRect(x: 800, y: fake.elements.count * 40, width: 100, height: 30), window: title)
+            XCTAssertEqual(hand.act(pay, in: hand.begin(watchUser: false)).end, .paying, title)
         }
+        XCTAssertEqual(fake.sentCount, 6)
+        fake = FakeSurface()
         // A menu path.
         fake.menus[["Account", "Sign In…"]] = FakeSurface.Element(HandSeen(role: "AXMenuItem", name: "Sign In…"), window: "")
         let hand = self.hand()
@@ -215,7 +225,7 @@ final class HandTests: XCTestCase {
                      "Ordina", "Dona", "Dona ora", "Fai una donazione", "Bonifico", "Esegui bonifico", "Invia denaro", "Invia soldi"] {
             XCTAssertEqual(refusal([name]), .paying, name)
         }
-        XCTAssertEqual(refusal(["Continue", "Order now – Made-up Shop"]), .paying, "in the window title too")
+        XCTAssertEqual(refusal(["Continue", "Order now – Made-up Shop"]), .paying, "in any text given: the name or the menu path")
         for name in ["Order by date", "Sort order", "Reorder", "Recent orders", "Ordina per nome", "Ordine alfabetico", "Ordinary",
                      "Transfer files", "Donald", "Riordina", "In ordine", "Ordinal"] {
             XCTAssertNil(refusal([name, "Made-up list"]), name)
@@ -278,9 +288,10 @@ final class HandTests: XCTestCase {
         let unnamed = fake.add("", frame: frame(0))
         let german = fake.add("Jetzt bestellen und sofort bezahlen", frame: frame(1))
         let english = fake.add("Make the selected text bigger", frame: frame(2))
-        for (step, mark) in [(unnamed, true), (german, true), (english, false)] {
+        // F4: a control with no name is in the "cannot be undone" class too, not only marked.
+        for (step, mark, final) in [(unnamed, true, true), (german, true, false), (english, false, false)] {
             let hand = self.hand()
-            XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)), HandResult(end: .done, marked: mark), step.name)
+            XCTAssertEqual(hand.act(step, in: hand.begin(watchUser: false)), HandResult(end: .done, marked: mark, final: final), step.name)
         }
     }
 

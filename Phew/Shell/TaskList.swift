@@ -81,6 +81,8 @@ final class TaskList: ObservableObject {
     /// A waiting task's one screen read and hearings, in memory until it starts (then the task holds them) or is
     /// stopped (then they are dropped).
     private(set) var held: [Int: (packet: ContextPacket?, spoken: [Hearing])] = [:]
+    /// F3: the actions each task's agent jobs made so far: one task is one job for the per-job ceiling.
+    private var acted: [Int: Int] = [:]
     private var last = 0
     private var lastWait = 0
 
@@ -159,6 +161,7 @@ final class TaskList: ObservableObject {
         tasks.removeValue(forKey: number)?.cancel()
         jobs[number]?.stop()
         held[number] = nil
+        acted[number] = nil
         update(number) { $0.state = .stopped; $0.waits = [] }
         shellLog("task \(number): stopped")
         startNext()
@@ -175,6 +178,7 @@ final class TaskList: ObservableObject {
 
     private func finish(_ number: Int, report: TaskReport?, failure: BrainError?, cost: Double) {
         tasks[number] = nil
+        acted[number] = nil
         update(number) {
             $0.report = report
             $0.cost = cost
@@ -286,7 +290,7 @@ final class TaskList: ObservableObject {
 
     /// `tried`: how many scripts reached the Hand, the last one ending `end`.
     private func run(_ scripts: [HandScript], agent: Bool, task number: Int) async -> (end: HandEnd, job: HandJob, tried: Int) {
-        let hand = hand, job = hand.begin(watchUser: false, agent: agent)
+        let hand = hand, job = hand.begin(watchUser: false, agent: agent, counted: agent ? acted[number] ?? 0 : 0)
         jobs[number] = job
         var end = HandEnd.done, tried = 0
         for script in scripts where end == .done {
@@ -297,6 +301,7 @@ final class TaskList: ObservableObject {
         }
         hand.close(job)
         jobs[number] = nil
+        if agent { acted[number] = job.acted }
         return (end, job, tried)
     }
 }

@@ -19,6 +19,19 @@ struct HandStep: Sendable {
         case script
         /// Brings the app `app` to the front for the job (docs/13-hand.md 13.4, 7); `Hand.back` returns at its end.
         case front
+        /// R1 (NA.5): two clicks at the centre of `frame`, as one double click.
+        case doubleClick
+        /// One click of the second button: the control's context menu opens.
+        case rightClick
+        /// The wheel, `amount` lines (down positive), at the centre of `frame`.
+        case scroll
+        /// The mouse down at the centre of `frame`, moved to `to`, up there: inside one window of the job's app.
+        case drag
+        /// A key or shortcut (`chord`), or `text` typed through keys, posted to the job's app only.
+        case keys
+
+        /// The kinds that may land on a bare point with no control under it (a canvas).
+        var pointed: Bool { [.click, .doubleClick, .rightClick, .scroll, .drag].contains(self) }
     }
 
     var kind: Kind
@@ -39,6 +52,66 @@ struct HandStep: Sendable {
     var script: HandScript? = nil
     /// For `front`: the bundle id of the app brought to the front (`name` is its plain name, for the card). Never logged.
     var app = ""
+    /// For `keys`: the key or shortcut; nil when `text` is typed instead. Never logged.
+    var chord: HandChord? = nil
+    /// For `scroll`: lines, down positive.
+    var amount = 0
+    /// For `drag`: where it ends, Accessibility coordinates.
+    var to: CGPoint? = nil
+}
+
+/// A key, alone or with modifiers, named from a fixed vocabulary (NA.5). Built only by `parse`, so no word of the
+/// model's ever becomes an event. There is no fn or globe key: it is not in the vocabulary, so it is never sent.
+struct HandChord: Sendable, Hashable {
+    enum Modifier: String, CaseIterable, Sendable { case control, option, shift, cmd }
+    let key: String
+    let modifiers: Set<Modifier>
+
+    /// Key names and their virtual key codes.
+    // shortcut: letters and digits at their US positions; on a layout that moves them (AZERTY) a shortcut may land on
+    // another letter. Map through the keyboard layout if a live run shows the need.
+    static let codes: [String: Int] = {
+        var codes = ["a": kVK_ANSI_A, "b": kVK_ANSI_B, "c": kVK_ANSI_C, "d": kVK_ANSI_D, "e": kVK_ANSI_E, "f": kVK_ANSI_F,
+                     "g": kVK_ANSI_G, "h": kVK_ANSI_H, "i": kVK_ANSI_I, "j": kVK_ANSI_J, "k": kVK_ANSI_K, "l": kVK_ANSI_L,
+                     "m": kVK_ANSI_M, "n": kVK_ANSI_N, "o": kVK_ANSI_O, "p": kVK_ANSI_P, "q": kVK_ANSI_Q, "r": kVK_ANSI_R,
+                     "s": kVK_ANSI_S, "t": kVK_ANSI_T, "u": kVK_ANSI_U, "v": kVK_ANSI_V, "w": kVK_ANSI_W, "x": kVK_ANSI_X,
+                     "y": kVK_ANSI_Y, "z": kVK_ANSI_Z,
+                     "0": kVK_ANSI_0, "1": kVK_ANSI_1, "2": kVK_ANSI_2, "3": kVK_ANSI_3, "4": kVK_ANSI_4, "5": kVK_ANSI_5,
+                     "6": kVK_ANSI_6, "7": kVK_ANSI_7, "8": kVK_ANSI_8, "9": kVK_ANSI_9,
+                     "return": kVK_Return, "tab": kVK_Tab, "space": kVK_Space, "escape": kVK_Escape, "delete": kVK_Delete,
+                     "forwarddelete": kVK_ForwardDelete, "up": kVK_UpArrow, "down": kVK_DownArrow, "left": kVK_LeftArrow,
+                     "right": kVK_RightArrow]
+        for (n, code) in [kVK_F1, kVK_F2, kVK_F3, kVK_F4, kVK_F5, kVK_F6, kVK_F7, kVK_F8, kVK_F9, kVK_F10, kVK_F11, kVK_F12].enumerated() {
+            codes["f\(n + 1)"] = code
+        }
+        return codes
+    }()
+
+    /// "cmd+B", "shift+tab", "return": one key name from `codes`, after modifiers, each once, joined by "+". Any case.
+    /// Nil for anything else.
+    static func parse(_ text: String) -> HandChord? {
+        let aliases = ["command": "cmd", "ctrl": "control", "opt": "option", "alt": "option"]
+        let parts = text.lowercased().split(separator: "+", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
+        guard let key = parts.last, codes[key] != nil else { return nil }
+        var modifiers = Set<Modifier>()
+        for part in parts.dropLast() {
+            guard let modifier = Modifier(rawValue: aliases[part] ?? part), modifiers.insert(modifier).inserted else { return nil }
+        }
+        return HandChord(key: key, modifiers: modifiers)
+    }
+
+    /// As a Mac menu shows it, for the card: "⌘B", "⇧⇥".
+    var symbols: String {
+        let marks: [Modifier: String] = [.control: "⌃", .option: "⌥", .shift: "⇧", .cmd: "⌘"]
+        let names = ["return": "↩", "tab": "⇥", "space": "Space", "escape": "⎋", "delete": "⌫", "forwarddelete": "⌦",
+                     "up": "↑", "down": "↓", "left": "←", "right": "→"]
+        return Modifier.allCases.filter(modifiers.contains).compactMap { marks[$0] }.joined() + (names[key] ?? key.uppercased())
+    }
+
+    var flags: CGEventFlags {
+        let each: [Modifier: CGEventFlags] = [.control: .maskControl, .option: .maskAlternate, .shift: .maskShift, .cmd: .maskCommand]
+        return modifiers.reduce(into: CGEventFlags()) { $0.insert(each[$1]!) }
+    }
 }
 
 /// The things a change or delete names by their exact title (N2.2).
@@ -117,6 +190,17 @@ enum HandScript: Sendable, Equatable {
         switch self {
         case .note, .append, .reminder, .event, .workbook, .cells: false
         default: true
+        }
+    }
+
+    /// The titles it makes or names, for the Never words (F3). Not Undo's put-back: it brings back what was there.
+    var titles: [String] {
+        switch self {
+        case let .note(title, _), let .reminder(title, _), let .event(title, _, _), let .noteBody(title, _),
+             let .complete(title), let .move(title, _, _), let .delete(_, title): [title]
+        case let .rename(_, title, to): [title, to]
+        case let .changeCells(book, _, _): [book]
+        case .append, .workbook, .cells, .restore: []
         }
     }
 
@@ -268,6 +352,9 @@ enum HandEnd: String, Sendable, CaseIterable {
     case off
     /// The Never list (NeverList).
     case secureField, secureInput, neverReadApp, neverActApp, ownApp, password, paying, signIn
+    /// A shortcut on the fixed never-send list (`NeverList.neverSend`): quit, log out, lock, force quit, empty the
+    /// Trash, or one that leaves the app.
+    case neverKeys
     /// The runaway brake.
     case jobCeiling, minuteCeiling
     /// Not as the look saw it: nothing there now, something else there, a window the job did not call for, another
@@ -302,7 +389,9 @@ final class HandJob: @unchecked Sendable {  // state under `lock`
     private let lock = NSLock()
     private var ended: HandEnd?
     fileprivate var steps = 0
-    fileprivate var acted = 0
+    /// Actions made, for the per-job ceiling; an agent's task carries it from one job to the next (F3). Written under
+    /// the Hand's `acting`; read once the job is closed.
+    fileprivate(set) var acted = 0
     fileprivate var dialogs: [pid_t: Int] = [:]
     fileprivate var windowExpected = false
     fileprivate var monitors: [Any] = []
@@ -370,7 +459,10 @@ protocol HandSurface {
     func element(at point: CGPoint, pid: pid_t) -> AnyObject?
     func menuItem(_ path: [String], pid: pid_t) -> AnyObject?
     func read(_ element: AnyObject) -> HandSeen?
-    func windowTitle(of element: AnyObject) -> String
+    /// The element with the keyboard focus in app `pid`, as a handle; nil when none. Reading only (NA.5).
+    func focused(_ pid: pid_t) -> AnyObject?
+    /// Whether `element` is the default button of the sheet or dialog it sits in. Reading only (F4).
+    func isDefault(_ element: AnyObject) -> Bool
     /// Sheets and dialogs the app shows now.
     func dialogs(_ pid: pid_t) -> Int
     /// The action itself, once. Returns done, failed or timeout.
@@ -399,6 +491,8 @@ protocol HandSurface {
 extension HandSurface {
     func focusedWindow(_ pid: pid_t) -> AnyObject? { nil }
     func raise(_ window: AnyObject) -> Bool { false }
+    func focused(_ pid: pid_t) -> AnyObject? { nil }
+    func isDefault(_ element: AnyObject) -> Bool { false }
 }
 
 /// An element as read at the moment of acting. `value` is never read from a secure field.
@@ -419,6 +513,9 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     /// The runaway brake (13.9 a, first proposal).
     static let perJob = 40
     static let perMinute = 20
+    /// The most text one `keys` step types (NA.5), and the most lines one `scroll` step turns.
+    static let mostTyped = 2_000
+    static let mostScroll = 50
     /// The longest Phew waits for an app to take one action: Stop then still ends the job within a second.
     static let timeout: Float = 0.5
     /// The longest a script may take. Long enough for macOS's one-time "Phew wants to control…" question and an app's
@@ -463,10 +560,12 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     var allowed: Bool { defaults.object(forKey: Self.allowedKey) as? Bool ?? true }
 
     /// Starts a job in `app`, the app the user asked in. With `watchUser`, the user's own mouse down or key down in
-    /// the app the job works in ends it (`seen`). `agent`: a research agent's job, in the background.
+    /// the app the job works in ends it (`seen`). `agent`: a research agent's job, in the background. `counted`: the
+    /// actions its task already made in earlier jobs, so one task never passes the per-job ceiling (F3).
     @MainActor
-    func begin(watchUser: Bool = true, in app: pid_t = 0, agent: Bool = false) -> HandJob {
+    func begin(watchUser: Bool = true, in app: pid_t = 0, agent: Bool = false, counted: Int = 0) -> HandJob {
         let job = lock.withLock { jobs += 1; return HandJob(number: jobs, app: app, agent: agent) }
+        job.acted = counted
         if app != 0 { job.window = surface.focusedWindow(app) }
         if watchUser {
             if let global = NSEvent.addGlobalMonitorForEvents(matching: Self.userEvents, handler: { [weak self, weak job] in
@@ -518,7 +617,7 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         // The level, as before: marked or in the class. No word of what changed.
         ActionLog.record(ActionLog.line(job: job.number, step: job.steps, kind: step.kind, role: role, ended: end,
                                         marked: marked || final, ms: Int(Date().timeIntervalSince(start) * 1000),
-                                        chars: end != .done ? 0 : step.kind == .set ? step.text.count : step.script?.chars ?? 0))
+                                        chars: end != .done ? 0 : step.kind == .set || step.kind == .keys ? step.text.count : step.script?.chars ?? 0))
         return HandResult(end: end, marked: marked, final: final, left: left)
     }
 
@@ -528,32 +627,39 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         guard allowed else { return .off }
         if step.kind == .script { return script(step, job: job, final: &final, left: &left) }
         if step.kind == .front { return front(step.app, job: job) }
+        if step.kind == .keys { return keys(step, job: job, role: &role, final: &final) }
         // The Never list, first the app, before anything of it is read.
         if let end = NeverList.refusal(bundleID: surface.bundleID(step.pid), pid: step.pid, ownPID: ownPID,
                                        secureInput: surface.secureInput(), list: list) { return end }
         let point = CGPoint(x: step.frame.midX, y: step.frame.midY)
         let element = step.kind == .pick ? surface.menuItem(step.menuPath, pid: step.pid) : surface.element(at: point, pid: step.pid)
         let seen = element.flatMap(surface.read)
-        // A click on a bare canvas may find no element; anything else needs one.
-        if seen == nil && !(step.kind == .click && step.role.isEmpty) { return .gone }
+        // A click, scroll or drag on a bare canvas may find no element; anything else needs one.
+        if seen == nil && !(step.kind.pointed && step.role.isEmpty) { return .gone }
         if let seen { role = seen.role }
-        let texts = [step.name, seen?.name ?? "", element.map(surface.windowTitle) ?? ""] + step.menuPath
+        if step.kind == .scroll, !(1...Self.mostScroll).contains(abs(step.amount)) { return .failed }
+        // R1: a drag ends inside the job's app, and what it ends on is judged as the control it starts on.
+        var under: HandSeen?
+        if step.kind == .drag {
+            guard let to = step.to, surface.owner(at: to) == step.pid else { return .failed }
+            under = surface.element(at: to, pid: step.pid).flatMap(surface.read)
+            if let under, SecretsFilter.isSecure(role: under.role, subrole: under.subrole) { return .secureField }
+        }
+        // R3 (17 November): the words on the control and its menu path, never the window's title.
+        let names = [step.name, seen?.name ?? "", under?.name ?? ""] + step.menuPath
         if let end = NeverList.refusal(role: seen?.role ?? "", subrole: seen?.subrole ?? "",
-                                       focusedSecure: surface.focusedIsSecure(step.pid), texts: texts) { return end }
-        marked = NeverList.careful(name: step.kind == .pick ? step.menuPath.last ?? "" : step.name, texts: texts)
-        final = NeverList.final(step, names: [step.name, seen?.name ?? ""] + step.menuPath,
-                                replaces: step.kind == .set && !(seen?.value ?? "").isEmpty, agent: job.agent)
+                                       focusedSecure: surface.focusedIsSecure(step.pid), texts: names) { return end }
+        marked = NeverList.careful(name: step.kind == .pick ? step.menuPath.last ?? "" : step.name, texts: names)
+        // F4: the default button of a sheet or dialog, read at the moment of acting.
+        let isDefault = [.press, .click, .doubleClick].contains(step.kind) && element.map(surface.isDefault) == true
+        final = NeverList.final(step, names: names, replaces: step.kind == .set && !(seen?.value ?? "").isEmpty,
+                                agent: job.agent, isDefault: isDefault)
         if final, job.agent { return .needsConfirm }
         let time = now()
         if let end = brake(job, time) { return end }
         // What is there now against what the look saw.
         guard surface.frontPID() == step.pid else { return .frontChanged }
-        let dialogs = surface.dialogs(step.pid)
-        if job.windowExpected || job.dialogs[step.pid] == nil {
-            job.dialogs[step.pid] = dialogs
-        } else if dialogs > job.dialogs[step.pid]! {
-            return .surprise
-        }
+        if surprised(step.pid, job) { return .surprise }
         if let seen, step.kind != .pick, !matches(seen, step) { return .moved }
         // Stop pressed meanwhile: nothing is sent.
         if let end = job.end { return end }
@@ -562,7 +668,9 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         recent.append(time)
         let sent = surface.send(step, to: element)
         guard sent == .done else { return sent }
-        // A set value is read back; the look after the step checks the rest (PH.7).
+        // A set value is read back; the look after the step checks the rest (PH.7): a click, double or right click,
+        // a scroll and a drag change what the next look shows, and the job judges it there. A drag on a canvas may
+        // change nothing a look can read: no code check is possible for it, only the picture.
         if step.kind == .set, let element, surface.read(element)?.value != step.text { return .checkFailed }
         return .done
     }
@@ -571,6 +679,47 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     private func brake(_ job: HandJob, _ time: Date) -> HandEnd? {
         recent.removeAll { time.timeIntervalSince($0) >= 60 }
         return Self.ceiling(actedInJob: job.acted, recent: recent, now: time)
+    }
+
+    /// Under `acting`. A sheet or dialog more than the job last saw in `pid`, which no step called for.
+    private func surprised(_ pid: pid_t, _ job: HandJob) -> Bool {
+        let dialogs = surface.dialogs(pid)
+        guard !job.windowExpected, let before = job.dialogs[pid] else {
+            job.dialogs[pid] = dialogs
+            return false
+        }
+        return dialogs > before
+    }
+
+    /// Under `acting`. A key, a shortcut or text typed through keys (R1): the Never list for the app, which holds
+    /// secure input; no key at all while a secure field has focus; the never words on the focused control, as on a
+    /// pressed one; never a shortcut of `NeverList.neverSend`; only to the job's own app, while it is in front.
+    /// Posted to that app's pid, never to the whole Mac. The check after is the next look, as for a click: a key
+    /// leaves nothing the code can read back in general (a canvas, a web editor).
+    private func keys(_ step: HandStep, job: HandJob, role: inout String, final: inout Bool) -> HandEnd {
+        if let end = NeverList.refusal(bundleID: surface.bundleID(step.pid), pid: step.pid, ownPID: ownPID,
+                                       secureInput: surface.secureInput(), list: list) { return end }
+        guard step.pid == job.app else { return .frontChanged }
+        let focus = surface.focused(step.pid).flatMap(surface.read)
+        if let focus { role = focus.role }
+        if let end = NeverList.refusal(role: focus?.role ?? "", subrole: focus?.subrole ?? "",
+                                       focusedSecure: surface.focusedIsSecure(step.pid), texts: [focus?.name ?? ""]) { return end }
+        if let chord = step.chord {
+            if NeverList.neverSend.contains(chord) { return .neverKeys }
+        } else if step.text.isEmpty || step.text.count > Self.mostTyped {
+            return .failed
+        }
+        final = NeverList.final(step, names: [focus?.name ?? ""], agent: job.agent, dialogOpen: surface.dialogs(step.pid) > 0)
+        if final, job.agent { return .needsConfirm }
+        let time = now()
+        if let end = brake(job, time) { return end }
+        guard surface.frontPID() == step.pid else { return .frontChanged }
+        if surprised(step.pid, job) { return .surprise }
+        if let end = job.end { return end }
+        job.acted += 1
+        job.windowExpected = false
+        recent.append(time)
+        return surface.send(step, to: nil)
     }
 
     /// Under `acting`. A script: the Never list for the app it acts in (it is not the front app, and no control is
@@ -583,6 +732,8 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         guard let script = step.script else { return .failed }
         if let end = NeverList.refusal(bundleID: script.app, pid: 0, ownPID: ownPID, secureInput: surface.secureInput(),
                                        list: list) { return end }
+        // F3: the titles it makes or names, against the password and paying words, as a control's name is.
+        if let end = NeverList.refusal(titles: script.titles) { return end }
         let time = now()
         if !script.restores, let end = brake(job, time) { return end }
         if let end = job.end { return end }
@@ -750,8 +901,24 @@ struct AXSurface: HandSurface {
         return seen
     }
 
-    func windowTitle(of object: AnyObject) -> String {
-        attribute(object as! AXUIElement, kAXWindowAttribute).flatMap(asElement).flatMap { attribute($0, kAXTitleAttribute) as? String } ?? ""
+    func focused(_ pid: pid_t) -> AnyObject? { attribute(app(pid), kAXFocusedUIElementAttribute).flatMap(asElement) }
+
+    /// Up from the element to the nearest sheet or dialog, and whether that one names it as its default button. An
+    /// ordinary window's own default button is not counted: only a sheet's or a dialog's (13.5).
+    func isDefault(_ object: AnyObject) -> Bool {
+        let el = object as! AXUIElement
+        var node = el
+        for _ in 0..<20 {
+            guard let parent = attribute(node, kAXParentAttribute).flatMap(asElement) else { return false }
+            let role = attribute(parent, kAXRoleAttribute) as? String ?? ""
+            let subrole = attribute(parent, kAXSubroleAttribute) as? String ?? ""
+            if role == kAXSheetRole || (role == kAXWindowRole && ["AXDialog", "AXSystemDialog"].contains(subrole)) {
+                return attribute(parent, kAXDefaultButtonAttribute).flatMap(asElement).map { CFEqual($0, el) } ?? false
+            }
+            if role == kAXWindowRole { return false }
+            node = parent
+        }
+        return false
     }
 
     func dialogs(_ pid: pid_t) -> Int {
@@ -786,6 +953,45 @@ struct AXSurface: HandSurface {
                                                 window: window) else { return .failed }
             events.forEach { $0.postToPid(step.pid) }
             return .done
+        case .doubleClick, .rightClick, .drag:
+            // Made as the click is, by AppKit, in the window under the start; a drag stays in that one window.
+            let point = CGPoint(x: step.frame.midX, y: step.frame.midY)
+            let height = NSScreen.screens.first?.frame.height ?? 0
+            guard let (window, bounds) = Self.window(of: step.pid, at: point) else { return .failed }
+            let at = Self.clickLocation(point, in: bounds, mainHeight: height)
+            let moves: [(NSEvent.EventType, NSPoint, Int)]
+            switch step.kind {
+            case .doubleClick: moves = [(.leftMouseDown, at, 1), (.leftMouseUp, at, 1), (.leftMouseDown, at, 2), (.leftMouseUp, at, 2)]
+            case .rightClick: moves = [(.rightMouseDown, at, 1), (.rightMouseUp, at, 1)]
+            default:
+                guard let to = step.to, let (same, _) = Self.window(of: step.pid, at: to), same == window else { return .failed }
+                let end = Self.clickLocation(to, in: bounds, mainHeight: height)
+                let path = (1...10).map { NSPoint(x: at.x + (end.x - at.x) * CGFloat($0) / 10, y: at.y + (end.y - at.y) * CGFloat($0) / 10) }
+                moves = [(.leftMouseDown, at, 1)] + path.map { (.leftMouseDragged, $0, 1) } + [(.leftMouseUp, end, 1)]
+            }
+            guard let events = Self.mouseEvents(moves, window: window) else { return .failed }
+            for event in events {
+                event.postToPid(step.pid)
+                if step.kind == .drag { Thread.sleep(forTimeInterval: 0.01) }  // an app's drag loop takes its time
+            }
+            return .done
+        case .scroll:
+            // shortcut: a line wheel posted to the pid with the window under it named; whether every app scrolls the
+            // view under the point this way, and in which direction with natural scrolling, only a live run shows.
+            let point = CGPoint(x: step.frame.midX, y: step.frame.midY)
+            guard let (window, _) = Self.window(of: step.pid, at: point),
+                  let event = CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: Int32(-step.amount), wheel2: 0, wheel3: 0)
+            else { return .failed }
+            event.location = point
+            event.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(window))
+            event.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(window))
+            event.setIntegerValueField(.eventSourceUserData, value: Hand.mark)
+            event.postToPid(step.pid)
+            return .done
+        case .keys:
+            guard let events = step.chord.map(Self.keyEvents) ?? Self.typeEvents(step.text) else { return .failed }
+            events.forEach { $0.postToPid(step.pid) }
+            return .done
         case .script, .front:
             return .failed  // scripts go through `run`, fronts through `activate`
         }
@@ -799,12 +1005,47 @@ struct AXSurface: HandSurface {
     /// One click, down then up, at `location` in window `window`, each event marked as Phew's own (`Hand.mark`), so
     /// the watch never takes his click for the user's. Nil when macOS makes no event.
     static func clickEvents(_ location: NSPoint, window: Int) -> [CGEvent]? {
-        let events = [NSEvent.EventType.leftMouseDown, .leftMouseUp].compactMap {
-            NSEvent.mouseEvent(with: $0, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                               windowNumber: window, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)?.cgEvent
+        mouseEvents([(.leftMouseDown, location, 1), (.leftMouseUp, location, 1)], window: window)
+    }
+
+    /// Mouse events in window `window`, each a type, a point inside the window and a click count, each marked as
+    /// Phew's own. Nil when macOS makes one of them not.
+    static func mouseEvents(_ moves: [(NSEvent.EventType, NSPoint, Int)], window: Int) -> [CGEvent]? {
+        let events = moves.compactMap { type, location, count in
+            NSEvent.mouseEvent(with: type, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                               windowNumber: window, context: nil, eventNumber: 0, clickCount: count, pressure: 1)?.cgEvent
         }
-        guard events.count == 2 else { return nil }
+        guard events.count == moves.count else { return nil }
         events.forEach { $0.setIntegerValueField(.eventSourceUserData, value: Hand.mark) }
+        return events
+    }
+
+    /// A key down and up with its modifiers, marked as Phew's own. Made here, posted by `send` to one pid only.
+    static func keyEvents(_ chord: HandChord) -> [CGEvent]? {
+        guard let code = HandChord.codes[chord.key] else { return nil }
+        let events = [true, false].compactMap { CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(code), keyDown: $0) }
+        guard events.count == 2 else { return nil }
+        events.forEach {
+            $0.flags = chord.flags
+            $0.setIntegerValueField(.eventSourceUserData, value: Hand.mark)
+        }
+        return events
+    }
+
+    /// Text as key events, one character each, down and up, marked as Phew's own: the character rides in the event,
+    /// so no keyboard layout is involved. Nil for empty text or more than `Hand.mostTyped`.
+    static func typeEvents(_ text: String) -> [CGEvent]? {
+        guard !text.isEmpty, text.count <= Hand.mostTyped else { return nil }
+        var events: [CGEvent] = []
+        for character in text {
+            let units = Array(String(character).utf16)
+            for down in [true, false] {
+                guard let event = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: down) else { return nil }
+                event.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
+                event.setIntegerValueField(.eventSourceUserData, value: Hand.mark)
+                events.append(event)
+            }
+        }
         return events
     }
 
@@ -1527,6 +1768,35 @@ extension Hand {
 }
 
 extension Hand {
+    /// NA.6: the apps on this Mac named exactly `name`, any case: running ones by their shown name, and those in the
+    /// system's application folders (and one folder down) by their shown or file name. One entry per bundle id.
+    /// Reading only: nothing is opened or brought forward; `act` does that, after the Never lists.
+    static func apps(named name: String) -> [(name: String, bundleID: String)] {
+        let want = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !want.isEmpty else { return [] }
+        func same(_ s: String?) -> Bool { s.map { ($0.hasSuffix(".app") ? String($0.dropLast(4)) : $0).caseInsensitiveCompare(want) == .orderedSame } ?? false }
+        var found: [String: String] = [:]
+        for app in NSWorkspace.shared.runningApplications where same(app.localizedName) {
+            if let id = app.bundleIdentifier { found[id] = app.localizedName }
+        }
+        let files = FileManager.default
+        var folders = files.urls(for: .applicationDirectory, in: [.localDomainMask, .systemDomainMask, .userDomainMask])
+        folders += folders.map { $0.appending(path: "Utilities") }
+        func look(in folder: URL, deeper: Bool) {
+            for url in (try? files.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.localizedNameKey])) ?? [] {
+                guard url.pathExtension == "app" else {
+                    if deeper, (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { look(in: url, deeper: false) }
+                    continue
+                }
+                let shown = try? url.resourceValues(forKeys: [.localizedNameKey]).localizedName
+                guard same(url.lastPathComponent) || same(shown), let id = Bundle(url: url)?.bundleIdentifier else { continue }
+                found[id] = found[id] ?? (shown.map { $0.hasSuffix(".app") ? String($0.dropLast(4)) : $0 } ?? want)
+            }
+        }
+        folders.forEach { look(in: $0, deeper: true) }
+        return found.map { ($0.value, $0.key) }.sorted { $0.bundleID < $1.bundleID }
+    }
+
     /// "B2" and a size as an Excel range ("B2:D5"). Nil for anything but a plain cell address.
     static func range(top: String, rows: Int, columns: Int) -> String? {
         let top = top.uppercased().trimmingCharacters(in: .whitespaces)

@@ -26,8 +26,9 @@ enum NeverList {
     /// Whole families: System Settings' panes, JetBrains editors.
     static let appPrefixes = ["com.apple.preference.", "com.apple.settings.", "com.jetbrains."]
 
-    /// Words in a control's name, its menu path or its window title. English and Italian; folded to lower case
-    /// without accents before matching, whole words only.
+    /// Words in a control's name or its menu path, never its window's title (R3, 17 November), and in a script's
+    /// titles (F3, password and paying only). English and Italian; folded to lower case without accents before
+    /// matching, whole words only.
     static let words: [(HandEnd, [String])] = [
         (.password, ["password", "passcode", "passkey", "security code", "cvv", "cvc",
                      "codice di sicurezza", "codice segreto", "codice di accesso"]),
@@ -61,10 +62,19 @@ enum NeverList {
     /// The target itself: a secure field (target or focus) or a never word in any of `texts`. Nil when allowed.
     static func refusal(role: String, subrole: String, focusedSecure: Bool, texts: [String]) -> HandEnd? {
         if focusedSecure || SecretsFilter.isSecure(role: role, subrole: subrole) { return .secureField }
+        return word(in: texts, among: [.password, .paying, .signIn])
+    }
+
+    /// F3: the titles a script makes or names, against the password and paying words only: a reminder "Log in to
+    /// the made-up portal" is a reminder, not a sign-in.
+    static func refusal(titles: [String]) -> HandEnd? { word(in: titles, among: [.password, .paying]) }
+
+    /// The first never word of `reasons` in any of `texts`, in the order of `words`.
+    private static func word(in texts: [String], among reasons: Set<HandEnd>) -> HandEnd? {
         let folded = texts.map(fold)
         let text = " " + folded.joined(separator: " ") + " "
-        for (reason, list) in words where list.contains(where: { text.contains(" \($0) ") }) { return reason }
-        if folded.contains(where: payingNames.contains) { return .paying }
+        for (reason, list) in words where reasons.contains(reason) && list.contains(where: { text.contains(" \($0) ") }) { return reason }
+        if reasons.contains(.paying), folded.contains(where: payingNames.contains) { return .paying }
         return nil
     }
 
@@ -96,19 +106,63 @@ enum NeverList {
         "sostituisci", "sovrascrivi", "ripristina", "non salvare", "esci", "disconnetti", "stampa", "esporta",
     ]
 
+    /// Shortcuts never sent, whatever the words (NA.5): quit, log out, lock, force quit, empty the Trash, and those
+    /// that take the user out of the app (Spotlight, the app switcher, hiding, Spaces, the Dock, screenshots). A key
+    /// with fn or the globe key cannot even be named (`HandChord.parse`).
+    static let neverSend: Set<HandChord> = Set([
+        "cmd+q", "cmd+option+q",                                        // quit
+        "cmd+shift+q", "cmd+option+shift+q",                            // log out
+        "control+cmd+q",                                                // lock the screen
+        "cmd+option+escape", "cmd+option+shift+escape",                 // force quit
+        "cmd+shift+delete", "cmd+option+shift+delete",                  // empty the Trash
+        "cmd+space", "cmd+option+space", "control+space", "control+option+space",  // Spotlight, input sources
+        "cmd+tab", "cmd+shift+tab", "cmd+h", "cmd+option+h", "cmd+option+d",       // other apps, hide, the Dock
+        "control+up", "control+down", "control+left", "control+right",  // Mission Control and Spaces
+        "cmd+shift+3", "cmd+shift+4", "cmd+shift+5", "control+cmd+shift+3", "control+cmd+shift+4",  // screenshots
+    ].compactMap(HandChord.parse))
+
+    /// Shortcuts in the "cannot be undone or leaves your Mac" class (NA.5), with the rules in `final`:
+    ///
+    /// | Keys                          | Why                                                   |
+    /// |-------------------------------|-------------------------------------------------------|
+    /// | cmd (+ others) + delete or    | moves to the Trash, deletes a message, a line, a word |
+    /// | forward delete                |                                                       |
+    /// | cmd + return (+ shift/option) | sends in chat and mail apps, submits a form           |
+    /// | cmd + shift + D               | Send in Mail                                          |
+    /// | return alone                  | while a sheet or dialog is open: its default button   |
+    /// | return or space alone         | on a focused control named with a `finalWords` word   |
+    /// | typed text with a new line    | Return in a web form                                  |
+    ///
+    /// Not in the class: cmd + S (it saves), cmd + Z, plain delete (one character, undone with cmd + Z).
+    static let finalChords: Set<HandChord> = Set(["cmd+return", "cmd+shift+return", "cmd+option+return", "cmd+shift+d"]
+        .compactMap(HandChord.parse))
+
     /// Whether `step` is in the "cannot be undone or leaves your Mac" class. Decided by this code only, never by the
     /// model. In a job the user watches it still runs, tagged on the card; an agent's waits for one confirm.
-    /// `names`: the control's name and menu path, as read; `replaces`: a `set` over text already there; `facts`: what
-    /// was read of the item a script changes; `agent`: a research agent's job, where any change or delete counts:
-    /// a background task has no card, so no Undo can reach the old value.
+    /// `names`: the control's name and menu path, as read (for keys, the focused control's); `replaces`: a `set` over
+    /// text already there; `facts`: what was read of the item a script changes; `agent`: a research agent's job, where
+    /// any change or delete counts: a background task has no card, so no Undo can reach the old value; `isDefault`:
+    /// the control is the default button of a sheet or dialog (F4); `dialogOpen`: one is open in the app now.
     static func final(_ step: HandStep, names: [String]? = nil, replaces: Bool = false, facts: HandFacts = HandFacts(),
-                      agent: Bool = false) -> Bool {
+                      agent: Bool = false, isDefault: Bool = false, dialogOpen: Bool = false) -> Bool {
+        let names = names ?? [step.name] + step.menuPath
+        let text = " " + names.map(fold).joined(separator: " ") + " "
+        let worded = finalWords.contains { text.contains(" \($0) ") }
         switch step.kind {
-        case .front: return false
+        // A scroll changes nothing; a right click only opens a menu, whose item is a step of its own.
+        case .front, .scroll, .rightClick: return false
         case .set: return replaces
-        case .press, .pick, .click:
-            let text = " " + (names ?? [step.name] + step.menuPath).map(fold).joined(separator: " ") + " "
-            return finalWords.contains { text.contains(" \($0) ") }
+        case .pick, .drag: return worded
+        case .press, .click, .doubleClick:
+            // F4: a dialog's default button, and a control with no name, which no word can judge. A click at a bare
+            // point (no role: a canvas) is not on a control.
+            return worded || isDefault || (!step.role.isEmpty && names.allSatisfy { fold($0).isEmpty })
+        case .keys:
+            guard let chord = step.chord else { return step.text.contains(where: \.isNewline) }
+            if finalChords.contains(chord) { return true }
+            if chord.modifiers.contains(.cmd), ["delete", "forwarddelete"].contains(chord.key) { return true }
+            guard chord.modifiers.isEmpty else { return false }
+            return chord.key == "return" && dialogOpen || ["return", "space"].contains(chord.key) && worded
         case .script:
             switch step.script {
             // Invitations or updates go out to guests; a repeat cannot be put back whole.

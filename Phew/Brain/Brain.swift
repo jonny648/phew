@@ -184,10 +184,14 @@ enum NextAction: Sendable, Equatable {
     /// in screenshot pixels. Validated like `GuideStep.target`. `menu`: for pick, the path from the menu bar.
     /// `text`: for set, what the field holds afterwards.
     case act(HandStep.Kind, target: StepTarget?, menu: [String] = [], text: String = "")
+    /// R1 (NA.5): a scroll, a drag or keys. `target` as for a click (where the scroll or the drag starts); `to` where
+    /// the drag ends; `keys` a key or shortcut from the fixed vocabulary, else `text` typed through keys; `amount` the
+    /// scroll's lines, down positive.
+    case input(HandStep.Kind, target: StepTarget? = nil, to: StepTarget? = nil, keys: HandChord? = nil, text: String = "", amount: Int = 0)
     /// One action through an app's own scripting or the system's reminders and calendar access: no target on screen.
     case script(HandScript)
-    /// Another app to the front, to go on there (PH.7): its bundle id from the fixed list in `Doer.apps`, and its
-    /// plain name for the card.
+    /// Another app to the front, to go on there (PH.7): its bundle id, found by its name on this Mac (`Doer.installed`,
+    /// NA.6), and its plain name for the card. The Hand checks the bundle id against the Never lists.
     case front(bundleID: String, name: String)
     /// NC.9: a skill written or run, as a step of the job: it only computes, in the closed box, and acts on nothing.
     case skill(SkillStep)

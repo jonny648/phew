@@ -161,7 +161,7 @@ enum BrainVoiceCheck {
     /// A fixed word for what the Doer did instead.
     static func kind(_ next: NextAction) -> String {
         switch next {
-        case .act(let kind, _, _, _): kind.rawValue
+        case .act(let kind, _, _, _), .input(let kind, _, _, _, _, _): kind.rawValue
         case .script: "script"
         case .front: "open app"
         case .skill: "skill"

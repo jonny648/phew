@@ -25,9 +25,20 @@ final class ActJobTests: XCTestCase {
         savedLog = ActionLog.url
         log = FileManager.default.temporaryDirectory.appending(path: "phew-actions-\(UUID().uuidString).log")
         ActionLog.url = log  // never the user's real actions.log
+        savedLookup = Doer.installed
+        // NA.6: a made-up Mac, never this one's apps. "My Shell" is a renamed copy of Terminal; two apps share "Twin".
+        Doer.installed = { name in
+            [("Microsoft Excel", "com.microsoft.Excel"), ("Excel", "com.microsoft.Excel"), ("Mail", "com.apple.mail"),
+             ("Terminal", "com.apple.Terminal"), ("My Shell", "com.apple.Terminal"), ("Twin", "com.example.twin-one"),
+             ("Twin", "com.example.twin-two")]
+                .filter { $0.0.caseInsensitiveCompare(name) == .orderedSame }.map { (name: $0.0, bundleID: $0.1) }
+        }
     }
 
+    private var savedLookup: ((String) -> [(name: String, bundleID: String)])!
+
     override func tearDown() {
+        Doer.installed = savedLookup
         ActionLog.flush()
         try? FileManager.default.removeItem(at: log)
         try? FileManager.default.removeItem(at: skillFolder)
@@ -448,13 +459,113 @@ final class ActJobTests: XCTestCase {
             Doer.decide(try JSONDecoder().decode(Doer.Output.self, from: Data(json.utf8)), packet: packet, shot: nil)
         }
         XCTAssertEqual(try decide(script("open_app", title: " excel ")), .front(bundleID: "com.microsoft.Excel", name: "Excel"))
-        XCTAssertEqual(try decide(script("open_app", title: "Fusion")), .front(bundleID: "com.autodesk.fusion360", name: "Fusion"))
-        for bad in ["Word", "", "com.apple.Terminal", "Terminal"] { XCTAssertEqual(try decide(script("open_app", title: bad)), .stuck(Doer.noApp), bad) }
+        // NA.6: any app on the Mac, by its exact name in any case; none or several: he stops, nothing guessed.
+        XCTAssertEqual(try decide(script("open_app", title: "MAIL")), .front(bundleID: "com.apple.mail", name: "Mail"))
+        for bad in ["Word", "", "Mai", "com.apple.mail"] { XCTAssertEqual(try decide(script("open_app", title: bad)), .stuck(Doer.noApp), bad) }
+        XCTAssertEqual(try decide(script("open_app", title: "twin")), .stuck(Doer.manyApps))
+        // A never app is found by name: the Hand refuses it by its bundle id (testAnyAppButTheNeverOnes).
+        XCTAssertEqual(try decide(script("open_app", title: "My Shell")), .front(bundleID: "com.apple.Terminal", name: "My Shell"))
         // Only press, set and click take a target: never a front or a script by another name.
         for word in ["front", "script"] { XCTAssertEqual(try decide(reply(word, element: "e1")), .stuck(Doer.noTarget), word) }
         XCTAssertEqual(ActJob.line(HandStep(kind: .front, pid: 0, name: "Excel", app: "com.microsoft.Excel"), doing: true), "Switching to Excel")
         XCTAssertTrue(Doer.schema.contains(#""open_app""#))
-        XCTAssertEqual(Doer.apps.count, 9)
+        XCTAssertFalse(Doer.system.contains("Fusion, Safari, Finder"), "no fixed list of apps any more")
+    }
+
+    /// NA.6: an app outside the old nine is reached; one on the Never list or the Never read list is refused, by name
+    /// and by bundle id (a renamed copy of Terminal too), before anything of it is read.
+    func testAnyAppButTheNeverOnes() async {
+        fake.launchable["com.apple.mail"] = 9
+        var (run, _, job, _) = make([script("open_app", title: "Mail"), reply("press", element: "e1"), reply("done", text: "Done.")])
+        var outcome = await run.run("Make it bold in Mail", job: job) { _ in }
+        XCTAssertEqual(outcome, .done("Done."))
+        XCTAssertEqual(fake.activated, ["com.apple.mail", "com.example.practice"])
+        XCTAssertEqual(fake.sent.map(\.pid), [9])
+        fake.launchable["com.apple.Terminal"] = 8
+        for name in ["Terminal", "My Shell"] {
+            looked = []
+            (run, _, job, _) = make([script("open_app", title: name)])
+            outcome = await run.run("Do it in \(name)", job: job) { _ in }
+            XCTAssertEqual(outcome, .ended(.neverActApp), name)
+            XCTAssertEqual(looked, [FakeSurface.pid], "nothing of \(name) was looked at")
+        }
+        let list = NeverReadList(defaults: defaults)
+        list.add(name: "Mail", bundleID: "com.apple.mail")
+        (run, _, job, _) = make([script("open_app", title: "Mail")])
+        outcome = await run.run("Do it in Mail", job: job) { _ in }
+        XCTAssertEqual(outcome, .ended(.neverReadApp))
+        XCTAssertEqual(fake.activated, ["com.apple.mail", "com.example.practice"], "no never app was brought forward")
+    }
+
+    // MARK: NA.5: the new kinds of action, from the Doer's answer to the Hand's step
+
+    private func input(_ action: String, element: String? = nil, point: (Int, Int)? = nil, text: String = "", keys: String? = nil,
+                       amount: Int? = nil, to: (Int, Int)? = nil) -> String {
+        func p(_ point: (Int, Int)?) -> String { point.map { #"{"x":\#($0.0),"y":\#($0.1)}"# } ?? "null" }
+        let element = element.map { "\"\($0)\"" } ?? "null", keys = keys.map { "\"\($0)\"" } ?? "null"
+        return #"{"action":"\#(action)","element":\#(element),"point":\#(p(point)),"menu":[],"text":"\#(text)","keys":\#(keys),"amount":\#(amount.map(String.init) ?? "null"),"to":\#(p(to))}"#
+    }
+
+    func testDoerChecksEveryFieldOfTheNewActions() throws {
+        func decide(_ json: String) throws -> NextAction {
+            Doer.decide(try JSONDecoder().decode(Doer.Output.self, from: Data(json.utf8)), packet: packet, shot: nil)
+        }
+        XCTAssertEqual(try decide(input("double_click", element: "e1")), .act(.doubleClick, target: .element("e1")))
+        XCTAssertEqual(try decide(input("right_click", element: "E1")), .act(.rightClick, target: .element("e1")))
+        XCTAssertEqual(try decide(input("scroll", element: "e1", amount: -3)), .input(.scroll, target: .element("e1"), amount: -3))
+        XCTAssertEqual(try decide(input("keys", keys: "Cmd+Shift+Z")), .input(.keys, keys: HandChord.parse("cmd+shift+z")))
+        XCTAssertEqual(try decide(input("keys", text: " Made-up text ")), .input(.keys, text: " Made-up text "), "spaces kept")
+        // Refused by code: a chord outside the vocabulary (fn, an unknown key), no keys and no text, too much text, a
+        // scroll of nothing or too far, a drag with no end, a click with no target.
+        for bad in [input("keys", keys: "fn+f"), input("keys", keys: "cmd+enter"), input("keys", keys: "globe+q"), input("keys"),
+                    input("keys", text: String(repeating: "x", count: Hand.mostTyped + 1))] {
+            XCTAssertEqual(try decide(bad), .stuck(Doer.badKeys), bad)
+        }
+        for bad in [input("scroll", element: "e1"), input("scroll", element: "e1", amount: 0), input("scroll", element: "e1", amount: 51),
+                    input("scroll", amount: 3), input("drag", element: "e1"), input("drag", to: (5, 5)), input("double_click"),
+                    input("right_click", element: "e9")] {
+            XCTAssertEqual(try decide(bad), .stuck(Doer.noTarget), bad)
+        }
+        for word in ["double_click", "right_click", "scroll", "drag", "keys"] { XCTAssertTrue(Doer.schema.contains("\"\(word)\""), word) }
+        XCTAssertTrue(Doer.schema.contains(#""required":["action","element","point","menu","text","title","start","end","cell","rows","code","input","expected","keys","amount","to"]"#))
+        XCTAssertFalse(Doer.system.contains("a keyboard shortcut"), "no longer a reason to be stuck")
+    }
+
+    func testTheNewStepsAndTheirLines() throws {
+        let double = try XCTUnwrap(ActJob.step(.doubleClick, target: .element("e1"), menu: [], text: "", packet: packet, pid: 7))
+        XCTAssertEqual([double.role, double.name], ["AXButton", "Bold"])
+        XCTAssertEqual(ActJob.line(double), "Double-clicked Bold")
+        let right = try XCTUnwrap(ActJob.step(.rightClick, target: .element("e1"), menu: [], text: "", packet: packet, pid: 7))
+        XCTAssertEqual(ActJob.line(right, doing: true), "Right-clicking Bold")
+        let scroll = try XCTUnwrap(ActJob.input(.scroll, target: .element("e2"), to: nil, keys: nil, text: "", amount: -2, packet: packet, pid: 7))
+        XCTAssertEqual(scroll.kind, .scroll)
+        XCTAssertEqual(scroll.amount, -2)
+        XCTAssertEqual(scroll.pid, 7)
+        XCTAssertEqual(ActJob.line(scroll), "Scrolled up 2 lines in Title")
+        let drag = try XCTUnwrap(ActJob.input(.drag, target: .element("e1"), to: .element("e2"), keys: nil, text: "", amount: 0, packet: packet, pid: 7))
+        XCTAssertEqual(drag.to, CGPoint(x: title.midX, y: title.midY))
+        XCTAssertEqual(ActJob.line(drag, doing: true), "Dragging Bold")
+        let chord = try XCTUnwrap(ActJob.input(.keys, target: nil, to: nil, keys: HandChord.parse("cmd+b"), text: "", amount: 0, packet: nil, pid: 7))
+        XCTAssertEqual(ActJob.line(chord), "Pressed ⌘B")
+        let typed = try XCTUnwrap(ActJob.input(.keys, target: nil, to: nil, keys: nil, text: "Made up", amount: 0, packet: nil, pid: 7))
+        XCTAssertEqual([ActJob.line(typed), ActJob.line(typed, doing: true)], ["Typed 7 characters", "Typing 7 characters"])
+        // Not made: keys with nothing to send, a scroll of nothing, a drag's end outside the job's window or unknown.
+        XCTAssertNil(ActJob.input(.keys, target: nil, to: nil, keys: nil, text: "", amount: 0, packet: nil, pid: 7))
+        XCTAssertNil(ActJob.input(.scroll, target: .element("e1"), to: nil, keys: nil, text: "", amount: 0, packet: packet, pid: 7))
+        XCTAssertNil(ActJob.input(.drag, target: .element("e1"), to: nil, keys: nil, text: "", amount: 0, packet: packet, pid: 7))
+        XCTAssertNil(ActJob.input(.drag, target: .element("e1"), to: .element("e9"), keys: nil, text: "", amount: 0, packet: packet, pid: 7))
+        XCTAssertNil(ActJob.input(.press, target: .element("e1"), to: nil, keys: nil, text: "", amount: 0, packet: packet, pid: 7))
+    }
+
+    /// A job that presses a shortcut and types through keys: each through the Hand to the job's app, listed by count.
+    func testAJobPressesAShortcutAndTypes() async {
+        let (run, _, job, _) = make([input("keys", keys: "cmd+b"), input("keys", text: "Made up"), reply("done", text: "Done.")])
+        var lines: [String] = []
+        let outcome = await run.run("Make it bold and type made up", job: job) { lines.append($0) }
+        XCTAssertEqual(outcome, .done("Done."))
+        XCTAssertEqual(lines, ["Pressed ⌘B", "Typed 7 characters"])
+        XCTAssertEqual(fake.sent.map(\.kind), [.keys, .keys])
+        XCTAssertEqual(fake.sent.map(\.pid), [FakeSurface.pid, FakeSurface.pid])
     }
 
     // MARK: Clicks at a point, for canvases (PH.11)

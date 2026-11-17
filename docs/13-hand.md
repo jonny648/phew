@@ -125,6 +125,18 @@ He stops and says so. He never tries again blind.
 
 After any stop, the card keeps the list of what was done so far, and you decide: do the step yourself, ask again, or close.
 
+## 13.4.1 Widened on 17 November 2026
+
+Your decisions on the limits review (`17-limits.md`, `07-decisions.md` 7.1). Where this section and an older one disagree, this one holds.
+
+- **Kinds of action:** press, set a field, a menu command, click, double click, right click, scroll (at most 50 lines), drag (ending inside the job's app), keys and shortcuts (to the job's app only, up to 2,000 typed characters), a script, switching app.
+- **Never sent:** the shortcuts that quit, log out, lock, force quit, empty the Trash, switch or hide apps, open Spotlight, move between Spaces or take a screenshot. No key at all while a password prompt is open.
+- **"Cannot be undone" also covers:** a shortcut with Command and Delete, Command and Return, Send in Mail, Return on a dialog; a dialog's default button; a control with no name.
+- **Apps:** any app found by its name, except those on the Never list and your Never-read list, judged by the app's identity, not its name.
+- **Never words:** looked for on the control and its menu path, not in the window's title. In a script, only the password words are looked for in a title.
+- **Stops:** a sheet the step is meant to open (Save, Export, Open, Print…) is expected; a typed value is compared after tidying spaces, quotes, numbers and dates; at 20 actions a minute he pauses and goes on; 40 in a job ends it; ten keys or scrolls in a row are allowed.
+- **Scripts:** lines added to a note already there, by exact title; with several matches he lists up to five and changes nothing; events from two years back to five ahead.
+
 ## 13.5 Levels
 
 When you work with him there are two levels. Showing (pointing, highlighting, scrolling to) is always allowed and changes nothing.

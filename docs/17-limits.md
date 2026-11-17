@@ -1,5 +1,7 @@
 # 17. Limits review (phase NA)
 
+> Decided on 17 November 2026 (`07-decisions.md` 7.1) and built the same day: R1 to R13 and R15, P1 and P2, the two changes to the safety core, F2 to F4. The tables below describe the state BEFORE that; `CLAUDE.md` holds the rules as they are now.
+>
 > Written 16 November 2026 before the review's fixes. Since then: the Observer's code is removed (L18, C16, R10's second half), and a conversation past 8 turns keeps its last 4 (L63).
 
 Written 16 November 2026 from a read of the rules and the code. Nothing was built or run. The inventory (17.4) lists 103 limits and 20 places where a document and the code disagree. This page sorts them and gives a recommendation for each group. **You decide** (17.3); then `CLAUDE.md` is rewritten to your answers.

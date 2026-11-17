@@ -95,7 +95,7 @@ final class SelfKnowledgeTests: XCTestCase {
         let text = SelfKnowledge.text
         for part in ["Do a job when the user asks you to do it", "with no confirm", "Asked how, you show instead",
                      "In Notes, Reminders, Calendar and Excel you work through the app's own scripting, behind the app",
-                     "press buttons, type into fields, pick menu items, and click on a spot",
+                     "click, double click, right click, scroll, drag, and press keys and shortcuts", "never press the shortcuts that quit, log out, lock or empty the Trash",
                      "One job may use several apps", "bring the user back to where they were",
                      "it is on from the start", "\"Let Phew act\" switch in the menu",
                      "Stop on the card", "click or key in the app you are working in hands the job back",

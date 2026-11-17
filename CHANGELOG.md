@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.0, 17 November 2026
+
+Phase NA, the limits review, decided and built. Tested offline; nothing run with the model or in real apps.
+
+- More kinds of action: keys and shortcuts, scroll, drag, double click, right click. Any app, except the ones he never touches.
+- Fewer false stops: a Save sheet no longer ends a job; at 20 actions a minute he pauses and goes on.
+- "Add a line to my Groceries note" works. With several matches he lists them.
+- Research: "Confirm all" for waiting changes, a deep size when you ask for it, a fourth task waits its turn.
+- He reads files in folders you add under Memory, Folders he may read. A change to a file waits for your confirm; the old version goes to the Trash.
+- Small text: a sharp close-up around the mouse. Long windows: up to 20,000 characters, read in pieces.
+- A follow-up can ask about the previous screen for 10 minutes. Conversations are kept under Memory, Conversations.
+- Off until you switch them on: "Let Phew watch one thing" and "Notify me".
+- A shortcut you can set; request ceilings in Limits.
+- Password managers and Keychain Access are never read. "Send as it is" when a key was left out of your question.
+
 ## 0.3.1, 16 November 2026
 
 Skills in a job you watch, and the last leftovers of the review. Tested offline; not yet with the model.

@@ -17,7 +17,7 @@ struct PhewApp: App {
             // 15.5 D, as far as built: no "Saved reports…" yet.
             Button { delegate.shortcut() } label: {
                 Text("Ask Phew")
-                Text("right ⌥ + right ⌘")  // shown as the entry's second line: the shortcut has no key equivalent
+                Text(Shortcut.stored().name)  // the entry's second line: the shortcut has no key equivalent; yours when you set one
             }
             Divider()
             TaskEntries(tasks: delegate.tasks) { delegate.openTask($0) }

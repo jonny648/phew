@@ -15,6 +15,7 @@ Two SQLite files on the Mac, in `~/Library/Application Support/Phew/`, beside `c
 | `events` | id, owner, time, app, kind, summary, project, mentions, sensitive, deleted, embedding |
 | `terms` | name, query |
 | `forgets` | id, time, label (the line the card showed, for the Recently deleted list) |
+| `threads` | id, owner, time, project, turns (JSON text, filtered), sensitive, deleted. Saved conversations, since 17 November 2026 (`05-map.md` 5.8.1). No text index; not read by recall. In both files: a sensitive Project's threads live in `map-sensitive.sqlite` |
 
 - `owner`, `from_node` and `to_node` are named this way because `user`, `from` and `to` are reserved words in SQLite or Postgres and cannot be plain column names. In the MVP `owner` holds the same value on every row. It is there for the day accounts exist.
 - Ids are whole numbers. Dates are text in the ISO 8601 form.

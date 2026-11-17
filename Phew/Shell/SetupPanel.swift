@@ -318,9 +318,7 @@ struct SetupView: View {
             VStack(alignment: .leading, spacing: Design.Space.s4) {
                 HStack(spacing: Design.Space.s4) {
                     Text("Hold")
-                    Keycap(key: "right ⌥")
-                    Text("and")
-                    Keycap(key: "right ⌘")
+                    Keycap(key: Shortcut.stored().name)  // the default reads "right ⌥ + right ⌘"; yours when you set one
                     Text("and speak.")
                 }
                 Text("Let go and your words are sent.")
@@ -344,9 +342,7 @@ struct SetupView: View {
             VStack(alignment: .leading, spacing: Design.Space.s4) {
                 HStack(spacing: Design.Space.s4) {
                     Text("Press")
-                    Keycap(key: "right ⌥")
-                    Text("and")
-                    Keycap(key: "right ⌘")
+                    Keycap(key: Shortcut.stored().name)  // the default reads "right ⌥ + right ⌘"; yours when you set one
                     Text("together,")
                 }
                 Text("in any app. He is in the menu bar.")

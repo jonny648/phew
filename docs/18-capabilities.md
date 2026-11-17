@@ -1321,3 +1321,66 @@ So the right promise is narrow: **for broad research that splits into independen
 - Details of the browser use tool beyond a search summary of its docs page.
 - All cost figures in C.3 are arithmetic on list prices with assumed token counts, not measurements.
 
+
+---
+
+## 18.4 The two doors, and the two tests of 17 November
+
+Your words of 17 November changed 18.1 in four places: several tools, not only Notion; a write in a job you watch carries no "leaves your Mac" tag; no browser opens per tool during a job; both doors are built. This section is the design now. Where it differs from 18.1, this section holds.
+
+### Why two doors
+
+Anthropic forbids a Claude sign-in inside another app: "Anthropic does not permit third-party developers to offer Claude.ai login into their own applications, or to route requests through Free, Pro, Max, or Ultra plan credentials on behalf of their users" (code.claude.com/docs/en/legal-and-compliance, read 17 November). The same page allows a product to start the unmodified Claude Code program when each person signs in to it with their own plan. Figma's online server lets in only the programs on its own list (developers.figma.com/docs/figma-mcp-server/remote-server-installation); Claude Code is on it, and Figma is not adding new ones.
+
+| | Door 1: through Claude Code | Door 2: Phew's own client |
+|---|---|---|
+| Who pays | Your Claude plan | Your API key |
+| Sign-in | None: the connectors of your Claude account | The browser, once, when you press Connect |
+| Reaches | Everything your Claude account has, Figma included | Tools with open sign-in. Not Figma online |
+| For others | Each person needs Claude Code and a plan | Works with an API key only |
+
+### The gate, the same for both
+
+Phew's own table says which tools read and which write. A tool it does not know counts as a write. The server's own marks (`readOnlyHint`) are not trusted. Reads run freely. A write goes through the one acting function, listed on the card like any action. A write asked by a background task waits for your confirm. A tool's answer is data and passes the secrets filter.
+
+### Test T1: the Claude Code door. Passed, with one correction
+
+Run on made-up data with a made-up tool server on the Mac (one read tool, one write tool, an answer carrying a forged order). Claude Code 2.1.326, small model. No real connector was called; only names and counts were read.
+
+| Question | Result |
+|---|---|
+| Does Phew see each call before it runs? | Yes. With `--permission-prompt-tool stdio` each call arrives as a `can_use_tool` request on the output stream and waits for the answer. Without that option the call is refused by itself |
+| Can Phew refuse? | Yes. The refused write never reached the tool server (its own log shows the read only) |
+| A forged order in a tool's answer | Not followed, and the model said so |
+| Start time | 0.3 s with no settings; first words at 1.3 s. With your account's connectors: 3 to 7 s |
+| Your connectors without sign-in | Yes, 20 connected ones listed. **Only when your Claude Code settings are loaded** (`--setting-sources user`). With settings off, none load; `ENABLE_CLAUDEAI_MCP_SERVERS` and `allowAllClaudeAiMcps` did not change that |
+| Loading only what you ticked | Works: every other server is refused by name with `--disallowedTools mcp__<server>`, and the model then sees only the ticked one |
+| Size | All connectors together: about 0.70 dollars of tokens for one question (counted, not charged: your plan pays). Notion alone, 77 tools: about 100,000 tokens. So single tools must be refused too, and only the few that fit the job left in |
+| Written to disk | No session file with `--no-session-persistence`. Claude Code's own bookkeeping files changed (`anchor-usage.json`, plugin sync marks): no words of yours |
+| What else the run carries | Claude Code adds by itself: the Mac's system details, the date, your account's email, and usage notes from tool servers. Your own instruction file was not seen. Hooks are switched off with `disableAllHooks`, commands with `--disable-slash-commands`, its own tools with `--tools ""` |
+
+**The correction.** The plan said your Claude Code settings would not be loaded. They must be: the connectors arrive only that way. The guards that replace it: hooks off, commands off, Claude Code's own tools off, every server and tool not ticked refused, Phew's own instructions in place of Claude Code's. Plugins you installed in Claude Code still start their own tool servers; they are refused by name.
+
+The command, pinned by a test:
+
+```
+claude -p --output-format stream-json --verbose --input-format stream-json
+  --no-session-persistence --tools "" --disable-slash-commands
+  --setting-sources user --settings '{"disableAllHooks":true}'
+  --system-prompt <Phew's own> --permission-prompt-tool stdio
+  --disallowedTools <every server and tool not ticked>
+```
+
+The environment holds only `PATH`, `HOME`, `USER`, `LOGNAME`, `TMPDIR`. Without `USER` Claude Code says "Not logged in".
+
+### Test T2: Notion's own server (NB.1). Passed
+
+| Question | Result |
+|---|---|
+| Sign-in for an app it does not know | Yes. `https://mcp.notion.com/register` gave a client id to a made-up name, as a public client (no secret), with a loopback address `http://127.0.0.1:<port>/callback` |
+| The flow | Authorization code with PKCE (S256). You signed in once in the browser; the code came back to the Mac |
+| A client that speaks 2025-11-25 | Accepted: `initialize` and `tools/list` both answered. The exact version the server answered was not kept (the test's output was cut) |
+| Tools | 77. Their definitions are about 251,000 characters, so only the tools that fit the job can be sent |
+| The token | Kept in memory only and dropped. Nothing of your Notion was read: the tool list only |
+
+Not tested: the sign-in from inside the menu-bar app (the test ran from a script), a token refresh, a tool call.

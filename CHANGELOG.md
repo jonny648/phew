@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0, 18 November 2026
+
+Phases NB (connections), N4 (cost down) and N7 (the brand), built as one. Tested offline; nothing run with the model, with a real connector or in real apps.
+
+- Connections, in the menu: he reads and writes in the tools you connect. Notion through Phew's own sign-in. Off until you switch it on: "Use my Claude account", which reaches the connectors of your Claude account through the Claude Code program on your Mac, with your Claude plan paying.
+- A read runs freely. A write is listed on the card; one asked by a background task waits for your confirm, and the row shows what will be sent.
+- Your Shortcuts as tools: tick the ones he may run under "Shortcuts he may run".
+- A deep research task may split into up to four workers; a finding whose page was not read is dropped, and one fresh read marks each claim.
+- Cost: a job plans up to five actions in one call; a guide's click is confirmed without a call when the next control appears; he remembers once per conversation; smaller close-up pictures and shorter research pages.
+- Quitting waits up to five seconds so a conversation's facts are not lost.
+- A new look: the mark is the top of an eggshell in one heavy line, in the menu bar, on the card, at the notch while you hold the key, and as the app icon. Its pose, line and colour show what he is doing.
+
 ## 0.4.0, 17 November 2026
 
 Phase NA, the limits review, decided and built. Tested offline; nothing run with the model or in real apps.

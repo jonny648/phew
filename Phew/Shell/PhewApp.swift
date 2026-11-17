@@ -198,19 +198,18 @@ final class FrontApp: ObservableObject {
     }
 }
 
-/// The menu bar icon (15.5 D), a template symbol: resting, or acting for the whole job; then the number of tasks
-/// running, and a dot while a result waits. It never animates.
-// shortcut: the label draws as template text beside the symbol, so the dot follows it in the menu bar's colour, not
-// at its top right in accent; draw one image if the look matters.
+/// The menu bar icon (15.5 D, 22.6): the small mark as a template image, in the menu bar's one colour: a line at
+/// rest, full while he acts for the whole job and while a result waits; then the number of tasks running, and a dot
+/// beside it while a result waits. It never animates.
 private struct MenuIcon: View {
     @ObservedObject var model: CardModel
     @ObservedObject var tasks: TaskList
     @ObservedObject var watching: Watching
 
     var body: some View {
-        let running = tasks.running.count, waiting = !tasks.waiting.isEmpty || watching.result != nil
+        let running = tasks.running.count, results = tasks.waiting.count + (watching.result == nil ? 0 : 1), waiting = results > 0
         HStack(spacing: 2) {
-            Image(systemName: model.acting ? "cursorarrow.motionlines" : "cursorarrow.rays")
+            Image(nsImage: Brand.menuImage(Brand.inMenuBar(acting: model.acting, waiting: results)))
             if running > 0 { Text(verbatim: "\(running)") }
             if waiting { Text(verbatim: "•") }
         }

@@ -2,7 +2,7 @@
 
 Written 15 November 2026 for tasks PX.1 (study) and PX.2 (design). It stands in for the Figma drawings: each surface and state is described closely enough to build without a picture. The choices are made here, following Apple's Human Interface Guidelines (HIG) and the best Mac utility tools. You can change any of them; the tokens in 15.4 are the one place to do it.
 
-Not in this phase: the character, the notch, sound. He never speaks. Every surface stays a small non-activating panel; there is no main window and no Dock icon. No surface shows what was captured from the screen.
+Not in this phase: the brand, the notch, sound. The brand came in phase N7 as the mark, not a character (15.8). He never speaks. Every surface stays a small non-activating panel; there is no main window and no Dock icon. No surface shows what was captured from the screen.
 
 **As built, 15 November.** Drawn in Figma from the real screens: https://www.figma.com/design/GlLT4s5vxGiTuEnqTutghP ("Phew interface", in the drafts of GG Works). Three things below are no longer true: the acting consent screen (15.1, 15.5 F) was removed on your word, acting is on from the start; `KeyWindow.swift` and `PermissionsWindow.swift` (15.6) are replaced by `SetupPanel.swift`; the card grows on a 0.35 s ease-out, not a spring. Not built: the hint row, the multi-line ask field, the "To undo" line, the "can't be undone" tag.
 
@@ -141,13 +141,13 @@ Five sizes, two weights. Nothing else.
 | `ink3` | Light grey | Dim grey | `NSColor.tertiaryLabelColor` |
 | `hairline` | — | — | `NSColor.separatorColor`, 0.5 point |
 | `fill` | — | — | SwiftUI `.quaternary`: bubbles, key caps, quiet buttons |
-| `accent` | `#F2541B` | `#FF6B35` | Phew's one colour, a warm orange. Presence dot, ticks, the current-step bar. Shapes only, never text |
+| `accent` | `#F2541B` | `#FF6B35` | Phew's one colour, a warm orange. Ticks, the current-step bar. Shapes only, never text. The mark's orange is `22-brand.md` 22.4 |
 | `accentOnScreen` | `#F2541B` | `#F2541B` | Pointer and ring. One value in both modes, because they sit on your app's content, not on Phew's. Always with a white outline |
 | `ok` / `problem` | — | — | `NSColor.systemGreen` / `systemRed`, on a small symbol only |
 
 - The main button is black on light and white on dark (`ink` fill, `panel` text). The accent is never a button.
 - `#F2541B` has a contrast of about 3.5 to 1 on white and 4.8 to 1 on a dark window, enough for a shape, not for text.
-- The brand sheet comes with the character, after the MVP. If the colour changes then, it changes in this one token.
+- The brand sheet is `22-brand.md` (15.8). The accent stays `#F2541B`.
 - Increase Contrast: `surface` becomes `panel` with a 1-point `ink2` border.
 
 ### Space, corners, sizes
@@ -183,10 +183,10 @@ Five sizes, two weights. Nothing else.
 | `grow` | Spring, response 0.35, damping 0.86 (Core Animation: mass 1, stiffness 322, damping 31) | Card height as words arrive, opening the thread, the card moving aside | Frame set at once; content cross-fades in 0.16 s |
 | `travel` | Spring, response 0.5, damping 0.9 (stiffness 158, damping 22.6) | The pointer between spots, from and to the menu bar | Pointer fades out (`leave`) and in at the new spot (`appear`) |
 | `press` | 0.18 s: pointer scale 1 to 0.88 to 1; the ring fills with accent at 25%, fading in 0.3 s | Each action he takes | The ring fill only |
-| `breathe` | 1.6 s cycle, ease in and out: opacity 1 to 0.4; on the pointer, scale 1 to 1.12 | Thinking (the dot), looking (the pointer) | Opacity only, on both |
+| `breathe` | 1.6 s cycle, ease in and out: opacity 1 to 0.4; on the pointer, scale 1 to 1.12 | Looking (the pointer). The mark thinks by its travelling gap instead (22.5) | Opacity only, on both |
 | `tick` | 0.12 s: opacity 0 to 1, scale 0.6 to 1 | A step or action marked done | Opacity only |
 
-What moves: the card's bottom edge, the pointer, the ring, the presence dot. What never moves:
+What moves: the card's bottom edge, the pointer, the ring, the mark (22.5). What never moves:
 - The card's top-left corner while it grows.
 - Text. Words appear in place as they arrive: no typing effect, no fade per word, no sliding lines.
 - Panels on opening: none slides in from an edge.
@@ -230,14 +230,14 @@ One box, 400 wide, three parts: header (36), body, footer (36).
 ```
 
 - Header: the presence dot at 16 from the left; your question in `small`, `ink2`, one line, cut with "…" (nothing if you asked with no words); the close control, `xmark` 11 pt semibold in `ink2`, inside a 28 × 28 hit area. The header is the drag area once the thread is open; the cursor shows the open hand over it.
-- The dot is Phew. Still when he is done, `breathe` while he thinks, looks or acts.
+- The mark is Phew (15.8): it tells thinking, acting, pointing, done and could not by the shell alone, 22.5.
 - Place: where the ask panel was. It grows downward with `grow`; if it would leave the screen, it is moved up, not shrunk.
 
 States of the body and footer:
 
 | State | Body | Footer |
 |---|---|---|
-| **Thinking** | Empty. The card is header only, 36 high. The dot breathes. No spinner, no "Thinking…" (VoiceOver reads the dot as "Thinking") | None |
+| **Thinking** | Empty. The card is header only, 36 high. The mark thinks (its gap travels). No spinner, no "Thinking…" (VoiceOver reads the mark as "Thinking") | None |
 | **Answer** | The words in `body`, appearing as they arrive. A note ("Notes is on your Never read list…") above them in `small`, `ink2`. Scrolls beyond 420 | "Reply…" in `ink3`. The whole card opens the thread on a click, as today |
 | **Conversation** | Oldest at the top. Your messages right-aligned on `fill`, radius 10, padding 8 and 12, at most 300 wide. His answers plain, full width. 12 between turns. The newest stays in view. Up to 520 high | A reply field, 1 to 6 lines, `body`, with the cursor in it. While he answers and you have sent the next reply: "Sent when this answer is done." in `small`, `ink2`, under the field |
 | **Guide** | The answer, if any, then the steps, one row each, 8 apart. A done step: a tick in `ok` then the text in `ink2`. The current step: a 2-point `accent` bar at the left edge of the row, text in `strong`. A coming step: its number in `ink3`, text in `ink2`. A click on a row jumps to it | "Step 2 of 5" in `small`, `ink2`, left. "Reply…" stays on the right when the thread is closed |
@@ -266,7 +266,7 @@ In a thread, a past guide or a past job is folded to one line in `ink2` ("Guide,
 - An action that cannot be undone carries a tag at the end of its row: "can't be undone", in `tag`, on `fill`, radius 6.
 - Footer, 44 high, pinned: on the left "Working in Mail · 3 actions" in `small`, `ink2`. On the right the Stop button: 28 high, `fill` background, a `stop.fill` symbol and "Stop" in `strong`. It is the only button on the card and it stays in that corner for the whole job. It is not red: stopping is the safe choice.
 - The close control is hidden while he acts, so the only way to end the job from the card is Stop. The shortcut and using the app yourself stop him too, as in 13.4.
-- **Done:** the dot goes still. Under the list, one line in `body`: what was done. Under it, when the app has Undo, "To undo: Command-Z in Mail." in `small`, `ink2`. The footer returns to "Reply…" and the close control comes back.
+- **Done:** the mark shows done, then rests. Under the list, one line in `body`: what was done. Under it, when the app has Undo, "To undo: Command-Z in Mail." in `small`, `ink2`. The footer returns to "Reply…" and the close control comes back.
 - **Stopped, by you or by him:** the list stays. Under it one row as in Error, with his sentence from 13.4 ("The button is not where it was. I stopped."). When you stopped him: "Stopped." in `ink2`, no symbol. Footer: "Reply…".
 - The list lives in memory and goes when the card closes.
 
@@ -278,18 +278,18 @@ In a thread, a past guide or a past job is folded to one line in `ink2` ("Guide,
 - **Looking:** the pointer breathes (`breathe`, scale to 1.12). Slower and smaller than today's pulse.
 - **Acting:** the pointer rests on the centre of the target, not beside it: he is the one pressing. Each action plays `press` once. Between actions the ring stays on the spot he is acting on; this ring is the acting mark on screen that 13.4 asks for.
 - The card moves aside (`grow`) when it covers the spot, as today.
-- No trail, no sparkle, no screen-wide outline. Those belong to the character phase or not at all.
+- No trail, no sparkle, no screen-wide outline. Not at all: the brand adds none (22.7).
 
 ### D. Menu bar icon and menu
 
-The icon is the second half of the acting mark. It is a template symbol, so it follows the menu bar's colour.
+The icon is the second half of the acting mark. It is the small mark of `22-brand.md` as a template image, so it follows the menu bar's colour (set B of 22.5; built in N7).
 
 | State | Icon |
 |---|---|
-| Resting | `cursorarrow.rays`, as today |
-| Acting | `cursorarrow.motionlines`, for the whole job |
-| Research tasks running | The resting icon followed by the number of tasks, in the menu bar's text style |
-| A result waits | The resting icon with a 5-point dot at its top right. The dot is the only thing that may be in `accent` |
+| Resting | The small mark, a line |
+| Acting | The small mark, full, for the whole job |
+| Research tasks running | The icon followed by the number of tasks, in the menu bar's text style |
+| A result waits | The small mark, full, with a dot beside it in the menu bar's text style. Nothing is added to the mark itself |
 
 The icon never animates. He never opens anything by himself.
 
@@ -457,3 +457,7 @@ Named here, not edited:
 - The pointer's colour was the Mac's accent colour. It is now Phew's own.
 - The ask field shows a hint about the empty Return. `02-vision.md` 2.5 says "one way in"; the hint adds no choice, it only says what already happens.
 - First run gains two buttons that did not exist: "Open System Settings" and "Reopen Phew". They are what lets a new user reach a first answer without help (PX.5).
+
+## 15.8 The brand (phase N7)
+
+The brand is `22-brand.md`, approved on 17 November 2026. The character idea of this file (a chick, a face, a body) is replaced by the mark: the top of an eggshell in one heavy line, the name `phew!` in Outfit Medium kept as its outline, and states told by the shell alone. Where this file still says "the presence dot" (the drawings of 15.5 A and B, the build order of 15.6), read the mark: the small mark, 16 points, on the ask panel, the card and the import panel; the mark at 22 points at the notch, only while the shortcut is held. The shapes, colours and the one mapping from the app's moments to the mark's states are in `Phew/Shell/Brand.swift`; the brand colours sit beside these tokens in `Design.swift`. The tokens of 15.4 do not change.

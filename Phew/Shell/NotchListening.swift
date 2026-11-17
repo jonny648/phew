@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Hold to talk, at the notch (P6, the owner's request of 16 November): while the shortcut is held a black shape grows
-/// out of the notch, the way the system grows its own, with Phew's dot, a small level of the voice and the words as
+/// out of the notch, the way the system grows its own, with Phew's mark, a small level of the voice and the words as
 /// he hears them. Without a notch, a black pill drops from under the menu bar's centre. A clear panel that every
 /// click goes through, sized to the shape only, never key. What it shows comes from `Talk.Look`.
 @MainActor
@@ -47,7 +47,7 @@ final class NotchListening {
         shellLog("notch: listening, notch \(notch != nil), reduce motion \(reduce), placed \(panel.frame == geometry.window), window \(panel.windowNumber)")
     }
 
-    /// Sent: the dot pulses once, then the shape goes back into the notch. Escape: the same, quicker, no pulse.
+    /// Sent: the mark swells once, then the shape goes back into the notch. Escape: the same, quicker, no pulse.
     private func close(_ end: NotchModel.End) {
         guard model.open, model.ended == nil else { return }
         let mine = shows
@@ -100,7 +100,7 @@ final class NotchModel: ObservableObject {
 
     /// Bars and words move only while listening, not under the problem line.
     var listening: Bool { open && ended == nil && line == nil }
-    /// Nothing heard yet, or a pause: the bars rest and the dot breathes.
+    /// Nothing heard yet, or a pause: the bars rest.
     var silent: Bool { level < 0.08 }
 
     func reset() { open = false; ended = nil; words = ""; line = nil; level = 0; beat = 0; pulse = false }
@@ -136,7 +136,7 @@ struct NotchGeometry: Equatable {
     /// Grown while listening, and taller for the problem line.
     var grown: CGRect
     var tall: CGRect
-    /// The notch's height: the band beside the camera that holds the dot and the bars. 0 without a notch.
+    /// The notch's height: the band beside the camera that holds the mark and the bars. 0 without a notch.
     var band: CGFloat
     /// The panel: the grown shape and its shoulders, nothing more; whole points, as AppKit places windows, so the
     /// shape stays centred on the notch.
@@ -244,7 +244,7 @@ struct NotchView: View {
     }
 }
 
-/// Dot, level and words. Beside the camera on a notch (dot left, level right, words under it); in one row on the pill.
+/// Mark, level and words. Beside the camera on a notch (mark left, level right, words under it); in one row on the pill.
 struct NotchContent: View {
     @ObservedObject var model: NotchModel
     let band: CGFloat
@@ -253,7 +253,7 @@ struct NotchContent: View {
         if band > 0 {
             VStack(spacing: 0) {
                 HStack {
-                    dot
+                    mark
                     Spacer()
                     LevelBars(level: model.level, beat: model.beat)
                 }
@@ -264,7 +264,7 @@ struct NotchContent: View {
             }
         } else {
             HStack(spacing: Design.Space.s12) {
-                dot
+                mark
                 words
                 if model.line == nil { LevelBars(level: model.level, beat: model.beat) }
             }
@@ -272,10 +272,11 @@ struct NotchContent: View {
         }
     }
 
-    private var dot: some View {
-        PresenceDot(breathing: model.listening && model.silent, color: Design.Ink.accentOnScreen)
-            .scaleEffect(model.pulse ? 1.7 : 1)
-            .accessibilityLabel("Listening")
+    private var mark: some View {
+        // Closing, he settles back down as the shape goes; the whole panel is gone at rest.
+        BrandMark(state: Brand.atNotch(open: model.open, problem: model.line != nil) ?? .resting,
+                  size: Design.Size.notchMark, onBlack: true)
+            .scaleEffect(model.pulse ? 1.2 : 1)
     }
 
     @ViewBuilder private var words: some View {

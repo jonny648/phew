@@ -44,6 +44,19 @@ enum Design {
         static let problem = Color(nsColor: .systemRed)
     }
 
+    /// The brand's colours, docs/22-brand.md 22.4. In the app "ink" is the label colour; these are for the mark on
+    /// black (the notch), the app icon and the active line.
+    enum Brand {
+        static let ink = NSColor(srgbRed: 0x14 / 255, green: 0x14 / 255, blue: 0x14 / 255, alpha: 1)  // #141414
+        static let shellWhite = NSColor(srgbRed: 0xF4 / 255, green: 0xEF / 255, blue: 0xE6 / 255, alpha: 1)  // #F4EFE6
+        static let white = NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)  // #FFFFFF
+        /// A third ground, for ink only: never orange on it.
+        static let warmGrey = NSColor(srgbRed: 0xD9 / 255, green: 0xD2 / 255, blue: 0xC4 / 255, alpha: 1)  // #D9D2C4
+        /// The active line; with Increase Contrast on light grounds, `orangeHigh`. Never text, never a field.
+        static let orange = NSColor(srgbRed: 0xF2 / 255, green: 0x54 / 255, blue: 0x1B / 255, alpha: 1)  // #F2541B
+        static let orangeHigh = NSColor(srgbRed: 0xD9 / 255, green: 0x44 / 255, blue: 0x0F / 255, alpha: 1)  // #D9440F
+    }
+
     enum Space {
         static let s4: CGFloat = 4, s8: CGFloat = 8, s12: CGFloat = 12, s16: CGFloat = 16, s20: CGFloat = 20, s24: CGFloat = 24
     }
@@ -67,7 +80,9 @@ enum Design {
         static let threadMax: CGFloat = 520
         /// Header and footer of the card.
         static let bar: CGFloat = 36
-        static let dot: CGFloat = 8
+        /// The small mark on the ask panel and the card, and the mark at the notch (22.6).
+        static let mark: CGFloat = 16
+        static let notchMark: CGFloat = 22
         static let hairline: CGFloat = 0.5
         /// The footer while he acts.
         static let actingBar: CGFloat = 44
@@ -297,25 +312,5 @@ struct PanelList<Rows: View>: View {
         .padding(Design.Space.s20)
         .frame(width: Design.Size.panelWidth, height: isEmpty ? Design.Size.emptyPanelHeight : Design.Size.panelHeight,
                alignment: .topLeading)
-    }
-}
-
-/// Phew, as an 8-point dot in his colour: still when he is done, breathing while he thinks.
-struct PresenceDot: View {
-    var breathing = false
-    var color = Design.Ink.accent
-    @State private var dim = false
-
-    var body: some View {
-        Circle()
-            .fill(color)
-            .frame(width: Design.Size.dot, height: Design.Size.dot)
-            .opacity(breathing && dim ? 0.4 : 1)
-            // Opacity only, so the same with Reduce Motion.
-            .animation(breathing ? Design.Motion.breathe : .default, value: dim)
-            .onAppear { dim = breathing }
-            .onChange(of: breathing) { dim = breathing }
-            .accessibilityElement()
-            .accessibilityLabel(breathing ? "Thinking" : "Phew")
     }
 }

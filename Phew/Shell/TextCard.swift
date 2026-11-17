@@ -227,6 +227,8 @@ final class TextCard: EditPanel {
                     return
                 }
                 model.problem = Self.sentence(for: failure)
+            } else {
+                model.answeredAt = Date()
             }
             // D7: the filter changed the user's own words; never after a send as it is, so one press is one message.
             model.leftOut = failure == nil && answered && !asItIs && SecretsFilter.clean(question) != question
@@ -459,6 +461,8 @@ final class CardModel: ObservableObject {
     @Published var canUndo = false
     /// D7: the secrets filter changed the user's own words of this turn: one line, and "Send as it is". Gone with the turn.
     @Published var leftOut = false
+    /// When the last answer finished with no problem: the mark shows "done" for two seconds (22.5).
+    @Published var answeredAt: Date?
     private(set) var pieces = 0
 
     static let leftOutLine = "Something that looked like a key or password was left out of what was sent."
@@ -515,7 +519,7 @@ final class CardModel: ObservableObject {
         started = true
         self.question = question
         thinking = true; text = ""; steps = []; current = 0; problem = nil; note = nil; pieces = 0
-        acting = false; actions = []; actingApp = ""; ended = nil; saved = nil; canUndo = false; leftOut = false
+        acting = false; actions = []; actingApp = ""; ended = nil; saved = nil; canUndo = false; leftOut = false; answeredAt = nil
     }
 
     func startActing(in app: String) {
@@ -529,7 +533,7 @@ final class CardModel: ObservableObject {
     func reset() {
         question = ""; thinking = true; text = ""; steps = []; current = 0; problem = nil; note = nil; pieces = 0
         history = []; open = false; draft = ""; queued = false; started = false
-        acting = false; actions = []; actingApp = ""; ended = nil; saved = nil; canUndo = false; leftOut = false
+        acting = false; actions = []; actingApp = ""; ended = nil; saved = nil; canUndo = false; leftOut = false; answeredAt = nil
     }
 }
 
@@ -585,7 +589,7 @@ private struct CardView: View {
     /// the thread is open.
     private var header: some View {
         HStack(spacing: Design.Space.s12) {
-            PresenceDot(breathing: model.thinking && model.problem == nil)
+            CardMark(model: model)
             Text(verbatim: model.open ? "" : model.question)
                 .font(Design.Text.small)
                 .foregroundStyle(Design.Ink.secondary)
@@ -828,5 +832,24 @@ private extension NSView {
         if let field = self as? NSTextField, field.isEditable { return field }
         if let view = self as? NSTextView, view.isEditable { return view }
         return subviews.lazy.compactMap(\.editableText).first
+    }
+}
+
+/// Phew on the card, by the state of the turn (22.5): "done" for two seconds after an answer, then resting.
+private struct CardMark: View {
+    @ObservedObject var model: CardModel
+    /// Moves once, two seconds after an answer, so "done" goes back to resting.
+    @State private var tick = 0
+
+    var body: some View {
+        let moment = Brand.Moment(thinking: model.thinking, acting: model.acting, pointing: !model.steps.isEmpty,
+                                  failed: model.problem != nil, answeredAt: model.answeredAt)
+        let _ = tick
+        BrandMark(state: Brand.state(moment, now: Date()), size: Design.Size.mark)
+            .task(id: model.answeredAt) {
+                guard model.answeredAt != nil else { return }
+                try? await Task.sleep(for: .seconds(Brand.doneHold))
+                tick += 1
+            }
     }
 }

@@ -101,7 +101,7 @@ private struct InputField: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: Design.Space.s12) {
-                PresenceDot()
+                BrandMark(state: .resting, size: Design.Size.mark)
                 TextField("Ask Phew", text: $text)
                     .textFieldStyle(.plain)
                     .font(Design.Text.ask)
@@ -132,6 +132,6 @@ private struct LineRow: View {
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, minHeight: Design.Size.hintRow - Design.Space.s8, alignment: .topLeading)
             .padding(.bottom, Design.Space.s8)
-            .padding(.leading, Design.Size.dot + Design.Space.s12)  // under the words, not the dot
+            .padding(.leading, Design.Size.mark + Design.Space.s12)  // under the words, not the mark
     }
 }

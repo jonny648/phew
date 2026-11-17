@@ -16,7 +16,7 @@ Phew works with people who create projects on a Mac: he does the second-level jo
 
 ## 2.3 Who Phew is
 
-- A small black chick, still carrying its eggshell.
+- His mark is the top of an eggshell, just lifted, drawn in one heavy line (`22-brand.md`). No face, no character.
 - Shy. He lives in the menu bar and comes out only when called.
 - Gentle and smooth. He does not talk aloud. He listens well.
 - He understands what you are doing and works on it with you.

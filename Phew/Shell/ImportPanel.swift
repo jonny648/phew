@@ -415,7 +415,7 @@ struct ImportView: View {
     private var sorting: some View {
         VStack(spacing: Design.Space.s12) {
             HStack(spacing: Design.Space.s8) {
-                PresenceDot(breathing: true)
+                BrandMark(state: .thinking, size: Design.Size.mark)
                 Text(verbatim: model.sortingLine).font(Design.Text.body).foregroundStyle(Design.Ink.secondary).monospacedDigit()
             }
             Button("Cancel") { model.cancel() }.buttonStyle(QuietButton())

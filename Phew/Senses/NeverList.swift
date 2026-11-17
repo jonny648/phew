@@ -170,6 +170,8 @@ enum NeverList {
             case .delete?, .rename?, .noteBody?, .complete?, .move?: return agent || facts.guests || facts.repeats
             // R6: lines added to a note already there change it: an agent's waits, as every change.
             case let .append(_, title)?: return agent && !title.isEmpty
+            // NA.12: an agent has no Undo, so cells it writes over wait for the confirm like every other change.
+            case .changeCells?: return agent
             // Adds, cells written over with what they held kept, and Undo itself.
             default: return false
             }

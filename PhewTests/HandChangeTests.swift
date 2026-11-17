@@ -340,11 +340,12 @@ final class HandChangeTests: XCTestCase {
         XCTAssertTrue(NeverList.final(step(.complete(title: "Made-up")), facts: HandFacts(repeats: true)))
         XCTAssertFalse(NeverList.final(step(.rename(.reminder, title: "Made-up", to: "x"))), "kept: undoable")
         for script in [HandScript.rename(.reminder, title: "Made-up", to: "x"), .noteBody(title: "Made-up", body: "x"),
-                       .complete(title: "Made-up"), .move(title: "Made-up", start: Date(timeIntervalSince1970: 0), end: nil)] {
+                       .complete(title: "Made-up"), .move(title: "Made-up", start: Date(timeIntervalSince1970: 0), end: nil),
+                       .changeCells(book: "x", top: "A1", rows: [["1"]])] {
             XCTAssertTrue(NeverList.final(step(script), agent: true), "an agent has no Undo: \(script)")
         }
-        for script in [HandScript.note(title: "Made-up", body: ""), .changeCells(book: "x", top: "A1", rows: [["1"]]),
-                       .restore(.note(id: "", title: "x", body: ""))] {
+        XCTAssertFalse(NeverList.final(step(.changeCells(book: "x", top: "A1", rows: [["1"]]))), "a watched job keeps what they held")
+        for script in [HandScript.note(title: "Made-up", body: ""), .restore(.note(id: "", title: "x", body: ""))] {
             XCTAssertFalse(NeverList.final(step(script), agent: true), "\(script)")
         }
     }

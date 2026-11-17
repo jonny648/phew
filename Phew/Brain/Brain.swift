@@ -83,6 +83,19 @@ protocol Brain: Sendable {
     func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, add: AddItem?) -> AsyncThrowingStream<TaskEvent, Error>
     /// The same for a task given aloud: `spoken` as in `answer`.
     func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?) -> AsyncThrowingStream<TaskEvent, Error>
+    /// NA.11, NA.12: the same, with the Shell's door for `change_file`, which keeps a file change waiting for the
+    /// user's confirm. The task reads files only in the folders of `readFolders()`; with none it has no file tool.
+    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?,
+                 change: ChangeFile?) -> AsyncThrowingStream<TaskEvent, Error>
+
+    /// NA.11: the menu's "Folders he may read", as plain paths. `addReadFolder` is false for what is not a folder or
+    /// is private whatever the user chose (a hidden or keychain folder).
+    func readFolders() -> [URL]
+    func addReadFolder(_ folder: URL) -> Bool
+    func removeReadFolder(_ folder: URL)
+    /// NA.12: the user confirmed a waiting file change in the menu: the old file to the Trash, then the new text at
+    /// the same path; nothing written when the file changed since it was asked for, or the Trash refused it.
+    func changeFile(_ change: FileChange) async -> FileChangeEnd
 
     /// A turn the Shell showed without asking (a task's report opened from the menu), so a reply can follow it.
     func keepTurn(_ question: String, answer: String)
@@ -315,6 +328,15 @@ extension Brain {
     func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?) -> AsyncThrowingStream<TaskEvent, Error> {
         runTask(words, packet: packet, number: number, folder: folder, add: add)
     }
+    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?,
+                 change: ChangeFile?) -> AsyncThrowingStream<TaskEvent, Error> {
+        runTask(words, packet: packet, number: number, folder: folder, spoken: spoken, add: add)
+    }
+    /// A Brain without file tools reads no folder and changes no file.
+    func readFolders() -> [URL] { [] }
+    func addReadFolder(_ folder: URL) -> Bool { false }
+    func removeReadFolder(_ folder: URL) {}
+    func changeFile(_ change: FileChange) async -> FileChangeEnd { .refused }
     func keepTurn(_ question: String, answer: String) {}
 
     /// A Brain without a Map imports nothing.

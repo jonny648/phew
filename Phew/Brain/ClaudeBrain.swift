@@ -23,6 +23,10 @@ struct ClaudeBrain: Brain {
     var answerEarly = false
     /// D3: asked at each reply, so an earlier screen from an app put on the list since is never sent.
     var neverRead = NeverReadList.shared
+    /// NA.11: the folders the user let a research task read. Empty: a task has no file tool.
+    var fileFolders = ReadFolders()
+    /// NA.12: where a replaced file goes before its new text is written. Nil: the system's Trash. Tests pass a stand-in.
+    var trash: (@Sendable (URL) throws -> Void)? = nil
 
     /// Only when the Map cannot be opened.
     static let cannotRemember = "My memory isn't available right now, so nothing was stored."
@@ -297,6 +301,11 @@ extension ClaudeBrain {
     }
 
     func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?) -> AsyncThrowingStream<TaskEvent, Error> {
+        runTask(words, packet: packet, number: number, folder: folder, spoken: spoken, add: add, change: nil)
+    }
+
+    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?,
+                 change: ChangeFile?) -> AsyncThrowingStream<TaskEvent, Error> {
         let injected = tools, map = map, brain = self
         // The task was counted when its words were routed. N2.12: it sets aside its budget out of today's ceiling, so
         // tasks side by side cannot pass it together; a smaller reserve caps its cost, and past it the task ends
@@ -323,7 +332,9 @@ extension ClaudeBrain {
             return search.map(RunnerTools.init)
         }, projectMemory: {
             await brain.projectMemoryBlock(SecretsFilter.clean(words), packet: packet, store: await map.now()).map(Runner.withoutAddresses)
-        }, add: add, skills: skills, provider: provider, limits: taskLimits)
+        }, add: add, skills: skills,
+           files: fileFolders.folders.isEmpty ? nil : FileTools(folders: fileFolders, reads: taskLimits.fileReads, change: change),
+           provider: provider, limits: taskLimits)
         guard let limits else { return stream }
         // What the task did not spend goes back when it ends, fails or is stopped.
         return AsyncThrowingStream { continuation in
@@ -341,6 +352,16 @@ extension ClaudeBrain {
                 limits.release(task: number)
             }
         }
+    }
+
+    func readFolders() -> [URL] { fileFolders.folders }
+    func addReadFolder(_ folder: URL) -> Bool { fileFolders.add(folder) }
+    func removeReadFolder(_ folder: URL) { fileFolders.remove(folder) }
+
+    /// NA.12: the user confirmed a waiting file change in the menu. The one call to `Files.replace`. Logs nothing.
+    func changeFile(_ change: FileChange) async -> FileChangeEnd {
+        let folders = fileFolders.folders, trash = trash
+        return await Task.detached { Files.replace(change, folders: folders, trash: trash) }.value
     }
 
     func limitsToday() async -> LimitsToday? {

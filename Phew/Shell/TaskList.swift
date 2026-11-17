@@ -9,6 +9,7 @@ import AppKit
 /// A task acts only through `add_item`, in the background (PA.4): a script, through `Hand.act`, in an agent's job
 /// that does not watch the user. Never a click, never another app brought to the front. What cannot be undone or
 /// leaves the Mac waits in the menu for one confirm (N2.4); several may wait, each its own row, with Confirm all (R7).
+/// So does a change of a file the user has (NA.12), which the Brain writes only on that confirm, never the Hand.
 @MainActor
 final class TaskList: ObservableObject {
     static let most = 3
@@ -25,10 +26,12 @@ final class TaskList: ObservableObject {
 
     enum State: Equatable { case queued, running, ready, stopped, failed(BrainError) }
 
-    /// One action waiting for the user's confirm, with its own row in the menu.
+    /// One action waiting for the user's confirm, with its own row in the menu: a script for the Hand, or a file
+    /// change (NA.12) for the Brain. Exactly one of the two.
     struct Waiting: Identifiable, Equatable {
         let id: Int
-        let script: HandScript
+        var script: HandScript? = nil
+        var file: FileChange? = nil
     }
 
     struct Item: Identifiable {
@@ -50,6 +53,9 @@ final class TaskList: ObservableObject {
         /// The jobs of the changes the user confirmed, oldest first, each holding what it replaced, so the menu can
         /// undo them, newest first, until the result is opened (R29). Memory only.
         var undo: [HandJob] = []
+        /// NA.12: how each confirmed file change ended, until the result is opened or the line clicked. Memory only,
+        /// never logged.
+        var fileLines: [String] = []
 
         /// The menu's second line: the progress, and the size when it is deep.
         var line: String { deep ? "Deep task. \(progress)" : progress }
@@ -71,6 +77,8 @@ final class TaskList: ObservableObject {
     var confirms: [Item] { items.filter { !$0.waits.isEmpty } }
     /// Tasks with a confirmed change that can still be put back: one Undo row each.
     var undos: [Item] { items.filter { !$0.undo.isEmpty } }
+    /// Tasks with lines on confirmed file changes.
+    var fileLines: [Item] { items.filter { !$0.fileLines.isEmpty } }
 
     private let brain: any Brain
     private let hand: Hand
@@ -125,9 +133,11 @@ final class TaskList: ObservableObject {
 
     /// The task's run: its stream from the Brain, its progress, its end.
     private func begin(_ number: Int, words: String, packet: ContextPacket?, spoken: [Hearing]) {
-        let stream = brain.runTask(words, packet: packet, number: number, folder: folder(), spoken: spoken) { [weak self] script in
+        let stream = brain.runTask(words, packet: packet, number: number, folder: folder(), spoken: spoken, add: { [weak self] script in
             await self?.add(script, task: number) ?? HandEnd.stopped.rawValue
-        }
+        }, change: { [weak self] change in
+            await self?.wait(change, task: number) ?? HandEnd.stopped.rawValue
+        })
         tasks[number] = Task { [weak self] in
             var report: TaskReport?, failure: BrainError?
             do {
@@ -171,7 +181,7 @@ final class TaskList: ObservableObject {
 
     /// The user opens a waiting result: it leaves the Ready list.
     func open(_ number: Int) -> Item? {
-        update(number) { $0.opened = true; $0.undo = [] }
+        update(number) { $0.opened = true; $0.undo = []; $0.fileLines = [] }
         return items.first { $0.id == number }
     }
 
@@ -213,21 +223,17 @@ final class TaskList: ObservableObject {
     func add(_ script: HandScript, task number: Int) async -> String {
         let scripts: [HandScript]
         switch script {
-        case .note, .reminder, .event, .rename, .noteBody, .complete, .move, .delete: scripts = [script]
+        case .note, .reminder, .event, .rename, .noteBody, .complete, .move, .delete, .changeCells: scripts = [script]
         case .cells: scripts = [.workbook, script]
-        // Only whole new items, and changes or deletes of one named note, reminder or event.
-        case .append, .workbook, .changeCells, .restore: return AddItemTool.refused
+        // Only whole new items, changes or deletes of one named note, reminder or event, and cells of a named workbook.
+        case .append, .workbook, .restore: return AddItemTool.refused
         }
         guard tasks[number] != nil else { return HandEnd.stopped.rawValue }
         let end = await run(scripts, agent: true, task: number).end
         // R7: each waits in its own row, up to `mostWaits`; one more is refused, never queued unseen. The Hand did
         // nothing either way.
-        let refused = end == .needsConfirm && (items.first(where: { $0.id == number })?.waits.count ?? 0) >= Self.mostWaits
-        if end == .needsConfirm, !refused {
-            lastWait += 1
-            let wait = Waiting(id: lastWait, script: script)
-            update(number) { $0.waits.append(wait) }
-        }
+        let refused = end == .needsConfirm && full(number)
+        if end == .needsConfirm, !refused { keep(Waiting(id: 0, script: script), task: number) }
         shellLog("task \(number): item \(refused ? AddItemTool.refused : end.rawValue)")
         return refused ? AddItemTool.refused : end.rawValue
     }
@@ -237,13 +243,28 @@ final class TaskList: ObservableObject {
     /// ends the job; it is dropped, never retried, and the ones after it stay waiting. Returns the Hand's fixed word.
     @discardableResult
     func confirm(_ number: Int, only id: Int? = nil) async -> HandEnd {
-        let chosen = items.first(where: { $0.id == number })?.waits.filter { id == nil || $0.id == id } ?? []
-        guard !chosen.isEmpty else { return .stopped }
-        update(number) { $0.waits.removeAll(where: chosen.contains) }
-        let (end, job, tried) = await run(chosen.map(\.script), agent: false, task: number)
-        if tried < chosen.count { update(number) { $0.waits.insert(contentsOf: chosen[tried...], at: 0) } }
-        if !job.kept.isEmpty { update(number) { $0.undo.append(job) } }
-        shellLog("task \(number): confirmed \(tried) of \(chosen.count), \(end.rawValue)")
+        let all = items.first(where: { $0.id == number })?.waits.filter { id == nil || $0.id == id } ?? []
+        guard !all.isEmpty else { return .stopped }
+        update(number) { $0.waits.removeAll(where: all.contains) }
+        // The Hand's actions first, in one job; then the file changes, through the Brain only (NA.12).
+        let chosen = all.filter { $0.script != nil }, files = all.filter { $0.file != nil }
+        var end = HandEnd.done, tried = 0
+        if !chosen.isEmpty {
+            let (ended, job, ran) = await run(chosen.compactMap(\.script), agent: false, task: number)
+            (end, tried) = (ended, ran)
+            if tried < chosen.count { update(number) { $0.waits.insert(contentsOf: chosen[tried...], at: 0) } }
+            if !job.kept.isEmpty { update(number) { $0.undo.append(job) } }
+        }
+        for (n, wait) in files.enumerated() {
+            guard end == .done, let change = wait.file else {
+                update(number) { $0.waits.append(contentsOf: files[n...]) }
+                break
+            }
+            // A file change that did not end done is dropped, never retried: its line says why.
+            end = await confirmFile(change, task: number) == .done ? .done : .failed
+            tried += 1
+        }
+        shellLog("task \(number): confirmed \(tried) of \(all.count), \(end.rawValue)")
         return end
     }
 
@@ -289,6 +310,57 @@ final class TaskList: ObservableObject {
     func dismiss(_ number: Int, only id: Int? = nil) {
         update(number) { item in item.waits.removeAll { id == nil || $0.id == id } }
         shellLog("task \(number): waiting item dismissed")
+    }
+
+    // MARK: A file change, behind the confirm (NA.12)
+
+    /// The task's waiting rows are at their ceiling (R7).
+    private func full(_ number: Int) -> Bool {
+        (items.first(where: { $0.id == number })?.waits.count ?? 0) >= Self.mostWaits
+    }
+
+    private func keep(_ wait: Waiting, task number: Int) {
+        lastWait += 1
+        let wait = Waiting(id: lastWait, script: wait.script, file: wait.file)
+        update(number) { $0.waits.append(wait) }
+    }
+
+    /// The Runner's `change_file`: nothing is written now. It waits in the menu as one more row of the task, inside the
+    /// same ceiling, for a confirm. Returns the fixed word: `needsConfirm`, `off` with acting off, `refused` at the
+    /// ceiling.
+    func wait(_ change: FileChange, task number: Int) async -> String {
+        guard tasks[number] != nil else { return HandEnd.stopped.rawValue }
+        let word = !hand.allowed ? HandEnd.off.rawValue : full(number) ? AddItemTool.refused : HandEnd.needsConfirm.rawValue
+        if word == HandEnd.needsConfirm.rawValue { keep(Waiting(id: 0, file: change), task: number) }
+        shellLog("task \(number): file change \(word)")
+        return word
+    }
+
+    /// Confirm of one file change: the Brain moves the old file to the Trash, then writes the new text. A line then
+    /// says how it ended.
+    func confirmFile(_ change: FileChange, task number: Int) async -> FileChangeEnd {
+        let end = await brain.changeFile(change)
+        update(number) { $0.fileLines.append(Self.fileLine(end, change.name)) }
+        shellLog("task \(number): confirmed file change \(end.rawValue)")
+        return end
+    }
+
+    /// The lines were read: they leave the menu.
+    func clearFileLines(_ number: Int) { update(number) { $0.fileLines = [] } }
+
+    /// The confirm row of a file change, with how many lines change. Memory only, never logged.
+    static func asks(_ change: FileChange) -> String {
+        "Waiting for you: replace the text of “\(change.name)”, \(change.lines) line\(change.lines == 1 ? "" : "s") changed?"
+    }
+
+    static func fileLine(_ end: FileChangeEnd, _ name: String) -> String {
+        switch end {
+        case .done: "The text of “\(name)” was replaced. The old version is in the Trash."
+        case .changedSince: "“\(name)” was not changed: the file changed since Phew read it."
+        case .notTrashed: "“\(name)” was not changed: it could not be moved to the Trash."
+        case .notWritten: "“\(name)” is in the Trash, but the new text could not be written."
+        case .refused: "“\(name)” was not changed: it is no longer in a folder Phew may read."
+        }
     }
 
     /// `tried`: how many scripts reached the Hand, the last one ending `end`.

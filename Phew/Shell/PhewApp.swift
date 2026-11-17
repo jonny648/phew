@@ -41,6 +41,7 @@ struct PhewApp: App {
                 Button("Export the Map…") { delegate.showExport() }
                 Button("Never-read apps…") { delegate.showNeverRead() }
                 Button("Skills…") { delegate.showSkills() }
+                Button("Folders he may read…") { delegate.showReadFolders() }
             }
             Menu("Reports") {
                 Button("Choose reports folder…") { delegate.chooseReportsFolder() }
@@ -83,7 +84,7 @@ private struct TaskEntries: View {
         // task with more than one waiting, runs them one after another.
         ForEach(tasks.confirms) { item in
             ForEach(item.waits) { wait in
-                Menu(TaskList.asks(wait.script)) {
+                Menu(wait.script.map(TaskList.asks) ?? wait.file.map(TaskList.asks) ?? "") {
                     Button("Confirm") { Task { await tasks.confirm(item.id, only: wait.id) } }
                     Button("Dismiss") { tasks.dismiss(item.id, only: wait.id) }
                 }
@@ -96,7 +97,12 @@ private struct TaskEntries: View {
         ForEach(tasks.undos) { item in
             Button("Undo the change confirmed for “\(item.title)”") { Task { await tasks.undo(item.id) } }
         }
-        if !tasks.running.isEmpty || !tasks.queue.isEmpty || !tasks.waiting.isEmpty || !tasks.confirms.isEmpty || !tasks.undos.isEmpty { Divider() }
+        // NA.12: how confirmed file changes ended, until the result is opened or the line is clicked.
+        ForEach(tasks.fileLines) { item in
+            ForEach(Array(item.fileLines.enumerated()), id: \.offset) { _, line in Button(line) { tasks.clearFileLines(item.id) } }
+        }
+        if !tasks.running.isEmpty || !tasks.queue.isEmpty || !tasks.waiting.isEmpty || !tasks.confirms.isEmpty || !tasks.undos.isEmpty
+            || !tasks.fileLines.isEmpty { Divider() }
     }
 }
 
@@ -433,6 +439,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func showSkills() {
         menuPanel.show(title: "Skills", SkillsView(model: SkillsModel(brain: brain)))
+    }
+
+    /// NA.11: the folders a research task may read. A folder is added through the system folder window.
+    func showReadFolders() {
+        let model = ReadFoldersModel(brain: brain)
+        // After SwiftUI has drawn the new list, so the fit reads its size.
+        model.changed = { [unowned self] in DispatchQueue.main.async { self.menuPanel.fit(keyboard: false) } }
+        menuPanel.show(title: "Folders he may read", ReadFoldersView(model: model) { [unowned self] in
+            chooseFolder("read folder", message: "A research task may read the files in this folder when it needs them.",
+                         create: false, from: nil) { model.add($0) }
+        })
     }
 
     func showLimits() {

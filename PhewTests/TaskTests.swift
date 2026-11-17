@@ -379,7 +379,7 @@ final class TaskTests: XCTestCase {
         XCTAssertEqual(item.waits.map(\.script), [.delete(.note, title: "Made-up plan"), .delete(.reminder, title: "Made-up call"),
                                                   .rename(.reminder, title: "Made-up review", to: "Made-up review later")])
         XCTAssertEqual(Set(item.waits.map(\.id)).count, 3, "a row each")
-        XCTAssertEqual(TaskList.asks(item.waits[0].script), "Waiting for you: Delete the note “Made-up plan”?")
+        XCTAssertEqual(TaskList.asks(try XCTUnwrap(item.waits[0].script)), "Waiting for you: Delete the note “Made-up plan”?")
         let markdown = try XCTUnwrap(item.report?.markdown)
         XCTAssertTrue(markdown.contains("## Waiting for your confirm in Phew's menu\n\n- Deleted note “Made-up plan”\n- Deleted reminder “Made-up call”\n- Renamed reminder “Made-up review”"), markdown)
         // Confirm all runs exactly those actions, in order, through the Hand, as the user's own.

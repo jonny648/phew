@@ -237,7 +237,7 @@ final class HandInputTests: XCTestCase {
         func result(_ step: HandStep, agent: Bool = false) -> HandResult { let hand = self.hand(); return hand.act(step, in: job(hand, agent: agent)) }
         for chord in ["cmd+delete", "cmd+option+delete", "cmd+forwarddelete", "cmd+return", "cmd+shift+return", "cmd+shift+d"] {
             XCTAssertEqual(result(try keys(chord)), HandResult(end: .done, final: true), chord)
-            XCTAssertEqual(result(try keys(chord), agent: true).end, .needsConfirm, chord)
+            XCTAssertEqual(result(try keys(chord), agent: true).end, .failed, chord)  // an agent's job never presses keys at all
         }
         for chord in ["cmd+s", "cmd+z", "delete", "forwarddelete", "cmd+b", "return", "space", "shift+return", "tab"] {
             XCTAssertEqual(result(try keys(chord)), HandResult(end: .done), chord)
@@ -255,6 +255,26 @@ final class HandInputTests: XCTestCase {
         // Typed text with a new line: Return in a web form.
         XCTAssertTrue(result(typed("Made up\nline")).final)
         XCTAssertFalse(result(typed("Made up line")).final)
+    }
+
+    /// Control characters are keys in disguise: escape, delete, end of text. A new line and a tab are text.
+    func testTypedControlCharactersAreRefused() {
+        func end(_ text: String) -> HandEnd { let hand = self.hand(); return hand.act(typed(text), in: job(hand)).end }
+        for hidden in ["made\u{1B}up", "made\u{7F}up", "made\u{03}up", "made\u{08}up"] { XCTAssertEqual(end(hidden), .failed, hidden.debugDescription) }
+        XCTAssertEqual(fake.sentCount, 0)
+        XCTAssertEqual(end("made\tup"), .done)
+    }
+
+    /// An agent's job acts only through scripts: a press, click, scroll, drag or key in it is refused by the Hand itself.
+    func testAnAgentsJobNeverClicksTypesOrPressesKeys() throws {
+        let press = fake.add("Bold", frame: CGRect(x: 10, y: 10, width: 40, height: 20))
+        var click = press; click.kind = .click
+        var scroll = press; scroll.kind = .scroll; scroll.amount = 3
+        for step in [press, click, scroll, try keys("cmd+b"), typed("made up")] {
+            let hand = self.hand()
+            XCTAssertEqual(hand.act(step, in: job(hand, agent: true)).end, .failed, "\(step.kind)")
+        }
+        XCTAssertEqual(fake.sentCount, 0, "nothing was sent")
     }
 
     func testTypedTextIsCappedAndLoggedAsACountOnly() throws {
@@ -314,10 +334,10 @@ final class HandInputTests: XCTestCase {
         XCTAssertFalse(result(pointed(.scroll, on: unnamed)).final)
         // A click at a bare canvas point is on no control.
         XCTAssertFalse(result(HandStep(kind: .click, pid: FakeSurface.pid, frame: CGRect(x: 500, y: 500, width: 0, height: 0))).final)
-        // An agent's waits for the confirm, and nothing is sent.
+        // An agent's job never presses or clicks at all (only scripts), so nothing is sent.
         let sent = fake.sentCount
-        XCTAssertEqual(result(ok, agent: true).end, .needsConfirm)
-        XCTAssertEqual(result(unnamed, agent: true).end, .needsConfirm)
+        XCTAssertEqual(result(ok, agent: true).end, .failed)
+        XCTAssertEqual(result(unnamed, agent: true).end, .failed)
         XCTAssertEqual(fake.sentCount, sent)
     }
 

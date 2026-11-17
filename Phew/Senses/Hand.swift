@@ -675,6 +675,8 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
                        left: inout Bool) -> HandEnd {
         guard allowed else { return .off }
         if step.kind == .script { return script(step, job: job, final: &final, left: &left) }
+        // An agent in the background acts only through scripts: it never clicks, types or switches app, whoever asks.
+        if job.agent { return .failed }
         if step.kind == .front { return front(step.app, job: job) }
         if step.kind == .keys { return keys(step, job: job, role: &role, final: &final) }
         // The Never list, first the app, before anything of it is read.
@@ -739,7 +741,9 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         let number = NumberFormatter()
         number.locale = locale
         number.numberStyle = .decimal
-        if let x = number.number(from: a), let y = number.number(from: b) { return x == y }
+        // A leading zero is part of a code (a ZIP, a phone number, an id), not of a number: "02134" is not "2134".
+        let coded = { (s: String) in s.wholeMatch(of: /[-+]?0\d.*/) != nil }
+        if !coded(a), !coded(b), let x = number.number(from: a), let y = number.number(from: b) { return x == y }
         func day(_ s: String) -> Date? {
             [DateFormatter.Style.short, .medium, .long].lazy.compactMap { style in
                 let date = DateFormatter()
@@ -784,7 +788,9 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
                                        focusedSecure: surface.focusedIsSecure(step.pid), texts: [focus?.name ?? ""]) { return end }
         if let chord = step.chord {
             if NeverList.neverSend.contains(chord) { return .neverKeys }
-        } else if step.text.isEmpty || step.text.count > Self.mostTyped {
+        } else if step.text.isEmpty || step.text.count > Self.mostTyped
+                    || step.text.unicodeScalars.contains(where: { $0.properties.generalCategory == .control && $0 != "\n" && $0 != "\t" }) {
+            // Control characters (escape, delete, end of text) are keys in disguise: only a new line and a tab are typed.
             return .failed
         }
         final = NeverList.final(step, names: [focus?.name ?? ""], agent: job.agent, dialogOpen: surface.dialogs(step.pid) > 0)

@@ -458,6 +458,12 @@ final class HandTests: XCTestCase {
             XCTAssertTrue(Hand.sameValue(shown, typed, locale: us), "\(shown) / \(typed)")
         }
         XCTAssertTrue(Hand.sameValue("3,50", "3,5", locale: it))
+        // A leading zero is part of a code: a field that dropped it did not keep what was typed.
+        for (shown, typed) in [("2134", "02134"), ("7", "007"), ("0612345678", "612345678")] {
+            XCTAssertFalse(Hand.sameValue(shown, typed, locale: us), "\(shown) / \(typed)")
+            XCTAssertFalse(Hand.sameValue(shown, typed, locale: it), "\(shown) / \(typed)")
+        }
+        XCTAssertTrue(Hand.sameValue("0.5", "0.50", locale: us))
         XCTAssertTrue(Hand.sameValue("1.000,00", "1000", locale: it))
         for (shown, typed) in [("Made up", "Made-up"), ("1,000.00", "1001"), ("3/5/26", "3/4/26"), ("Made up", ""), ("12", "1,2")] {
             XCTAssertFalse(Hand.sameValue(shown, typed, locale: us), "\(shown) / \(typed)")

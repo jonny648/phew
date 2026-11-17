@@ -133,6 +133,8 @@ enum Files {
     static func stat(_ url: URL) -> (modified: Date, size: Int, regular: Bool)? {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
               let modified = attributes[.modificationDate] as? Date, let size = attributes[.size] as? Int else { return nil }
+        // A file with a second name elsewhere (a hard link) may be a file outside the chosen folders: as if not there.
+        if attributes[.type] as? FileAttributeType == .typeRegular, (attributes[.referenceCount] as? Int ?? 1) > 1 { return nil }
         return (modified, size, attributes[.type] as? FileAttributeType == .typeRegular)
     }
 
@@ -186,13 +188,20 @@ enum Files {
         guard allowed(ProjectMemoryReader.real(url), folders), changeKinds.contains(url.pathExtension.lowercased()),
               change.text.utf8.count <= textBytes else { return .refused }
         guard let now = stat(url), now.regular, now.modified == change.modified, now.size == change.size else { return .changedSince }
+        // Who may read the old file: the new one must not be more open (a private file came back readable by all).
+        let mode = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.posixPermissions]
         do {
             if let trash { try trash(url) } else { try FileManager.default.trashItem(at: url, resultingItemURL: nil) }
         } catch {
             return .notTrashed
         }
+        // Made closed to others first, then given the old file's permissions.
+        guard FileManager.default.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600]),
+              let handle = try? FileHandle(forWritingTo: url) else { return .notWritten }
         do {
-            try Data(change.text.utf8).write(to: url, options: .withoutOverwriting)
+            try handle.write(contentsOf: Data(change.text.utf8))
+            try handle.close()
+            if let mode { try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: url.path) }
         } catch {
             return .notWritten
         }

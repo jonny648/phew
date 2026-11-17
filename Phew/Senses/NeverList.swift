@@ -10,7 +10,7 @@ enum NeverList {
         "com.apple.systempreferences",
         "com.apple.dt.Xcode", "com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.todesktop.230313mzl4w4u92",
         "com.exafunction.windsurf", "dev.zed.Zed", "com.sublimetext.4", "com.panic.Nova", "com.barebones.bbedit",
-        "com.apple.ScriptEditor2", "com.apple.Automator",
+        "com.apple.ScriptEditor2", "com.apple.Automator", "dev.zed.Zed-Preview", "com.macromates.TextMate", "com.sublimetext.3",
     ])
     /// Keychain Access and the password managers: also left out of a whole-display picture (`ScreenCapture.hides`).
     static let passwordApps: Set<String> = [
@@ -18,11 +18,12 @@ enum NeverList {
         "com.1password.1password", "com.agilebits.onepassword7", "com.bitwarden.desktop", "com.lastpass.LastPass",
         "com.dashlane.dashlanephonefinal", "in.sinew.Enpass-Desktop", "com.nordpass.macos.NordPass",
         "org.keepassxc.keepassxc", "com.hicknhacksoftware.MacPass", "com.markmcguill.strongbox", "com.markmcguill.strongbox.mac",
+        "com.callpod.keepermac.lite", "proton.pass.mac",
     ]
     /// Terminals: also left out of a whole-display picture.
     static let terminals: Set<String> = [
         "com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "com.mitchellh.ghostty",
-        "net.kovidgoyal.kitty", "io.alacritty", "com.github.wez.wezterm",
+        "net.kovidgoyal.kitty", "io.alacritty", "com.github.wez.wezterm", "co.zeit.hyper",
     ]
     /// Whole families: System Settings' panes, JetBrains editors.
     static let appPrefixes = ["com.apple.preference.", "com.apple.settings.", "com.jetbrains."]

@@ -339,7 +339,8 @@ final class TaskList: ObservableObject {
     /// Confirm of one file change: the Brain moves the old file to the Trash, then writes the new text. A line then
     /// says how it ended.
     func confirmFile(_ change: FileChange, task number: Int) async -> FileChangeEnd {
-        let end = await brain.changeFile(change)
+        // "Let Phew act" turned off since the change was asked for: nothing is written.
+        let end = hand.allowed ? await brain.changeFile(change) : .refused
         update(number) { $0.fileLines.append(Self.fileLine(end, change.name)) }
         shellLog("task \(number): confirmed file change \(end.rawValue)")
         return end

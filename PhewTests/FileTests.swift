@@ -242,6 +242,28 @@ final class FileTests: XCTestCase {
         XCTAssertEqual(again, .stopped, "once")
     }
 
+    /// A private file stays private: the new file has the old one's permissions, never wider.
+    func testAReplacedFileKeepsItsPermissions() throws {
+        try write("Made-up private line.", "private.md")
+        let url = chosen.appending(path: "private.md")
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        let before = try XCTUnwrap(Files.stat(url))
+        let change = FileChange(url: ProjectMemoryReader.real(url), text: "Made-up new line.", modified: before.modified, size: before.size, lines: 1)
+        let trashed = trashed!
+        let end = Files.replace(change, folders: [ProjectMemoryReader.real(chosen)], trash: { try FileManager.default.moveItem(at: $0, to: trashed.appending(path: $0.lastPathComponent)) })
+        XCTAssertEqual(end, .done)
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "Made-up new line.")
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int, 0o600)
+    }
+
+    /// A second name for a file outside the chosen folder (a hard link) is as if it were not there.
+    func testAHardLinkToAFileOutsideIsNotRead() throws {
+        let secret = outside.appending(path: "outside.txt")
+        try "Made-up outside line.".write(to: secret, atomically: true, encoding: .utf8)
+        try FileManager.default.linkItem(at: secret, to: chosen.appending(path: "hard.txt"))
+        XCTAssertNil(Files.stat(chosen.appending(path: "hard.txt")))
+    }
+
     func testAFileChangedSinceTheRequestIsNotReplaced() async throws {
         try write("Made-up plan", "plan.md")
         let (list, item, _) = try await askToChange("Made-up plan, changed by Phew")
@@ -440,11 +462,12 @@ final class FileTests: XCTestCase {
         XCTAssertEqual(Set(found["func changeFile("] ?? []), ["Brain/Brain.swift", "Brain/ClaudeBrain.swift"])
         // In Files.swift, the one write is inside `replace`, after the move to the Trash.
         let files = try String(contentsOf: root.appending(path: "Brain/Files.swift"), encoding: .utf8)
-        XCTAssertEqual(files.components(separatedBy: ".write(to:").count, 2)
+        XCTAssertEqual(files.components(separatedBy: ".write(to:").count, 1, "no plain write of a file")
+        XCTAssertEqual(files.components(separatedBy: "createFile(atPath:").count, 2)
         let replace = try XCTUnwrap(files.range(of: "static func replace("))
         let next = try XCTUnwrap(files.range(of: "static func linesChanged(")).lowerBound
         let body = files[replace.upperBound..<next]
-        let trash = try XCTUnwrap(body.range(of: "trashItem(")), write = try XCTUnwrap(body.range(of: ".write(to:"))
+        let trash = try XCTUnwrap(body.range(of: "trashItem(")), write = try XCTUnwrap(body.range(of: "createFile(atPath:"))
         XCTAssertLessThan(trash.lowerBound, write.lowerBound)
         let shell = try String(contentsOf: root.appending(path: "Shell/TaskList.swift"), encoding: .utf8)
         let confirm = try XCTUnwrap(shell.range(of: "func confirmFile(")), call = try XCTUnwrap(shell.range(of: ".changeFile("))

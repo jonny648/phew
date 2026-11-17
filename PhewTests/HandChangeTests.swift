@@ -363,7 +363,7 @@ final class HandChangeTests: XCTestCase {
             XCTAssertEqual(hand.act(step(script), in: hand.begin(watchUser: false, agent: true)).end, .needsConfirm)
         }
         var press = HandStep(kind: .press, pid: FakeSurface.pid, role: "AXButton", name: "Elimina", frame: CGRect(x: 20, y: 20, width: 100, height: 30))
-        XCTAssertEqual(hand.act(press, in: hand.begin(watchUser: false, agent: true)).end, .needsConfirm)
+        XCTAssertEqual(hand.act(press, in: hand.begin(watchUser: false, agent: true)).end, .failed)  // an agent never presses
         XCTAssertEqual(fake.changed, [], "nothing reached the apps")
         XCTAssertEqual(fake.sentCount, 0)
         XCTAssertEqual(fake.apps.notes.count, 1)

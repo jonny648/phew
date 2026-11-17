@@ -38,6 +38,24 @@ struct ScreenshotSize: Equatable {
         return (packet, capped)
     }
 
+    /// N4.7 (a): the window text that makes the picture half-size, for an explanation only.
+    static let halfPictureText = 1500
+
+    /// N4.7 (a): `sent`, then at half the width and height (a quarter of the tokens) when the window already gave at
+    /// least `halfPictureText` characters of text. Positions map back as in `sent`. For explanations only: a guide and
+    /// a job point at pixels and keep the full picture.
+    static func half(_ packet: ContextPacket) -> (ContextPacket, ScreenshotSize?) {
+        let (sent, size) = sent(packet)
+        guard let size, packet.visibleText.count + packet.moreText.count >= halfPictureText, let png = sent.screenshot else { return (sent, size) }
+        let tokens = ((size.seenWidth + 27) / 28) * ((size.seenHeight + 27) / 28)
+        let halved = ScreenshotSize(width: size.width, height: size.height, maxTokens: max(tokens / 4, 1))
+        guard halved.seenWidth < size.seenWidth, let smaller = scaled(png, width: halved.seenWidth, height: halved.seenHeight)
+        else { return (sent, size) }
+        var packet = sent
+        packet.screenshot = smaller
+        return (packet, halved)
+    }
+
     /// The PNG redrawn at `width` by `height` pixels; nil on failure.
     static func scaled(_ png: Data, width: Int, height: Int) -> Data? {
         guard let source = CGImageSourceCreateWithData(png as CFData, nil),

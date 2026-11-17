@@ -64,13 +64,30 @@ enum Follower {
     static let maxTokens = 1024
 
     static func progress(steps: [GuideStep], current: Int, packet whole: ContextPacket?,
-                         provider: any ModelProvider) async throws -> GuideProgress {
+                         provider: any ModelProvider, smallFirst: Bool = false) async throws -> GuideProgress {
         let current = min(max(current, 0), steps.count)
         // Nothing left to follow, or no screen to judge from: no call.
         guard current < steps.count, let full = whole else { return GuideProgress(current: current, target: nil) }
         let (cut, offset) = less(full, steps: steps, current: current)
         let (packet, shot) = ScreenshotSize.sent(cut)  // A3, when the look was not cut
         let call = request(steps: steps, current: current, packet: packet, shot: shot)
+        // N4.7 (b), switch `smallFirst`: the small model looks first. Its answer is kept only when it is sure: it moves
+        // the guide on and names a listed element (or says every step is done). Staying, going back, a point (its
+        // picture may be sized otherwise) or no usable answer: the main model looks, as always.
+        if smallFirst {
+            var small = call
+            small.tier = .small
+            if let output = try? JSONDecoder().decode(Output.self, from: Data(try await provider.complete(small).utf8)) {
+                let now = min(max(output.step - 1, 0), steps.count)
+                let target = now < steps.count ? Guide.target(element: output.element, point: nil, packet: packet, shot: shot) : nil
+                if now > current, now == steps.count || target != nil {
+                    shellLog("follower: small model, step \(current + 1) to \(now + 1) of \(steps.count)")
+                    return GuideProgress(current: now, target: target)
+                }
+            }
+            try Task.checkCancellation()
+            shellLog("follower: small model unsure, the main model looks")
+        }
         var output: Output?
         for attempt in 1...2 where output == nil {
             do {

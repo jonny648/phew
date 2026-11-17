@@ -92,14 +92,17 @@ enum Guide {
     static func answer(_ question: String, packet taken: ContextPacket?, route: Route, earlier: [Turn] = [], recall: String? = nil,
                        about: String? = nil, aboutPhew: Bool = true, projectMemory: String? = nil, spoken: [Hearing] = [],
                        earlierScreen: ContextPacket? = nil, tools: (any ToolRunner)? = nil, provider: any ModelProvider,
-                       emit: (BrainEvent) -> Void) async throws {
+                       half: Bool = false, small: Bool = false, emit: (BrainEvent) -> Void) async throws {
         // A3: a whole-display picture goes smaller; `shot` maps the model's points back to the captured pixels.
-        let sent = taken.map(ScreenshotSize.sent)
+        // N4.7 (a), switch `half`: an explanation of a window full of text gets a half-size picture.
+        let sent = taken.map(half && route == .explain ? ScreenshotSize.half : ScreenshotSize.sent)
         let packet = sent?.0, shot = sent?.1 ?? nil
         var request = request(question, packet: packet, route: route, shot: shot, earlier: earlier, recall: recall, about: about,
                               aboutPhew: aboutPhew, projectMemory: projectMemory, spoken: spoken, earlierScreen: earlierScreen)
         // R10: an explanation may read the rest of the window text in pieces; the loop then allows those calls too.
         let more = route == .explain && packet?.neverRead == false ? packet?.moreText ?? "" : ""
+        // N4.7 (c), switch `small`: a plain explanation (not about Phew, no earlier screen, nothing more to read) on the small model.
+        if small, route == .explain, !aboutPhew, earlierScreen == nil, more.isEmpty { request.tier = .small }
         let runner: (any ToolRunner)? = more.isEmpty ? tools : ScreenTools(more: more, map: tools)
         let maxCalls = ToolLoop.maxCalls + (more.isEmpty ? 0 : ScreenTools.maxPieces)
         // Up to 6 rounds, each sending the pictures again: each reads the ones before it from the cache.

@@ -6,6 +6,101 @@ import XCTest
 final class CostDownTests: XCTestCase {
     typealias FakeProvider = BrainAgentsTests.FakeProvider
 
+    // MARK: N4.7: three switches, built but off
+
+    private func png(_ width: Int, _ height: Int) throws -> Data {
+        let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(red: 0.9, green: 0.9, blue: 0.9, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        return try XCTUnwrap(context.makeImage().flatMap(ScreenshotSize.png))
+    }
+
+    private func switches(_ on: [String]) -> CostSwitches {
+        let defaults = UserDefaults(suiteName: "PhewTests.switches.\(UUID().uuidString)")!
+        for key in on { defaults.set(true, forKey: key) }
+        return CostSwitches(defaults: defaults)
+    }
+
+    /// The Guide's request for one question on `route`, with the switches on.
+    private func guideRequest(_ on: [String], route: String = "explain", about: Bool = false, text: Int = 2000) async throws -> ModelRequest {
+        let fake = FakeProvider([
+            "conductor": [#"{"route":"\#(route)","about_phew":\#(about)}"#],
+            "guide": [#"{"explanation":"Made-up answer.","steps":[{"instruction":"Click Made-up","element":null,"point":null,"click":true}]}"#],
+        ])
+        var brain = ClaudeBrain(provider: fake)
+        brain.switches = switches(on)
+        let packet = ContextPacket(appName: "Practice", bundleID: "com.example.practice", windowTitle: "Made-up page",
+                                   visibleText: String(repeating: "made up ", count: text / 8), cursor: nil,
+                                   screenshot: try png(1200, 800))
+        for try await _ in brain.answer("What does this say?", packet: packet) {}
+        return try XCTUnwrap(fake.requests.first { $0.agent == "guide" })
+    }
+
+    private func size(_ png: Data?) -> [Int]? { png.flatMap(ScreenshotSize.init(png:)).map { [$0.width, $0.height] } }
+
+    func testTheSwitchesAreOffByDefaultAndChangeNothingWhileOff() async throws {
+        let none = switches([])
+        XCTAssertFalse(none.halfPicture || none.smallFollower || none.smallExplain)
+        for route in ["explain", "guide"] {
+            let off = try await guideRequest([], route: route)
+            XCTAssertEqual(off.tier, .main)
+            XCTAssertEqual(size(off.image), [1200, 800])
+            XCTAssertTrue(off.text.contains("Screenshot: attached, 1200×800 pixels."))
+        }
+        let fake = FakeProvider(["follower": [#"{"step":2,"element":"e2","point":null}"#]])
+        var brain = ClaudeBrain(provider: fake)
+        brain.switches = none
+        _ = try await brain.progress(steps: steps, current: 0, packet: screen(["Format", "Bold"]))
+        XCTAssertEqual(fake.requests.map(\.tier), [.main])
+    }
+
+    /// (a) A window that gave 1,500 characters or more: an explanation's picture at half size. Never a guide's, never
+    /// with less text.
+    func testHalfPictureOnTextHeavyExplanationsOnly() async throws {
+        let on = [CostSwitches.halfPictureKey]
+        let half = try await guideRequest(on)
+        // A quarter of the 1,247 tokens: 21 by 14 blocks, 588 by 392 pixels.
+        XCTAssertEqual(size(half.image), [588, 392])
+        XCTAssertTrue(half.text.contains("Screenshot: attached, 588×392 pixels."), "positions follow the smaller picture")
+        let little = try await guideRequest(on, text: 800)
+        XCTAssertEqual(size(little.image), [1200, 800])
+        let guide = try await guideRequest(on, route: "guide")
+        XCTAssertEqual(size(guide.image), [1200, 800])
+    }
+
+    /// (b) The small model looks first; a sure answer is kept, an unsure one goes to the main model.
+    func testSmallFollowerFirstAndTheMainOneWhenUnsure() async throws {
+        func look(_ replies: [String]) async throws -> (GuideProgress, [Tier]) {
+            let fake = FakeProvider(rounds: ["follower": replies.map { FakeProvider.Reply(pieces: [$0]) }])
+            var brain = ClaudeBrain(provider: fake)
+            brain.switches = switches([CostSwitches.smallFollowerKey])
+            let result = try await brain.progress(steps: steps, current: 0, packet: screen(["Format", "Bold"]))
+            return (result, fake.requests.map(\.tier))
+        }
+        let (sure, sureTiers) = try await look([#"{"step":2,"element":"e2","point":null}"#])
+        XCTAssertEqual(sure, GuideProgress(current: 1, target: .element("e2")))
+        XCTAssertEqual(sureTiers, [.small])
+        let main = #"{"step":3,"element":null,"point":null}"#
+        for unsure in [#"{"step":1,"element":"e1","point":null}"#, #"{"step":2,"element":null,"point":{"x":5,"y":5}}"#, "not json"] {
+            let (result, tiers) = try await look([unsure, main])
+            XCTAssertEqual(tiers, [.small, .main], unsure)
+            XCTAssertEqual(result.current, 2, "the main model's answer")
+        }
+    }
+
+    /// (c) A plain explanation on the small model; a guide, a question about Phew, stay on the main one.
+    func testSmallModelForPlainExplanationsOnly() async throws {
+        let on = [CostSwitches.smallExplainKey]
+        let plain = try await guideRequest(on)
+        XCTAssertEqual(plain.tier, .small)
+        let guide = try await guideRequest(on, route: "guide")
+        XCTAssertEqual(guide.tier, .main)
+        let about = try await guideRequest(on, about: true)
+        XCTAssertEqual(about.tier, .main)
+    }
+
     // MARK: N4.6: remembering once per conversation
 
     private func conversation(end: TimeInterval = 600) throws -> (ClaudeBrain, FakeProvider, MapStore) {

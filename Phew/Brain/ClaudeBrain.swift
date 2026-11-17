@@ -78,7 +78,8 @@ struct ClaudeBrain: Brain {
 
     func progress(steps: [GuideStep], current: Int, packet: ContextPacket?) async throws -> GuideProgress {
         do {
-            return try await Follower.progress(steps: steps, current: current, packet: packet, provider: provider)
+            return try await Follower.progress(steps: steps, current: current, packet: packet, provider: provider,
+                                               smallFirst: switches.smallFollower)
         } catch {
             throw BrainError(error)
         }
@@ -192,7 +193,7 @@ struct ClaudeBrain: Brain {
                 let project = await projectMemoryBlock(question, packet: packet, store: store)
                 try await Guide.answer(sent, packet: packet, route: .explain, earlier: earlier, recall: lines, aboutPhew: false,
                                        projectMemory: project, earlierScreen: earlierScreen, tools: tools ?? store.map(MapSearch.init),
-                                       provider: provider) { out.yield($0) }
+                                       provider: provider, half: switches.halfPicture, small: switches.smallExplain) { out.yield($0) }
                 out.finish()
             } catch { out.finish(throwing: error) }
         }
@@ -236,7 +237,8 @@ struct ClaudeBrain: Brain {
             let project = route == .explain ? await projectMemoryBlock(question, packet: packet, store: store) : nil
             try await Guide.answer(sent, packet: packet, route: route, earlier: earlier, recall: lines, about: about,
                                    aboutPhew: aboutPhew, projectMemory: project, spoken: spoken, earlierScreen: earlierScreen,
-                                   tools: tools ?? store.map(MapSearch.init), provider: provider, emit: take)
+                                   tools: tools ?? store.map(MapSearch.init), provider: provider,
+                                   half: switches.halfPicture, small: switches.smallExplain, emit: take)
         }
         // Only a finished answer is kept, and only as text. The Librarian learns from the same text.
         let turn = Guide.turn(question, explanation: explanation, steps: steps)

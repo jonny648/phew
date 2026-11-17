@@ -41,6 +41,7 @@ struct PhewApp: App {
                 Button("Export the Map…") { delegate.showExport() }
                 Button("Never-read apps…") { delegate.showNeverRead() }
                 Button("Skills…") { delegate.showSkills() }
+                Button("Shortcuts he may run…") { delegate.showShortcuts() }
                 Button("Folders he may read…") { delegate.showReadFolders() }
             }
             Button("Connections…") { delegate.showConnections() }
@@ -85,7 +86,7 @@ private struct TaskEntries: View {
         // task with more than one waiting, runs them one after another.
         ForEach(tasks.confirms) { item in
             ForEach(item.waits) { wait in
-                Menu(wait.script.map(TaskList.asks) ?? wait.file.map(TaskList.asks) ?? wait.connector.map(TaskList.asks) ?? "") {
+                Menu(wait.script.map(TaskList.asks) ?? wait.file.map(TaskList.asks) ?? wait.connector.map(TaskList.asks) ?? wait.shortcut.map(TaskList.asks) ?? "") {
                     Button("Confirm") { Task { await tasks.confirm(item.id, only: wait.id) } }
                     Button("Dismiss") { tasks.dismiss(item.id, only: wait.id) }
                 }
@@ -224,7 +225,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A test copy under another bundle id: no Map maintenance at launch, so it never touches the user's Map folder.
         if CommandLine.arguments.contains("--debug-no-map") { return ClaudeBrain(map: BrainMap(maintenance: false), limits: Limits(), answerEarly: false) }
         #endif
-        return ClaudeBrain(skills: SkillTools(), limits: Limits(), answerEarly: false, connections: .shared)
+        return ClaudeBrain(skills: SkillTools(), limits: Limits(), answerEarly: false, connections: .shared, shortcutTicks: ShortcutTicks())
     }()
     let panel = InputPanel()
     let card = TextCard()
@@ -444,6 +445,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let model = ConnectionsModel(brain: brain, open: { url in DispatchQueue.main.async { Hand.openSignIn(url) } })
         model.changed = { [unowned self] in DispatchQueue.main.async { self.menuPanel.fit(keyboard: false) } }
         menuPanel.show(title: "Connections", ConnectionsView(model: model))
+    }
+
+    /// NB.5: the user's Shortcuts, each with a tick (off by default) and "safe to run without asking".
+    func showShortcuts() {
+        let model = ShortcutsModel(ticks: ShortcutTicks(), list: { Hand.shared.shortcuts?.list() ?? [] })
+        model.changed = { [unowned self] in DispatchQueue.main.async { self.menuPanel.fit(keyboard: false) } }
+        menuPanel.show(title: "Shortcuts he may run", ShortcutsView(model: model))
     }
 
     func showSkills() {

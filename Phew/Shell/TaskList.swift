@@ -33,10 +33,13 @@ final class TaskList: ObservableObject {
         var script: HandScript? = nil
         var file: FileChange? = nil
         var connector: ConnectorCall? = nil
+        /// NB.5: one of the user's Shortcuts not marked safe, for the Hand.
+        var shortcut: ShortcutCall? = nil
 
-        /// For the Hand: a script or a connector write. Nil for a file change.
+        /// For the Hand: a script, a shortcut or a connector write. Nil for a file change.
         var step: HandStep? {
             if let script { return HandStep(kind: .script, pid: 0, script: script) }
+            if let shortcut { return HandStep(kind: .shortcut, pid: 0, name: shortcut.name, shortcut: shortcut) }
             return connector.map { HandStep(kind: .connector, pid: 0, name: $0.name, connector: $0) }
         }
     }
@@ -146,6 +149,8 @@ final class TaskList: ObservableObject {
             await self?.wait(change, task: number) ?? HandEnd.stopped.rawValue
         }, connector: { [weak self] call in
             await self?.ask(call, task: number) ?? HandEnd.stopped.rawValue
+        }, shortcut: { [weak self] call in
+            await self?.shortcut(call, task: number) ?? (HandEnd.stopped.rawValue, "")
         })
         tasks[number] = Task { [weak self] in
             var report: TaskReport?, failure: BrainError?
@@ -335,7 +340,7 @@ final class TaskList: ObservableObject {
 
     private func keep(_ wait: Waiting, task number: Int) {
         lastWait += 1
-        let wait = Waiting(id: lastWait, script: wait.script, file: wait.file, connector: wait.connector)
+        let wait = Waiting(id: lastWait, script: wait.script, file: wait.file, connector: wait.connector, shortcut: wait.shortcut)
         update(number) { $0.waits.append(wait) }
     }
 
@@ -362,6 +367,27 @@ final class TaskList: ObservableObject {
         shellLog("task \(number): connector write \(refused ? AddItemTool.refused : end.rawValue)")
         return refused ? AddItemTool.refused : end.rawValue
     }
+
+    /// NB.5: the Runner's `run_shortcut`, through the Hand in an agent's job: one the user marked safe runs now and
+    /// its output goes back; any other waits in the menu as one more row of the task, inside the same ceiling, for a
+    /// confirm. Returns the Hand's fixed word (`refused` at the ceiling) and the output when it ran.
+    func shortcut(_ call: ShortcutCall, task number: Int) async -> (word: String, output: String) {
+        guard tasks[number] != nil else { return (HandEnd.stopped.rawValue, "") }
+        let hand = hand, job = hand.begin(watchUser: false, agent: true, counted: acted[number] ?? 0)
+        jobs[number] = job
+        let step = HandStep(kind: .shortcut, pid: 0, name: call.name, shortcut: call)
+        let result = await Task.detached { hand.act(step, in: job) }.value
+        hand.close(job)
+        jobs[number] = nil
+        acted[number] = job.acted
+        let refused = result.end == .needsConfirm && full(number)
+        if result.end == .needsConfirm, !refused { keep(Waiting(id: 0, shortcut: call), task: number) }
+        shellLog("task \(number): shortcut \(refused ? AddItemTool.refused : result.end.rawValue)")
+        return (refused ? AddItemTool.refused : result.end.rawValue, result.output ?? "")
+    }
+
+    /// NB.5: the confirm row of a shortcut: its name, never its input.
+    static func asks(_ call: ShortcutCall) -> String { "Waiting for you: run the shortcut “\(call.name)”?" }
 
     /// Confirm of one file change: the Brain moves the old file to the Trash, then writes the new text. A line then
     /// says how it ended.
@@ -397,7 +423,7 @@ final class TaskList: ObservableObject {
         jobs[number] = job
         var end = HandEnd.done, tried = 0
         // A script or a connector write only: no target on screen, no click, no app brought to the front.
-        for step in steps where end == .done && [.script, .connector].contains(step.kind) {
+        for step in steps where end == .done && [.script, .connector, .shortcut].contains(step.kind) {
             end = await Task.detached { hand.act(step, in: job) }.value.end
             tried += 1
         }

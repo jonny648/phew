@@ -156,6 +156,8 @@ enum NeverList {
         case .front, .scroll, .rightClick: return false
         // NB.11: a connector write is never tagged (the user's word of 17 November); an agent's waits all the same.
         case .connector: return false
+        // NB.5: a shortcut cannot be inspected: in the class unless the user marked it safe, which the Hand reads.
+        case .shortcut: return true
         case .set: return replaces
         case .pick, .drag: return worded
         case .press, .click, .doubleClick:

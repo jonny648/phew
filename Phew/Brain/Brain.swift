@@ -100,6 +100,10 @@ protocol Brain: Sendable {
     /// so it waits for the user's confirm. Nil: the task's connectors only read.
     func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?,
                  change: ChangeFile?, connector: ConnectorAsk?) -> AsyncThrowingStream<TaskEvent, Error>
+    /// NB.5: the same, with the Shell's door for the user's ticked Shortcuts, which runs one through the Hand in an
+    /// agent's job: one not marked safe waits for the user's confirm. Nil: no `run_shortcut` tool.
+    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?,
+                 change: ChangeFile?, connector: ConnectorAsk?, shortcut: ShortcutAsk?) -> AsyncThrowingStream<TaskEvent, Error>
 
     /// NA.11: the menu's "Folders he may read", as plain paths. `addReadFolder` is false for what is not a folder or
     /// is private whatever the user chose (a hidden or keychain folder).
@@ -379,6 +383,10 @@ extension Brain {
     func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?,
                  change: ChangeFile?, connector: ConnectorAsk?) -> AsyncThrowingStream<TaskEvent, Error> {
         runTask(words, packet: packet, number: number, folder: folder, spoken: spoken, add: add, change: change)
+    }
+    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?,
+                 change: ChangeFile?, connector: ConnectorAsk?, shortcut: ShortcutAsk?) -> AsyncThrowingStream<TaskEvent, Error> {
+        runTask(words, packet: packet, number: number, folder: folder, spoken: spoken, add: add, change: change, connector: connector)
     }
     /// A Brain without connections has none.
     func connectors() async -> [ConnectorStatus] { [] }

@@ -315,6 +315,7 @@ struct ActJob {
         case .keys:
             if let chord = step.chord { return "\(doing ? "Pressing" : "Pressed") \(chord.symbols)" }
             return "\(doing ? "Typing" : "Typed") \(step.text.count) character\(step.text.count == 1 ? "" : "s")"
+        case .shortcut: return "\(doing ? "Running" : "Ran") the shortcut \(step.shortcut?.name ?? step.name)"
         case .connector:
             return "\(doing ? "Writing" : "Wrote") in \(step.connector?.name ?? "a connected tool")\(step.connector.map { " (\($0.tool))" } ?? "")"
         case .script:
@@ -366,6 +367,7 @@ struct ActJob {
         case .notFound: "I found nothing with that exact name, so I changed nothing."
         case .manyFound: "More than one thing has that exact name, so I changed nothing."
         case .needsConfirm: "That cannot be undone, so it waits in the menu bar for your confirm."
+        case .notTicked: "That shortcut is not ticked in “Shortcuts he may run”, so I did not run it."
         }
     }
 }

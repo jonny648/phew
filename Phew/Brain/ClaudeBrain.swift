@@ -31,6 +31,8 @@ struct ClaudeBrain: Brain {
     var connections: Connections? = nil
     /// N4.5, N4.7: the hidden switches. Tests pass their own defaults.
     var switches = CostSwitches()
+    /// NB.5: the user's ticks in "Shortcuts he may run". Nil: no shortcut tool (unit tests, checks); the app passes one.
+    var shortcutTicks: ShortcutTicks? = nil
 
     /// Only when the Map cannot be opened.
     static let cannotRemember = "My memory isn't available right now, so nothing was stored."
@@ -335,6 +337,11 @@ extension ClaudeBrain {
 
     func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?,
                  change: ChangeFile?, connector: ConnectorAsk?) -> AsyncThrowingStream<TaskEvent, Error> {
+        runTask(words, packet: packet, number: number, folder: folder, spoken: spoken, add: add, change: change, connector: connector, shortcut: nil)
+    }
+
+    func runTask(_ words: String, packet: ContextPacket?, number: Int, folder: URL?, spoken: [Hearing], add: AddItem?,
+                 change: ChangeFile?, connector: ConnectorAsk?, shortcut: ShortcutAsk?) -> AsyncThrowingStream<TaskEvent, Error> {
         let injected = tools, map = map, brain = self, connections = connections
         // The task was counted when its words were routed. N2.12: it sets aside its budget out of today's ceiling, so
         // tasks side by side cannot pass it together; a smaller reserve caps its cost, and past it the task ends
@@ -368,7 +375,7 @@ extension ClaudeBrain {
             guard let connections else { return nil }
             let offered = await connections.offer(for: SecretsFilter.clean(words))
             return offered.isEmpty ? nil : ConnectorTools(connections: connections, offered: offered, ask: connector)
-        }, provider: provider, limits: taskLimits)
+        }, shortcuts: shortcutTicks.flatMap { ShortcutTools(ticks: $0, ask: shortcut) }, provider: provider, limits: taskLimits)
         guard let limits else { return stream }
         // What the task did not spend goes back when it ends, fails or is stopped.
         return AsyncThrowingStream { continuation in

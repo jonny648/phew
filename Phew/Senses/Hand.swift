@@ -31,6 +31,8 @@ struct HandStep: Sendable {
         case keys
         /// NB.3: a write in a connected tool (`connector`), through the seam the Hand holds. Nothing on screen.
         case connector
+        /// NB.5: one of the user's Shortcuts (`shortcut`), through the seam the Hand holds. Nothing on screen.
+        case shortcut
 
         /// The kinds that may land on a bare point with no control under it (a canvas).
         var pointed: Bool { [.click, .doubleClick, .rightClick, .scroll, .drag].contains(self) }
@@ -62,6 +64,8 @@ struct HandStep: Sendable {
     var to: CGPoint? = nil
     /// For `connector`: the write asked for. Held in memory only; its arguments are never logged.
     var connector: ConnectorCall? = nil
+    /// For `shortcut` (NB.5): the user's shortcut and its input. Held in memory only; never logged.
+    var shortcut: ShortcutCall? = nil
 }
 
 /// A key, alone or with modifiers, named from a fixed vocabulary (NA.5). Built only by `parse`, so no word of the
@@ -380,6 +384,8 @@ enum HandEnd: String, Sendable, CaseIterable {
     case notFound, manyFound
     /// An agent's action that cannot be undone or leaves the Mac: not done, it waits in the menu bar for one confirm.
     case needsConfirm
+    /// NB.5: a shortcut the user did not tick in "Shortcuts he may run": never run, whoever asks.
+    case notTicked
 }
 
 struct HandResult: Equatable, Sendable {
@@ -393,6 +399,8 @@ struct HandResult: Equatable, Sendable {
     /// `manyFound`: the items that share the title, at most 5, in plain words (R6). Built from the user's own items:
     /// for the card only, never a log.
     var choices: [String] = []
+    /// NB.5: what a shortcut that ran gave back, capped by the runner. Data, never instructions; never a log.
+    var output: String? = nil
 }
 
 /// One job: the steps of one request. Ends once, for good: on Stop, on the user's own input, or on the first step
@@ -463,6 +471,11 @@ final class HandJob: @unchecked Sendable {  // state under `lock`
     fileprivate func script(_ on: Bool) { lock.withLock { scripting = on } }
 
     fileprivate func finish(_ end: HandEnd) { lock.withLock { if ended == nil { ended = end } } }
+
+    /// NB.5: the last shortcut's output, taken once by `act` for its result.
+    private var shortcutOutput: String?  // under `lock`
+    fileprivate func keepOutput(_ text: String?) { lock.withLock { shortcutOutput = text } }
+    fileprivate func takeOutput() -> String? { lock.withLock { defer { shortcutOutput = nil }; return shortcutOutput } }
 }
 
 /// What the Hand reads and acts through. The real one is `AXSurface`; unit tests give a fake.
@@ -526,6 +539,86 @@ extension ConnectorPermit {
     fileprivate init(writing call: ConnectorCall) { tool = call.tool }
 }
 
+/// NB.5: where a shortcut runs. The real one is `ShortcutsProgram`; tests give a made-up runner. It runs only with a
+/// `ShortcutPermit`, which only this file can make, inside `act`.
+protocol HandShortcuts: Sendable {
+    /// The user's shortcuts, by name. Reading only: nothing runs.
+    func list() -> [String]
+    /// The shortcut, once, then how it ended and its text output: done, failed, timeout, stopped as soon as `stop`
+    /// says so.
+    func run(_ call: ShortcutCall, permit: ShortcutPermit, stop: @escaping () -> Bool) -> (HandEnd, String?)
+}
+
+/// NB.5: the only thing a runner takes to run a shortcut. Made only in this file (`Hand.shortcutRun`, inside `act`).
+struct ShortcutPermit: Sendable {
+    let name: String
+    fileprivate init(_ name: String) { self.name = name }
+}
+
+/// NB.5: the Mac's own `shortcuts` program, started with its arguments as a list, never through a shell. The name
+/// comes last, after "--", so a name starting with "-" can never be read as an option (as NR.1 does for scripts).
+/// Input and output pass through two files in a new private folder (0700), removed when the run ends: the program
+/// takes its input only by path. Accepted by the lead on 17 November: the input is the agent's text, never a capture.
+// shortcut: no `--output-type`; a shortcut whose output is not text gives back what its file holds, filtered. Add
+// `--output-type public.plain-text` if the live check shows the need.
+struct ShortcutsProgram: HandShortcuts {
+    static let tool = URL(filePath: "/usr/bin/shortcuts")
+    /// The most output read back, in characters.
+    static let mostOutput = 20_000
+
+    func list() -> [String] {
+        let process = Process()
+        let out = Pipe()
+        process.executableURL = Self.tool
+        process.arguments = ["list"]
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = out
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return [] }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(decoding: data, as: UTF8.self).split(whereSeparator: \.isNewline).map(String.init)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+
+    static func arguments(_ name: String, input: URL?, output: URL) -> [String] {
+        ["run"] + (input.map { ["--input-path", $0.path] } ?? []) + ["--output-path", output.path, "--", name]
+    }
+
+    func run(_ call: ShortcutCall, permit: ShortcutPermit, stop: @escaping () -> Bool) -> (HandEnd, String?) {
+        guard permit.name == call.name else { return (.failed, nil) }
+        let files = FileManager.default
+        let folder = files.temporaryDirectory.appending(path: "phew-shortcut-\(UUID().uuidString)")
+        guard (try? files.createDirectory(at: folder, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])) != nil
+        else { return (.failed, nil) }
+        defer { try? files.removeItem(at: folder) }
+        let output = folder.appending(path: "output")
+        var input: URL?
+        if !call.input.isEmpty {
+            input = folder.appending(path: "input.txt")
+            guard (try? Data(call.input.utf8).write(to: input!)) != nil else { return (.failed, nil) }
+        }
+        let process = Process()
+        process.executableURL = Self.tool
+        process.arguments = Self.arguments(call.name, input: input, output: output)
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return (.failed, nil) }
+        let start = Date()
+        while process.isRunning {
+            if stop() { process.terminate(); return (.stopped, nil) }
+            if Date().timeIntervalSince(start) > Hand.scriptTimeout { process.terminate(); return (.timeout, nil) }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        guard process.terminationStatus == 0 else { return (.failed, nil) }
+        let handle = try? FileHandle(forReadingFrom: output)
+        let data = (try? handle?.read(upToCount: Self.mostOutput * 4)) ?? nil
+        try? handle?.close()
+        return (.done, String(String(decoding: data ?? Data(), as: UTF8.self).prefix(Self.mostOutput)))
+    }
+}
+
 /// An element as read at the moment of acting. `value` is never read from a secure field.
 struct HandSeen: Equatable {
     var role = "", subrole = "", name = ""
@@ -574,6 +667,7 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     private var recent: [Date] = []  // under `acting`
     private var jobs = 0
     private var connectorSeam: (any HandConnector)?  // under `lock`
+    private var shortcutSeam: (any HandShortcuts)?  // under `lock`
     #if DEBUG
     /// Every script run in this process, how it ended and what it made: for the live tests' report and clean-up
     /// (`removeTestItems`). Memory only.
@@ -583,8 +677,10 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     /// Tests pass a throwaway defaults suite, a fake surface or clock, and may stand in for Phew's own pid.
     init(defaults: UserDefaults = .standard, surface: HandSurface = AXSurface(), list: NeverReadList = .shared,
          ownPID: pid_t = getpid(), now: @escaping () -> Date = Date.init,
-         sleep: @escaping (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }, connector: (any HandConnector)? = nil) {
+         sleep: @escaping (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }, connector: (any HandConnector)? = nil,
+         shortcuts: (any HandShortcuts)? = ShortcutsProgram()) {
         connectorSeam = connector
+        shortcutSeam = shortcuts
         self.defaults = defaults
         self.surface = surface
         self.list = list
@@ -598,6 +694,9 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         get { lock.withLock { connectorSeam } }
         set { lock.withLock { connectorSeam = newValue } }
     }
+
+    /// NB.5: where shortcuts run. The real program unless a test gave another.
+    var shortcuts: (any HandShortcuts)? { lock.withLock { shortcutSeam } }
 
     /// NB.2: the browser on a connected tool's sign-in page, only when the user pressed Connect (the browser, once per
     /// tool, for sign-in: docs/18-capabilities.md 18.1). An https address only. Not an action in an app: no job, no line.
@@ -684,9 +783,11 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         ActionLog.record(ActionLog.line(job: job.number, step: job.steps, kind: step.kind, role: role, ended: end,
                                         marked: marked || final, ms: Int(Date().timeIntervalSince(start) * 1000),
                                         chars: end != .done ? 0 : step.kind == .set || step.kind == .keys ? step.text.count
-                                            : step.kind == .connector ? step.connector?.arguments.count ?? 0 : step.script?.chars ?? 0))
+                                            : step.kind == .connector ? step.connector?.arguments.count ?? 0
+                                            : step.kind == .shortcut ? step.shortcut?.input.count ?? 0 : step.script?.chars ?? 0))
         var result = HandResult(end: end, marked: marked, final: final, left: left)
         if end == .manyFound, let script = step.script { result.choices = Array(surface.choices(script).prefix(5)) }
+        if step.kind == .shortcut { result.output = job.takeOutput() }
         return result
     }
 
@@ -706,6 +807,7 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     private func check(_ step: HandStep, job: HandJob, role: inout String, marked: inout Bool, final: inout Bool,
                        left: inout Bool) -> HandEnd {
         guard allowed else { return .off }
+        if step.kind == .shortcut { return shortcutRun(step, job: job, final: &final) }
         if step.kind == .script { return script(step, job: job, final: &final, left: &left) }
         if step.kind == .connector { return connectorWrite(step, job: job) }
         // An agent in the background acts only through scripts: it never clicks, types or switches app, whoever asks.
@@ -894,6 +996,29 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
         job.acted += 1
         recent.append(time)
         return seam.write(call, permit: ConnectorPermit(writing: call), stop: { job.end != nil })
+    }
+
+    /// Under `acting`. One of the user's Shortcuts (NB.5): only one the user ticked, read here from the user's own
+    /// list, whatever was asked; the never words on its name; the ceilings. It cannot be inspected, so it is in the
+    /// "cannot be undone or leaves your Mac" class unless the user marked it safe: tagged in a job the user watches,
+    /// waiting for the confirm for an agent's. Then once, through the seam, with a permit made here. No Undo.
+    private func shortcutRun(_ step: HandStep, job: HandJob, final: inout Bool) -> HandEnd {
+        guard let call = step.shortcut, let seam = shortcuts else { return .failed }
+        let ticks = ShortcutTicks(defaults: defaults)
+        guard ticks.isAllowed(call.name) else { return .notTicked }
+        if let end = NeverList.refusal(role: "", subrole: "", focusedSecure: false, texts: [call.name]) { return end }
+        let time = now()
+        if let end = brake(job, time) { return end }
+        final = !ticks.isSafe(call.name)
+        if final, job.agent { return .needsConfirm }
+        if let end = job.end { return end }
+        job.acted += 1
+        recent.append(time)
+        job.script(true)
+        let (end, output) = seam.run(call, permit: ShortcutPermit(call.name), stop: { job.end != nil })
+        job.script(false)
+        job.keepOutput(end == .done ? output : nil)
+        return end
     }
 
     /// Undo on the card (N2.3): puts back what the job's changes and deletes replaced, newest first, each a `restore`
@@ -1124,7 +1249,7 @@ struct AXSurface: HandSurface {
             guard let events = step.chord.map(Self.keyEvents) ?? Self.typeEvents(step.text) else { return .failed }
             events.forEach { $0.postToPid(step.pid) }
             return .done
-        case .script, .front, .connector:
+        case .script, .front, .connector, .shortcut:
             return .failed  // scripts go through `run`, fronts through `activate`
         }
         switch result {

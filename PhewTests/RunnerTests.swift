@@ -268,6 +268,15 @@ final class RunnerTests: XCTestCase {
     /// R9: one request may run every search and page read it asks for in one go, so the counts sent are sized once,
     /// at the start, so that even the dearest use of them all fits the task's cost cap. They never change between
     /// rounds (the cache and the thinking blocks depend on the tools staying the same).
+    /// N4.6: shorter pages in research: a fetched page is cut a third shorter than the 8,000 tokens it was.
+    func testAFetchedPageIsCutShorter() throws {
+        XCTAssertEqual(Runner.pageTokens, 5300)
+        let fetch = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(Runner.webFetch(3).utf8)) as? [String: Any])
+        XCTAssertEqual(fetch["max_content_tokens"] as? Int, 5300)
+        XCTAssertLessThan(Runner.worstUSD(prompt: 4000, searches: 5, pages: 8),
+                          Runner.worstUSD(prompt: 4000, searches: 5, pages: 8 * 3 / 2), "the worst request is cheaper")
+    }
+
     func testOneRequestCannotPassTheTaskCostCap() async throws {
         func maxUses(_ request: ModelRequest) throws -> [Int] {
             try request.serverTools.map { try XCTUnwrap((JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any])?["max_uses"] as? Int) }

@@ -160,8 +160,9 @@ enum Runner {
         #"{"type":"web_fetch_20260209","name":"web_fetch","max_uses":\#(uses),"allowed_callers":["direct"],"max_content_tokens":\#(pageTokens),"url_sources":{"client_tool_results":{"type":"none"}}}"#
     }
 
-    /// One page at most this long in the model's context, about 6,000 words.
-    static let pageTokens = 8000
+    /// One page at most this long in the model's context, about 4,000 words. N4.6: a third less than the 8,000 it was
+    /// ("shorter pages in research", docs/costs.html section 7, which names no number).
+    static let pageTokens = 5300
     /// What one search's results may add to the context, in tokens.
     // shortcut: a guess on the high side, not measured; read `cache_creation_input_tokens` of a searching round in
     // calls.log and set it from there.

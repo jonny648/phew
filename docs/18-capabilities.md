@@ -1384,3 +1384,16 @@ The environment holds only `PATH`, `HOME`, `USER`, `LOGNAME`, `TMPDIR`. Without 
 | The token | Kept in memory only and dropped. Nothing of your Notion was read: the tool list only |
 
 Not tested: the sign-in from inside the menu-bar app (the test ran from a script), a token refresh, a tool call.
+
+### Live check of 18 November (NF.L, door 1 only). Passed
+
+Phew's own door code (`ClaudeCodeDoor`, the gate, `Hand.act`) run from a test against the real Claude Code program and the user's Claude account, at the user's word. The test is `PhewTests/DoorLiveTests.swift`, off unless `PHEW_DOOR=1`. It prints only how each step ended, counts and one word about its own test page.
+
+| Step | Result | Time |
+|---|---|---|
+| List the connectors | 82 servers, Notion 77 tools, Gmail 31 | 3 s |
+| Write: a page "Phew live check" in Notion, through `Hand.act` | `notion-create-pages` done; the page exists (seen by a separate search) | 6 s |
+| Read: search Notion for that page | done; it answered "missing", because Notion's search had not indexed the page six seconds after it was made | 6 s |
+| Read: count the Gmail labels | done | 5 s |
+
+Not covered: door 2 (Phew's own Notion sign-in, from the app); the path before the door, with the model (the Conductor sending such a request to a job, the acting agent choosing the connector step); a money write waiting for its confirm, live. NF.L stays open for these.

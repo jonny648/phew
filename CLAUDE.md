@@ -6,7 +6,7 @@ Phew is a macOS companion for people who create projects. When called, he works 
 There is no fixed deadline. Since 15 November the MVP phases are lean: they build what is useful. Detail work is kept to what keeps the product safe and working, and no new detail work is added without your say.
 
 ## Roadmap protocol. Follow it in every session.
-1. At the start, read `roadmap.html`. State the current phase: the first phase with an unticked task. The MVP is complete since 16 November 2026: the phases after it are in `roadmap-next.html`, and none starts until the user names it. NB, N4 and N7 were built as one and installed as 0.5.0 on 18 November; what is left of them is the user's own or live (NB.1, NB.6, N4.0, NB.L, N4.L). No phase is being built now: the next in the order are N5, then N6 (the live checks of N2, N3, NR, NC, NA, NB and N4 stay open until the user says); steps 3 to 7 below apply to `roadmap-next.html` in the same way. N1 (real use) is the user's own and runs beside it.
+1. At the start, read `roadmap.html`. State the current phase: the first phase with an unticked task. The MVP is complete since 16 November 2026: the phases after it are in `roadmap-next.html`, and none starts until the user names it. NB, N4 and N7 were built as one and installed as 0.5.0 on 18 November; what is left of them is the user's own or live (NB.1, NB.6, N4.0, NB.L, N4.L). NF (connections that work) is being built since 18 November, at your word; after it the order is N5, then N6 (the live checks of N2, N3, NR, NC, NA, NB and N4 stay open until the user says); steps 3 to 7 below apply to `roadmap-next.html` in the same way. N1 (real use) is the user's own and runs beside it.
 2. Work only on that phase unless the user names another.
 3. A task is ticked only after its "done when" has been verified by building and running, by the checker subagent.
 4. To tick a task, edit its line in `roadmap.html`: change `<input type="checkbox" disabled>` to `<input type="checkbox" disabled checked>` and set `data-done` to today's date as YYYY-MM-DD. Change nothing else on the line.
@@ -67,6 +67,7 @@ These rules are direction, not strict rules (your choice of 14 November). Follow
 | NB | `roadmap-next.html` NB, `docs/18-capabilities.md` 18.1 and 18.4, `docs/13-hand.md`. Live checks only when the user says so |
 | N4 | `roadmap-next.html` N4, `docs/costs.html` section 7. Live checks only when the user says so |
 | N7 | `roadmap-next.html` N7, `docs/15-design.md`. Nothing is built before the user approves the design |
+| NF | `roadmap-next.html` NF, `docs/18-capabilities.md` 18.4, `Phew/Brain/Connections.swift`, `Phew/Brain/ClaudeCodeDoor.swift`. Live checks only when the user says so |
 | NA | `roadmap-next.html` NA, `docs/17-limits.md` 17.1 to 17.3, `docs/13-hand.md`, the row of 17 November in `docs/07-decisions.md` 7.1. Live checks only when the user says so |
 | NC | `roadmap-next.html` NC, `docs/21-skills.md`, `docs/20-language.md` 20.1. Live checks only when the user says so |
 | N3 | `roadmap-next.html` N3, `docs/03-experience.md` 3.3, the P6 rows of the log in `docs/07-decisions.md` 7.4. No outside speech model is downloaded |

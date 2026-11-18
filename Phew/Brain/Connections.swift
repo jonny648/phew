@@ -224,7 +224,9 @@ final class Connections: @unchecked Sendable {  // state under `lock`
     /// A write that waits for the user's confirm wherever it is asked, a job the user watches too: any write on a
     /// broker or payment service, and any write with a money word in its tool's name (a name Phew cannot read counts).
     static func money(_ call: ConnectorCall) -> Bool {
-        broker(call.name) || broker(call.server) || (nameWords(call.tool).map { $0.contains(where: moneyWords.contains) } ?? true)
+        // A money word anywhere in the name, glued to another too ("placeorder"): a false catch only asks for a confirm.
+        broker(call.name) || broker(call.server) || (nameWords(call.tool) == nil)
+            || !moneyWords.union(["money", "wire"]).filter(call.tool.lowercased().contains).isEmpty
     }
 
     /// A tool name's words, lower case: split at every sign and digit, at a capital inside a word ("getPage") and at

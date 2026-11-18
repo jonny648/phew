@@ -162,7 +162,7 @@ final class ClaudeCodeDoorTests: XCTestCase {
 
     // MARK: Listing (NB.9)
 
-    func testListingReadsTheInitLineWithNoMessageAndEndsTheRun() async throws {
+    func testListingReadsTheInitLineAndEndsTheRun() async throws {
         let door = door(try fake("say '\(Self.initLine)'\nexec sleep 30\n", reads: false), tick: false)
         defaults.removeObject(forKey: ClaudeCodeDoor.listedKey)
         let started = Date()
@@ -173,7 +173,6 @@ final class ClaudeCodeDoorTests: XCTestCase {
         XCTAssertEqual(status.map(\.name), ["Notion", "Madeup"], "a plugin's server is never offered")
         XCTAssertTrue(status.allSatisfy { $0.door == .claudeAccount && !$0.connected })
         XCTAssertEqual(status.first?.tools, [ConnectorToolLine(name: "notion-create-pages", writes: true), ConnectorToolLine(name: "notion-search", writes: false)])
-        XCTAssertNil(file("calls.log"), "no message was sent, so no call is logged")
         door.tick("claude.ai Notion", true)
         XCTAssertEqual(door.status().first?.connected, true)
         XCTAssertNil(door.status().first?.change)
@@ -186,13 +185,17 @@ final class ClaudeCodeDoorTests: XCTestCase {
         XCTAssertFalse(door.accept("plugin:madeup:tools"))
     }
 
-    func testListingSendsOneWordOnlyWhenNoLineCame() async throws {
+    /// NF.3: like the real Claude Code, the made-up program writes its `init` line only after a first message: the
+    /// one short message goes at once, so the list comes with no wait.
+    func testListingAsksAtOnceSoTheListComesWithNoWait() async throws {
         let door = door(try fake("say '\(Self.initLine)'\nexec sleep 30\n"), tick: false)
-        door.listQuiet = 0.3
+        let started = Date()
         let problem = await door.list()
         XCTAssertNil(problem)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 3, "no wait before asking")
         XCTAssertEqual(file("stdin")?.contains("ready"), true)
         XCTAssertEqual(door.status().count, 2)
+        XCTAssertEqual(CallLog.lines().last?.agent, ClaudeCodeDoor.agent, "the message may make a call: it is logged")
     }
 
     // MARK: The gate (NB.9)
@@ -366,6 +369,8 @@ final class ClaudeCodeDoorTests: XCTestCase {
         let stdin = try XCTUnwrap(file("stdin"))
         XCTAssertFalse(stdin.contains("MADE-UP SCREEN TEXT") || stdin.contains("Made-up window"), "no capture goes through door 1")
         XCTAssertTrue(stdin.contains("Task: Research the made-up plan"))
+        XCTAssertTrue(stdin.contains("Connected: Notion."), "NF.2: the ticked connectors by name")
+        XCTAssertFalse(stdin.contains("Madeup"), "an unticked one is never named")
         XCTAssertEqual(args?[8], "WebSearch,WebFetch")
         XCTAssertEqual(args?[15], Runner.system + ClaudeCodeDoor.researchNote, "the Runner's own instructions, by reference")
         XCTAssertTrue(events.contains(.searching(2)) && events.contains(.reading(1)))

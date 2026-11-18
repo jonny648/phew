@@ -403,6 +403,16 @@ final class TaskList: ObservableObject {
         return refused ? AddItemTool.refused : end.rawValue
     }
 
+    /// NF.5: a money write a job the user watches asked for, which the Hand did not run (`needsConfirm`): it waits in
+    /// the menu in a row of its own, under the job's first words, for the same Confirm as a task's. Memory only.
+    func hold(_ call: ConnectorCall, words: String) {
+        let number = max(last + 1, Int(Date().timeIntervalSince1970))
+        last = number
+        items.append(Item(id: number, words: words, state: .stopped))  // not a task: never in Working or Ready
+        keep(Waiting(id: 0, connector: call), task: number)
+        shellLog("job: connector write waiting for the confirm")
+    }
+
     /// NB.5: the Runner's `run_shortcut`, through the Hand in an agent's job: one the user marked safe runs now and
     /// its output goes back; any other waits in the menu as one more row of the task, inside the same ceiling, for a
     /// confirm. Returns the Hand's fixed word (`refused` at the ceiling) and the output when it ran.
@@ -457,7 +467,8 @@ final class TaskList: ObservableObject {
 
     /// `tried`: how many steps reached the Hand, the last one ending `end`.
     private func run(_ steps: [HandStep], agent: Bool, task number: Int) async -> (end: HandEnd, job: HandJob, tried: Int) {
-        let hand = hand, job = hand.begin(watchUser: false, agent: agent, counted: agent ? acted[number] ?? 0 : 0)
+        // Not an agent's: only the menu's Confirm runs here, so the job runs what the user confirmed.
+        let hand = hand, job = hand.begin(watchUser: false, agent: agent, counted: agent ? acted[number] ?? 0 : 0, confirmed: !agent)
         jobs[number] = job
         var end = HandEnd.done, tried = 0
         // A script or a connector write only: no target on screen, no click, no app brought to the front.

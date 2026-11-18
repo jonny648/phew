@@ -49,7 +49,9 @@ final class ConnectionsModel: ObservableObject {
         await refresh()
     }
 
+    /// NF.4: a connector that offers no tools cannot be ticked.
     func tick(_ id: String, _ on: Bool) async {
+        guard !on || Self.canTick(claudeAccount.first { $0.id == id }) else { return }
         await brain.tickClaudeConnector(id, on)
         await refresh()
     }
@@ -80,10 +82,17 @@ final class ConnectionsModel: ObservableObject {
 
     /// The row's second line: how many tools read and how many write, or that it is not connected.
     static func summary(_ status: ConnectorStatus) -> String {
+        if status.door == .claudeAccount, status.tools.isEmpty { return signInFirst }
         guard status.connected else { return status.door == .claudeAccount ? "Not ticked: he does not use it." : "Not connected." }
         let writes = status.tools.filter(\.writes).count, reads = status.tools.count - writes
         return "\(reads) tool\(reads == 1 ? "" : "s") that read. \(writes) that write: each listed on the card, or waiting for your confirm when a task asks."
     }
+
+    /// NF.4: a connector of the Claude account that lists no tools is not signed in there.
+    static let signInFirst = "Sign in on Claude first."
+
+    /// NF.4: only a connector that offers tools can be ticked.
+    static func canTick(_ status: ConnectorStatus?) -> Bool { status.map { !$0.tools.isEmpty } ?? false }
 
     /// One tool for the list: its name and what it does there.
     static func line(_ tool: ConnectorToolLine) -> String { "\(tool.name): \(tool.writes ? "writes" : "reads")" }
@@ -136,7 +145,7 @@ struct ConnectionsView: View {
                 }
             } else {
                 Toggle("", isOn: Binding(get: { server.connected }, set: { on in Task { await model.tick(server.id, on) } }))
-                    .labelsHidden().toggleStyle(.checkbox)
+                    .labelsHidden().toggleStyle(.checkbox).disabled(!server.connected && !ConnectionsModel.canTick(server))
             }
         }
         if let change = server.change {

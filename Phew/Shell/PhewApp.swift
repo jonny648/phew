@@ -277,6 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setup.voicePermissions = { VoicePermissions.now }
         setup.askMicrophone = { Task { _ = await ListenPermissions.askMicrophone() } }
         card.onTask = { [unowned self] in tasks.start($0, packet: $1, spoken: $2) }
+        card.onHold = { [unowned self] in tasks.hold($0, words: $1) }
         card.onUnclear = { [unowned self] in unclear($0, packet: $1) }
         card.onWatch = { [unowned self] in watching.start($0) }
         tasks.onEnd = { [unowned self] in notices.task($0.title, ended: $0.state) }

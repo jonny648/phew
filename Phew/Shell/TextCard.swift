@@ -51,6 +51,8 @@ final class TextCard: EditPanel {
     var consent = ActConsent()
     /// The task route (PA.2): starts the task with the words and this turn's capture; returns the card's one line.
     var onTask: ((String, ContextPacket?, [Hearing]) -> String)?
+    /// NF.5: a money write a job asked for waits in the menu for the confirm, under the job's words.
+    var onHold: ((ConnectorCall, String) -> Void)?
     /// The watch route (NA.15): starts the watcher on the thing under the pointer in this turn's capture, or says why
     /// not; returns the card's one line.
     var onWatch: ((ContextPacket?) -> String)?

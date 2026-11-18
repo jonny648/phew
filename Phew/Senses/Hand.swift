@@ -428,16 +428,19 @@ final class HandJob: @unchecked Sendable {  // state under `lock`
     private var current: pid_t  // under `lock`
     /// A research agent's job (PA.4), not one the user watches: what cannot be undone waits for a confirm.
     let agent: Bool
+    /// NF.5: the job runs what the user confirmed in the menu: a money write may run in it.
+    let confirmed: Bool
     private var keptValues: [HandKept] = []  // under `lock`
     /// R5: told true when the Hand pauses at the minute ceiling and false when it goes on, off the main thread. Set
     /// once by the caller before the first action.
     var pausing: ((Bool) -> Void)?
 
-    fileprivate init(number: Int, app: pid_t, agent: Bool = false) {
+    fileprivate init(number: Int, app: pid_t, agent: Bool = false, confirmed: Bool = false) {
         self.number = number
         start = app
         current = app
         self.agent = agent
+        self.confirmed = confirmed
     }
 
     var end: HandEnd? { lock.withLock { ended } }
@@ -730,10 +733,11 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
 
     /// Starts a job in `app`, the app the user asked in. With `watchUser`, the user's own mouse down or key down in
     /// the app the job works in ends it (`seen`). `agent`: a research agent's job, in the background. `counted`: the
-    /// actions its task already made in earlier jobs, so one task never passes the per-job ceiling (F3).
+    /// actions its task already made in earlier jobs, so one task never passes the per-job ceiling (F3). `confirmed`
+    /// (NF.5): the job runs only what the user confirmed in the menu.
     @MainActor
-    func begin(watchUser: Bool = true, in app: pid_t = 0, agent: Bool = false, counted: Int = 0) -> HandJob {
-        let job = lock.withLock { jobs += 1; return HandJob(number: jobs, app: app, agent: agent) }
+    func begin(watchUser: Bool = true, in app: pid_t = 0, agent: Bool = false, counted: Int = 0, confirmed: Bool = false) -> HandJob {
+        let job = lock.withLock { jobs += 1; return HandJob(number: jobs, app: app, agent: agent, confirmed: confirmed) }
         job.acted = counted
         if app != 0 { job.window = surface.focusedWindow(app) }
         if watchUser {
@@ -791,7 +795,8 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
                 let end = check(step, job: job, role: &role, marked: &marked, final: &final, left: &left)
                 guard end != .minuteCeiling else { return end }  // nothing sent: every gate again after the pause
                 job.steps += 1
-                if end != .done { job.finish(end) }
+                // NF.5: a money write held for the confirm in a job the user watches does not end that job.
+                if end != .done, end != .needsConfirm || job.agent { job.finish(end) }
                 return end
             }
             if end == .minuteCeiling, let over = pause(job) {
@@ -1004,14 +1009,15 @@ final class Hand: @unchecked Sendable {  // mutable state under `lock`
     }
 
     /// Under `acting`. A write in a connected tool (NB.3, NB.11): the never words on the tool's name, the ceilings; an
-    /// agent's waits for the confirm; then the write, once, through the seam, with a permit made here. Never tagged:
-    /// in a job the user watches it is listed like any action (the user's word of 17 November). No Undo: it is not kept.
+    /// agent's waits for the confirm, and so does a money write (NF.5, `Connections.money`) in a job the user watches,
+    /// unless the user confirmed it in the menu; then the write, once, through the seam, with a permit made here. Never
+    /// tagged: in a job the user watches it is listed like any action (the user's word of 17 November). No Undo.
     private func connectorWrite(_ step: HandStep, job: HandJob) -> HandEnd {
         guard let call = step.connector, let seam = connector else { return .failed }
         if let end = NeverList.refusal(role: "", subrole: "", focusedSecure: false, texts: [call.tool]) { return end }
         let time = now()
         if let end = brake(job, time) { return end }
-        if job.agent { return .needsConfirm }
+        if job.agent || (Connections.money(call) && !job.confirmed) { return .needsConfirm }
         if let end = job.end { return end }
         job.acted += 1
         recent.append(time)

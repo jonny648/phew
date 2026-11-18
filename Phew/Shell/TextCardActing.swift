@@ -62,6 +62,7 @@ extension TextCard {
         run.starting = { [weak self] line in self?.model.actions.append(CardModel.Action(line: line)) }
         run.landed = { [weak self] step, result in self?.model.landed(ActJob.line(step), step: step, result: result) }
         run.skilled = { [weak self] line, ok in self?.model.skilled(line, ok: ok) }
+        run.held = { [weak self] call in self?.onHold?(call, request) }
         // R5: one grey line above the rows while he waits at the minute ceiling.
         run.paused = { [weak self] on in
             guard let model = self?.model else { return }

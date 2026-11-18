@@ -23,6 +23,8 @@ struct ActJob {
     var landed: (HandStep, HandResult) -> Void = { _, _ in }
     /// NC.9: a skill step ended, its line and whether it worked: the card ticks its row or marks it not done.
     var skilled: (String, Bool) -> Void = { _, _ in }
+    /// NF.5: a connector write the Hand did not run (`needsConfirm`): it waits in the menu bar for the user's confirm.
+    var held: (ConnectorCall) -> Void = { _ in }
     /// The names of an app's menu commands (`MenuReader.names(pid:)`), read once per job and per app (N2.6).
     var menus: (pid_t) async -> String = { _ in "" }
     /// The look taken at the shortcut, of the app the job starts in: round 1 uses it instead of a second screen read
@@ -158,13 +160,17 @@ struct ActJob {
                     wrote.add(step, result)
                     return result.end.rawValue
                 }, stop: { job.end != nil })
+                var waits = false
                 for (step, result) in wrote.all {
                     ran.append(clock())
                     done.append("\(Self.line(step)): \(result.end.rawValue)")
                     if result.end == .done { listed(Self.line(step)); landed(step, result) }
+                    if result.end == .needsConfirm, let call = step.connector { held(call); waits = true }
                 }
                 if let end = job.end { return .ended(end) }
-                skilled(Self.connectorLine(), ok)
+                // NF.6: a step that failed says why on the card, in the door's own fixed line; NF.5: one that left a
+                // write waiting says so.
+                skilled(!ok ? said : waits ? Self.sentence(for: .needsConfirm) : Self.connectorLine(), ok)
                 done.append("\(Self.connectorLine()): \(ok ? "done" : "failed")")
                 skill = said  // its answer, as data, for the next call
                 if !ok { connectorsFailed += 1 }

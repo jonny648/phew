@@ -22,6 +22,8 @@ struct ClaudeAccount: Sendable, Equatable {
 /// How a run through Claude Code ended.
 enum DoorEnd: String, Sendable {
     case done, off, missing, busy, nothing, stopped, timeout, tooMany, tooLarge, changed, unasked, failed, limited
+    /// NF.6: the connector the request names lists no tools: not signed in on the Claude side.
+    case noTools
 }
 
 /// One connector step: its answer for the model (in its `<connector>` block, as data) or one fixed line, and its end.
@@ -76,8 +78,7 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
     let limits: Limits?
     /// Tests shorten these.
     var seconds = ClaudeCodeDoor.stepSeconds
-    /// Listing: how long to wait for the `init` line with no message sent, then how long in all.
-    var listQuiet: TimeInterval = 15
+    /// Listing: how long in all.
     var listSeconds: TimeInterval = 40
 
     private let lock = NSLock()
@@ -180,11 +181,19 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
 
     private func save(pins: [String: [String]]) { defaults.set(try? JSONEncoder().encode(pins), forKey: Self.tickedKey) }
 
-    /// Tick: the server may be used, with its tools as listed now. Untick: it is refused.
+    /// Tick: the server may be used, with its tools as listed now. Untick: it is refused. NF.4: a server that lists no
+    /// tools (not signed in on the Claude side) cannot be ticked.
     func tick(_ name: String, _ on: Bool) {
         var pins = pins()
-        pins[name] = on ? listed().first { $0.name == name && !$0.plugin }?.tools : nil
+        pins[name] = on ? listed().first { $0.name == name && !$0.plugin && !$0.tools.isEmpty }?.tools : nil
         save(pins: pins)
+    }
+
+    /// NF.2: the names of the ticked servers this door may use now, as the panel shows them. Empty while it is off.
+    func ticked() -> [String] {
+        guard on, program != nil else { return [] }
+        let pins = pins()
+        return listed().filter { !$0.plugin && pins[$0.name]?.isEmpty == false }.map { Self.gate($0.name).name }
     }
 
     /// The user accepted a changed list. False when the name is not one of this door's servers.
@@ -208,20 +217,20 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
         let pins = pins()
         return listed().filter { !$0.plugin }.map { server in
             let gate = Self.gate(server.name)
-            return ConnectorStatus(id: server.name, name: gate.name, door: .claudeAccount, connected: pins[server.name] != nil,
+            return ConnectorStatus(id: server.name, name: gate.name, door: .claudeAccount, connected: pins[server.name]?.isEmpty == false,
                                    tools: server.tools.map { ConnectorToolLine(name: $0, writes: Connections.access(ConnectorTool(name: $0), on: gate) == .write) },
                                    change: pins[server.name].flatMap { Self.change($0, server) })
         }
     }
 
-    /// Lists the connectors: starts the program, writes nothing, reads the `init` line, ends it at once. Only if no
-    /// line came after `listQuiet` does it send one short message (its model call is cut by the end that follows).
-    /// Nil, or one line for the panel.
+    /// Lists the connectors: starts the program, sends one short message at once (Claude Code writes its `init` line
+    /// only after a first message; its model call is cut by the end that follows), reads the `init` line, ends it at
+    /// once. Nil, or one line for the panel.
     func list() async -> String? {
         guard on else { return Self.line(.off) }
         guard program != nil else { return Self.line(.missing) }
         let started = Date()
-        let out = await run(nil, late: (listQuiet, "Reply with one word: ready."),
+        let out = await run("Reply with one word: ready.",
                             arguments: Self.arguments(system: Self.stepSystem, model: Tier.small.model.id, refused: []),
                             seconds: listSeconds, mostCalls: 0, stop: { false },
                             onInit: { [self] servers in
@@ -242,7 +251,8 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
     }
 
     /// Ticked servers whose tools are as remembered: only the tools that fit the task's words; every other tool and
-    /// every other server (plugins too) refused by name.
+    /// every other server (plugins too) refused by name. NF.1: when the words name ticked servers, all the tools of
+    /// those (each call still judged by the gate) and none of any other.
     // shortcut: Claude Code applies the allow rules in the user's own settings before asking Phew, and Phew does not
     // read that file. Deny beats allow, so every tool not chosen here is refused by name. Every tool result is matched
     // to a call Phew allowed by its tool_use id (by tool and input, in order, when a request carries no id); any other
@@ -253,13 +263,18 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
     func plan(for words: String) -> Plan {
         let pins = pins()
         var plan = Plan()
+        let ticked = listed().filter { !$0.plugin && pins[$0.name]?.isEmpty == false }
+        let usable = ticked.filter { Self.change(pins[$0.name]!, $0) == nil }
+        // A named server whose tools changed still counts as named: then nothing runs, and the step says why.
+        let named = Set(ticked.filter { Connections.names(words, connector: $0.name) }.map(\.name))
         for server in listed() {
-            guard !server.plugin, let pinned = pins[server.name], Self.change(pinned, server) == nil else {
+            guard let pinned = pins[server.name], usable.contains(server), named.isEmpty || named.contains(server.name) else {
                 plan.refused.append("mcp__\(Self.norm(server.name))")
                 continue
             }
             let gate = Self.gate(server.name)
-            let chosen = Set(Connections.chosen(pinned.map { ConnectorTool(name: $0) }, on: gate, for: words).map(\.name))
+            let chosen = named.isEmpty ? Set(Connections.chosen(pinned.map { ConnectorTool(name: $0) }, on: gate, for: words).map(\.name))
+                : Set(pinned)
             guard !chosen.isEmpty else { plan.refused.append("mcp__\(Self.norm(server.name))"); continue }
             for tool in pinned {
                 if chosen.contains(tool) { plan.allowed[server.prefix + tool] = (server, gate, tool) } else { plan.refused.append(server.prefix + tool) }
@@ -317,7 +332,17 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
         guard program != nil else { return DoorStep(text: Self.line(.missing), end: .missing) }
         let words = SecretsFilter.clean(words)
         let plan = plan(for: words)
-        guard !plan.allowed.isEmpty else { return DoorStep(text: Self.line(.nothing), end: .nothing) }
+        guard !plan.allowed.isEmpty else {
+            // NF.6: why, in one plain line: the named connector lists no tools, its tools changed, or none of the
+            // ticked ones fits.
+            let pins = pins()
+            let named = listed().filter { !$0.plugin && Connections.names(words, connector: $0.name) }
+            if named.contains(where: { $0.tools.isEmpty }) { return DoorStep(text: Self.line(.noTools), end: .noTools) }
+            if named.contains(where: { server in pins[server.name].flatMap { Self.change($0, server) } != nil }) {
+                return DoorStep(text: Self.line(.changed), end: .changed)
+            }
+            return DoorStep(text: nothing(), end: .nothing)
+        }
         guard lock.withLock({ busy.insert(task).inserted }) else { return DoorStep(text: Self.line(.busy), end: .busy) }
         defer { lock.withLock { _ = busy.remove(task) } }
         do { try limits?.start() } catch { return DoorStep(text: Self.line(.limited), end: .limited) }
@@ -481,7 +506,7 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
                 let used = UsedConnectors(), added = AddedItems(), counts = Counts()
                 let day = Date().formatted(Date.ISO8601FormatStyle(timeZone: .current).year().month().day())
                 let model = Tier.main.model.id, started = Date()
-                let out = await run("Task: \(clean)\n\nNo screen was read.\n\nToday is \(day).",
+                let out = await run("Task: \(clean)\n\n\(Runner.connected(ticked()))No screen was read.\n\nToday is \(day).",
                                     arguments: Self.arguments(system: Runner.system + Self.researchNote, model: model,
                                                               tools: "WebSearch,WebFetch", refused: plan.refused),
                                     seconds: limits.seconds, mostCalls: limits.searches + limits.pages + Self.mostCalls,
@@ -548,6 +573,12 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
 
     // MARK: Lines, the log
 
+    /// NF.6: nothing fits: the line names the connectors that are ticked, or says none is.
+    func nothing() -> String {
+        let names = ticked()
+        return names.isEmpty ? "You have not ticked any connector in Connections." : Self.line(.nothing) + " Ticked: " + names.joined(separator: ", ") + "."
+    }
+
     /// The panel's or the card's one line. Fixed words.
     static func line(_ end: DoorEnd) -> String {
         switch end {
@@ -564,6 +595,7 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
         case .unasked: "Claude Code ran a tool without asking Phew (your Claude Code settings allow it). Phew stopped the run."
         case .failed: "Claude Code could not do it. Check that it is signed in."
         case .limited: "Phew's limit of requests was reached."
+        case .noTools: "That connector offers no tools: sign in to it on Claude first."
         }
     }
 
@@ -625,7 +657,7 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
         /// The program leads its own process group (`Process` starts one): the kill fallback reaches its children.
         private let group: Bool
         private let lock = NSLock()
-        private var closed = false, why: DoorEnd?, writing: Pending?, saw = false, sent = false
+        private var closed = false, why: DoorEnd?, writing: Pending?, sent = false
         /// What Phew answered each tool call, by its tool_use id: true allowed, false refused.
         private var verdicts: [String: Bool] = [:]
         /// Answers to calls whose request carried no tool_use id, in order, matched later by tool and input.
@@ -639,9 +671,7 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
         }
 
         var reason: DoorEnd? { lock.withLock { why } }
-        var sawLine: Bool { lock.withLock { saw } }
         var asked: Bool { lock.withLock { sent } }
-        func seen() { lock.withLock { saw = true } }
 
         func send(_ object: [String: Any]) {
             guard let data = try? JSONSerialization.data(withJSONObject: object) else { return }
@@ -744,10 +774,9 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
         var on: Bool { get { lock.withLock { value } } set { lock.withLock { value = newValue } } }
     }
 
-    /// Starts the program in a new empty folder, sends `message` (nil: nothing; `late` sends one only if no line came
-    /// in time), and answers its stream until its result, an end by `onInit`, `until`, a limit, Stop or cancel.
-    /// Every tool call goes through `gate`; any other request is refused. Returns once the process is gone.
-    private func run(_ message: String?, late: (after: TimeInterval, message: String)? = nil, arguments: [String],
+    /// Starts the program in a new empty folder, sends `message`, and answers its stream until its result, an end by
+    /// `onInit`, `until`, a limit, Stop or cancel. Every tool call goes through `gate`; any other request is refused. Returns once the process is gone.
+    private func run(_ message: String, arguments: [String],
                      seconds: TimeInterval, mostCalls: Int, stop: @escaping @Sendable () -> Bool,
                      onInit: ([ClaudeServer]) -> DoorEnd?, onText: () -> Void = {}, until: (() -> Bool)? = nil,
                      gate: (Ask, Run) async -> Answer) async -> Outcome {
@@ -774,28 +803,25 @@ final class ClaudeCodeDoor: HandConnector, @unchecked Sendable {  // state under
                 while let newline = buffer.firstIndex(of: 10) {
                     let line = Data(buffer[buffer.startIndex..<newline])
                     buffer.removeSubrange(buffer.startIndex...newline)
-                    run.seen()
                     for (id, error) in Self.results(line) { run.result(id, error: error) }
                     feed.yield(line)
                 }
             }
             feed.finish()
         }
-        // The watch: Stop, cancel, the time limit, the late message; then the stream ends shortly after the exit,
+        // The watch: Stop, cancel, the time limit; then the stream ends shortly after the exit,
         // even if a child of the program still holds its output open.
         let started = Date()
         let watch = Task.detached {
-            var lateSent = false
             while process.isRunning {
                 let elapsed = Date().timeIntervalSince(started)
                 if stop() || cancelled.on { run.end(.stopped) } else if elapsed > seconds { run.end(.timeout) }
-                if let late, !lateSent, !run.sawLine, elapsed > late.after { run.user(late.message); lateSent = true }
                 try? await Task.sleep(for: .milliseconds(50))
             }
             try? await Task.sleep(for: .milliseconds(200))
             feed.finish()
         }
-        if let message { run.user(message) }
+        run.user(message)
         var out = Outcome(), sofar = ""
         await withTaskCancellationHandler {
             loop: for await data in lines {

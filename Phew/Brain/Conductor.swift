@@ -19,6 +19,11 @@ enum Conductor {
         Adding a reminder, a calendar event, a note in Notes or a spreadsheet in Excel ("add a reminder…", "remind me \
         to call…", "make a note in Notes…", "aggiungi un promemoria…", "ricordami di chiamare…", "metti in \
         calendario…") is act: it goes into that app, not into Phew's memory.
+        Asking now to find, read, add, change or play something in an online service the user names, when it is not \
+        about what is on screen ("find the last email from Anna in Gmail", "what is on my Google Calendar tomorrow?", \
+        "play some jazz on Spotify", "cerca in Notion la pagina del budget", "cosa ho in calendario domani su Google \
+        Calendar?") is act, even as a question: Phew does it in that service. Asking for research or a report that \
+        uses it is task.
         task: they hand Phew work to do on his own and report back later, usually research: "research X and report", \
         "find out…", "look into … and write me a report", "ricerca … e fammi un report", "scopri…". A question about \
         what is on screen stays explain or guide; asking Phew to do something in the app now stays act. When you are \

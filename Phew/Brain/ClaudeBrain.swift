@@ -112,9 +112,11 @@ struct ClaudeBrain: Brain {
         do {
             // The packet was filtered by Senses; the words, the lines of done actions and the last skill's result are
             // filtered here. NC.9: the kept skills are listed as data, read again each round (a few small files).
+            // NF.2: the connectors a job's connector step can reach: door 1's ticked ones, by name.
             return try await Doer.plan(SecretsFilter.clean(request), packet: packet, done: done.map(SecretsFilter.clean),
                                        spoken: spoken, skills: skills.map { $0.block() ?? Doer.noSkillsYet },
-                                       skill: skill.map(SecretsFilter.clean), batch: batch, provider: provider)
+                                       skill: skill.map(SecretsFilter.clean), connectors: claudeCode?.ticked() ?? [],
+                                       batch: batch, provider: provider)
         } catch {
             throw BrainError(error)
         }
@@ -389,7 +391,8 @@ extension ClaudeBrain {
             guard let connections else { return nil }
             let offered = await connections.offer(for: SecretsFilter.clean(words))
             return offered.isEmpty ? nil : ConnectorTools(connections: connections, offered: offered, ask: connector)
-        }, shortcuts: shortcutTicks.flatMap { ShortcutTools(ticks: $0, ask: shortcut) }, provider: provider, limits: taskLimits)
+        }, shortcuts: shortcutTicks.flatMap { ShortcutTools(ticks: $0, ask: shortcut) },
+           connected: connections?.connectedNames ?? [], provider: provider, limits: taskLimits)
         guard let limits else { return stream }
         // What the task did not spend goes back when it ends, fails or is stopped.
         return AsyncThrowingStream { continuation in

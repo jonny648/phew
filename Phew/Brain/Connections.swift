@@ -192,12 +192,39 @@ final class Connections: @unchecked Sendable {  // state under `lock`
 
     /// A read only when every word of the name, after the server's own prefix, is a read verb or a harmless word, and
     /// one at least is a read verb. Anything else writes: a word Phew does not know, any sign that is not ASCII.
+    /// NF.5: a money word never makes a read, except on a broker or payment service, where it is the subject of its
+    /// reads ("get-trades", "list-orders"); its writes there wait for the confirm wherever asked (`money`).
     static func byName(_ name: String, server: ConnectorServer) -> ConnectorAccess {
         guard var words = nameWords(name) else { return .write }
         if words.first == server.id { words.removeFirst() }
+        let nouns = broker(server.name) ? harmlessWords.union(moneyWords) : harmlessWords
         guard words.contains(where: readVerbs.contains),
-              words.allSatisfy({ readVerbs.contains($0) || harmlessWords.contains($0) }) else { return .write }
+              words.allSatisfy({ readVerbs.contains($0) || nouns.contains($0) }) else { return .write }
         return .read
+    }
+
+    // MARK: Money (NF.5)
+
+    /// Brokers and payment services, by the words of a connector's name. Fixed here; never from the model.
+    static let brokers: [[String]] = [["etoro"], ["interactive", "brokers"], ["ibkr"], ["stripe"], ["paypal"], ["square"],
+                                      ["airwallex"], ["ramp"], ["wise"], ["revolut"], ["coinbase"], ["binance"], ["kraken"],
+                                      ["robinhood"]]
+    /// Words in a tool's name that move money.
+    static let moneyWords: Set = ["trade", "trades", "trading", "order", "orders", "pay", "pays", "payment", "payments", "payout",
+                                  "payouts", "transfer", "transfers", "buy", "sell", "deposit", "deposits", "withdraw",
+                                  "withdrawal", "withdrawals", "refund", "refunds", "charge", "charges", "checkout",
+                                  "purchase", "purchases"]
+
+    /// A connector of a broker or payment service, by its name ("claude.ai eToro", "Interactive Brokers (IBKR)").
+    static func broker(_ name: String) -> Bool {
+        let words = Set(words(name.lowercased()))
+        return brokers.contains { $0.allSatisfy(words.contains) }
+    }
+
+    /// A write that waits for the user's confirm wherever it is asked, a job the user watches too: any write on a
+    /// broker or payment service, and any write with a money word in its tool's name (a name Phew cannot read counts).
+    static func money(_ call: ConnectorCall) -> Bool {
+        broker(call.name) || broker(call.server) || (nameWords(call.tool).map { $0.contains(where: moneyWords.contains) } ?? true)
     }
 
     /// A tool name's words, lower case: split at every sign and digit, at a capital inside a word ("getPage") and at
@@ -246,6 +273,37 @@ final class Connections: @unchecked Sendable {  // state under `lock`
         return scored.filter { $0.1 > 0 }
             .sorted { ($0.1, -rank($0.0), $1.0.name) > ($1.1, -rank($1.0), $0.0.name) }
             .prefix(mostTools).map(\.0)
+    }
+
+    // MARK: A connector the request names (NF.1)
+
+    /// Words of a connector's name that do not tell one connector from another.
+    static let genericNames: Set = ["google", "claude", "cloud", "for", "ai", "the", "and", "app", "mcp", "by", "of", "my", "your"]
+
+    /// The words that tell a connector apart: its name, "claude.ai " left out, without the generic words.
+    static func nameTerms(_ name: String) -> [String] {
+        let display = name.hasPrefix("claude.ai ") ? String(name.dropFirst("claude.ai ".count)) : name
+        return words(display.lowercased()).filter { $0.count >= 3 && !genericNames.contains($0) }
+    }
+
+    /// The request names this connector: one of its own words is a word of the request, any case; a plural, or an
+    /// ending added to a long word ("calendario" for Calendar), counts. Code only, no model call.
+    static func names(_ request: String, connector name: String) -> Bool {
+        let asked = words(request.lowercased())
+        return nameTerms(name).contains { term in
+            asked.contains { $0 == term || $0 == term + "s" || (term.count >= 7 && $0.hasPrefix(term)) }
+        }
+    }
+
+    /// For a connector the request names: the tools that fit its words first, then Phew's table's reads, then the
+    /// rest, up to `mostTools`.
+    static func filled(_ tools: [ConnectorTool], on server: ConnectorServer, for task: String) -> [ConnectorTool] {
+        var out = chosen(tools, on: server, for: task)
+        let byName = tools.sorted { $0.name < $1.name }
+        for tool in byName.filter({ server.reads.contains($0.name) }) + byName where !out.contains(where: { $0.name == tool.name }) {
+            out.append(tool)
+        }
+        return Array(out.prefix(mostTools))
     }
 
     /// The tool as the model sees it: the server's id before its name, the description cut, a write said to wait.
@@ -394,15 +452,21 @@ final class Connections: @unchecked Sendable {  // state under `lock`
     }
 
     /// The tools of each connected server that fit the task, checked against the remembered lists once. A server whose
-    /// list changed, or that fails, offers nothing.
+    /// list changed, or that fails, offers nothing. NF.1: when the task names connected servers, only those, each
+    /// filled up to `mostTools`.
     func offer(for task: String) async -> [(server: ConnectorServer, tool: ConnectorTool)] {
+        let connected = servers.filter { pins($0.id) != nil }
+        let named = connected.filter { Self.names(task, connector: $0.name) }
         var offered: [(ConnectorServer, ConnectorTool)] = []
-        for server in servers where pins(server.id) != nil {
+        for server in named.isEmpty ? connected : named {
             guard let tools = try? await check(server) else { continue }
-            offered += Self.chosen(tools, on: server, for: task).map { (server, $0) }
+            offered += (named.isEmpty ? Self.chosen : Self.filled)(tools, server, task).map { (server, $0) }
         }
         return offered
     }
+
+    /// NF.2: the names of the servers connected through this door, for the agents' instructions.
+    var connectedNames: [String] { servers.filter { pins($0.id) != nil }.map(\.name) }
 }
 
 /// The Hand's seam for a write (Senses/Hand.swift): it runs only with a permit `Hand.act` made, after the list is

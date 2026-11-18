@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.1, 18 November 2026
+
+Phase NF, connections that work. Tested offline; nothing run with the model or a real connector.
+
+- Naming a connected tool in your request now reaches it, in English or Italian. Before, tools were picked by shared words with their names, so Gmail, Calendar and Spotify got the wrong tool or none.
+- He is told which tools you ticked, and uses one before the screen when you name it. A question about a named tool goes to a job, not to an explanation.
+- Listing your Claude account's connectors takes about two seconds, not sixteen.
+- A connector with no tools says "Sign in on Claude first" and cannot be ticked.
+- Money tools (a broker or payment service, or a tool named for a trade, order, transfer, deposit, withdrawal) wait for your confirm in the menu bar, also in a job you watch.
+- A connector step that fails says why on the card.
+
 ## 0.5.0, 18 November 2026
 
 Phases NB (connections), N4 (cost down) and N7 (the brand), built as one. Tested offline; nothing run with the model, with a real connector or in real apps.

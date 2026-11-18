@@ -207,7 +207,7 @@ An action never waits for motion. If he acts faster than the pointer travels, th
 ```
 
 - Place: top-left corner at the cursor, kept inside the screen, as today.
-- Layout: 16 padding left and right. The presence dot (8 points, `accent`), 12 gap, the field. The field grows to 4 lines, then scrolls.
+- Layout: 16 padding left and right. The mark at rest (the small mark, 16 points, `docs/22-brand.md`), 12 gap, the field. The field grows to 4 lines, then scrolls.
 - **Empty:** placeholder "Ask Phew" in `ink3`. Under the panel, inside the same surface, a hint row 24 high: `↵ ask · empty ↵ explains what is here · esc`, with `↵` and `esc` as key caps (`tag` on `fill`, radius 6). The hint row goes away at the first character.
 - **Typing:** the text in `ink`. Shift and Return makes a new line.
 - **Sent:** the panel does not close and reopen as a card. The same box becomes the card (B): the field turns into the question line of the header and the answer grows below. Same corner, same width.
@@ -229,7 +229,7 @@ One box, 400 wide, three parts: header (36), body, footer (36).
 └──────────────────────────────────────────────┘
 ```
 
-- Header: the presence dot at 16 from the left; your question in `small`, `ink2`, one line, cut with "…" (nothing if you asked with no words); the close control, `xmark` 11 pt semibold in `ink2`, inside a 28 × 28 hit area. The header is the drag area once the thread is open; the cursor shows the open hand over it.
+- Header: the mark at 16 from the left, in its state (`docs/22-brand.md` 22.5); your question in `small`, `ink2`, one line, cut with "…" (nothing if you asked with no words); the close control, `xmark` 11 pt semibold in `ink2`, inside a 28 × 28 hit area. The header is the drag area once the thread is open; the cursor shows the open hand over it.
 - The mark is Phew (15.8): it tells thinking, acting, pointing, done and could not by the shell alone, 22.5.
 - Place: where the ask panel was. It grows downward with `grow`; if it would leave the screen, it is moved up, not shrunk.
 
@@ -423,7 +423,7 @@ enum Design {
     }
 }
 struct Surface: NSViewRepresentable   // the blurred material, always in its active look
-struct PresenceDot: View              // still or breathing
+struct BrandMark: View                // the mark in its state, in Brand.swift (the presence dot is gone)
 struct Keycap: View
 struct MainButton: ButtonStyle        // ink fill
 struct QuietButton: ButtonStyle       // `fill` background
@@ -433,7 +433,7 @@ struct Row: View                      // list row for small panels and first run
 | Pass | File | What it gets |
 |---|---|---|
 | **PX.3** panel, card, conversation | `Design.swift` | The tokens and the small shared pieces above |
-| | `InputPanel.swift` | 400 wide, `ask` text, presence dot, hint row, up to 4 lines, `Surface`, `appear` and `leave` |
+| | `InputPanel.swift` | 400 wide, `ask` text, the mark, hint row, up to 4 lines, `Surface`, `appear` and `leave` |
 | | `TextCard.swift` | One width (400) for closed and open. Header with dot, question and close; footer. States thinking, answer, conversation, error. `fit(height:)` uses `grow`. The card opens at the ask panel's corner, not 12 points off |
 | | `PhewApp.swift` | Hands the ask panel's corner to the card |
 | | `EditPanel.swift` | Unchanged |

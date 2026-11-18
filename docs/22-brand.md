@@ -76,7 +76,7 @@ Motion: lift, tip and settle use the "grow" spring of 15.4 (response 0.35), with
 
 - **App icon:** the mark in shell white on ink, nothing else, the mark 56% of the tile.
 - **Menu bar:** the small mark at 16 points as a template image, in set B. A waiting result shows its count beside the icon.
-- **The notch:** at rest nothing is drawn. When called, the mark in shell white (or orange, by state) at 22 points with its word beside it. He is shown only when called, working, or with a result waiting.
+- **The notch:** at rest nothing is drawn. When called, the mark in shell white (or orange, by state) at 22 points with its word beside it. He is shown only when called, working, or with a result waiting. As built in 0.5.0: only while you hold the key (listening, or "could not" for a failed hold); the app has no notch surface for working or a waiting result, and none was added.
 
 ## 22.7 Never
 

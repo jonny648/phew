@@ -1,47 +1,38 @@
-# Phew!
+# Phew
 
-A macOS companion for people who create projects. You call him with a shortcut and he works with you: he does the jobs you ask for in your apps, explains what is on screen, guides you step by step by pointing, remembers your projects, and researches a task alone.
+Phew is an experimental macOS menu bar assistant that can explain what is on screen, guide app workflows, and carry out selected actions in supported apps.
 
-Version 0.2.1 (the MVP was 0.1.0). Private repository.
+This repository contains version **0.5.1**. The app is under active development and is not a supported production product.
 
-## Install
+## Download
 
-Download `Phew-0.2.1.dmg` from the Releases page, open it and drag Phew to Applications. The app is signed with a development certificate, not notarised by Apple: on a Mac other than the owner's, macOS refuses to open it unless you right-click it and choose Open.
+The [latest release](https://github.com/jonny648/phew/releases/latest) includes a macOS disk image. The current release is signed with an Apple Development certificate but is not notarized by Apple, so macOS may block it on other Macs. Review the source and decide whether you trust the app before opening it.
 
-At first launch Phew asks for three things, once: a Claude API key (kept only in the Keychain), Accessibility, and Screen Recording. The microphone is asked the first time you hold the shortcut to talk.
+## What it can do
 
-## Use
+- Answer questions about the current screen and guide you through app workflows.
+- Carry out selected actions in supported apps, with confirmation for some changes.
+- Keep encrypted local project memory and perform background research tasks.
+- Optionally use voice input and connected tools.
 
-- **Right Option + Right Command**, pressed: the ask panel. Type a question, or nothing to have him explain what is under the pointer.
-- **Held**: speak, release. He hears on the Mac, in Italian or English.
-- "Make the title bold": he does it. "How do I make it bold?": he shows you. "Research X and report": he works alone and the result waits in the menu bar.
-- The menu bar icon holds the rest: Let Phew act, Never read this app, Memory (import, undo, recently deleted, export), Reports, API Key.
+## Privacy and safety
+
+Phew requires macOS Screen Recording and Accessibility permissions. **Captured screenshots are sent to Anthropic's Claude API without redacting image pixels.** Text filtering is incomplete and does not guarantee that sensitive information is removed. Do not use Phew while passwords, financial or health information, confidential work, or other sensitive material is visible.
+
+Your Claude API key is stored in the macOS Keychain, and API usage is billed to your Anthropic account. Voice input is transcribed on your Mac. Connected tools can access the services you enable, so review each permission and action carefully.
 
 ## Build
 
-Needs Xcode 27 on macOS 26 or later.
+Builds require macOS 26 or later and Xcode 27.
 
+```sh
+xcodebuild -project Phew.xcodeproj -scheme Phew -configuration Debug build
 ```
-xcodebuild -project Phew.xcodeproj -scheme Phew build
-xcodebuild -project Phew.xcodeproj -scheme Phew test
-```
 
-Some tests open a window on screen; they run only with `TEST_RUNNER_PHEW_LIVE=1`.
+The repository includes app and helper tests under `PhewTests/` and `Engine/src/`. Some app tests require a graphical session.
 
-## Where things are
+The app includes a compiled helper at `Phew/Brain/engine.js`. To rebuild it after changing `Engine/`, run `Tools/build-engine.sh`. `Tools/fetch-node.sh` downloads the Node.js runtime used by the disk-image packaging script.
 
-| Path | Content |
-|---|---|
-| `Phew/` | The app: `Shell` (what you see), `Senses` (reading, hearing, acting), `Brain` (the agents), `Map` (the memory) |
-| `PhewTests/` | Unit tests |
-| `Tools/` | The practice app used by acting tests, the icon script, the DMG script |
-| `roadmap.html` | The checklist of the build |
-| `docs/00-now.md` | Where Phew is now, on one page |
-| `docs/README.md` | Index of all docs |
-| `docs/07-decisions.md` | Decisions and the log of every step |
-| `CLAUDE.md` | Rules for every Claude Code session |
-| `CHANGELOG.md` | What each version brought |
+## Dependencies and license
 
-## Privacy, in short
-
-He reads the screen only when called. What he reads lives in memory and is dropped when the answer ends. The memory (the Map) is encrypted and stays on the Mac. Speech is turned into words on the Mac. Your questions, the screen read with them and the few facts an answer needs go to the Claude API, after a filter that removes secrets. No log holds your words.
+Phew's source is available under the MIT License; see [LICENSE](LICENSE). Third-party notices for SQLCipher.swift and the Node.js runtime are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

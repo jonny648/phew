@@ -29,6 +29,7 @@ codesign --verify --strict "$node" || fail "the fetched Node program was changed
 identity=$(security find-identity -v -p codesigning | awk '/Apple Development/{print $2; exit}')
 [[ -n $identity ]] || fail "no signing certificate found"
 mkdir -p "$app/Contents/Helpers"; cp "$node" "$app/Contents/Helpers/node"
+mkdir -p "$app/Contents/Resources"; cp "$root/Vendor/node/LICENSE" "$app/Contents/Resources/Node.js-LICENSE"
 codesign --force --options runtime --entitlements "$root/Engine/node.entitlements" --sign "$identity" "$app/Contents/Helpers/node"
 codesign --force --options runtime --entitlements "$root/Phew.entitlements" --sign "$identity" "$app"
 codesign --verify --deep --strict "$app"

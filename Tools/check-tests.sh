@@ -2,7 +2,7 @@
 # Reads a test result bundle and fails unless: no test failed, at least <least> tests ran, and exactly <skipped> were
 # skipped. A skipped test counts as a pass for xcodebuild, so a run where the live tests all skipped looks green (R37).
 # Usage: Tools/check-tests.sh <result bundle> <least> <skipped>
-# Normal run: 6 skipped (5 practice-window tests, 1 spoken measure). With PHEW_LIVE=1: 1. With PHEW_HEAR=1 too: 0.
+# Normal run: 7 skipped (5 practice-window tests, 1 spoken measure, 1 real Claude Code). With PHEW_LIVE=1: 2. With PHEW_HEAR=1 too: 1.
 set -euo pipefail
 (( $# == 3 )) || { echo "Usage: Tools/check-tests.sh <result bundle> <least> <skipped>" >&2; exit 2; }
 summary=$(xcrun xcresulttool get test-results summary --path "$1")

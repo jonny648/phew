@@ -4,10 +4,17 @@ build/
 DerivedData/
 *.profraw
 *.profdata
-.claude/worktrees/
+
 
 # The owner's real exported memory: personal data, never in the repository
 Claude Memory/
 
 # The Node program shipped inside the app: fetched by Tools/fetch-node.sh, over 100 MB.
 Vendor/
+
+# Working notes kept on the owner's Mac only, not published: design documents, roadmaps, rules for the coding agent.
+docs/
+roadmap.html
+roadmap-next.html
+CLAUDE.md
+.claude/

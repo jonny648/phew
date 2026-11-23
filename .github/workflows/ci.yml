@@ -29,5 +29,5 @@ jobs:
       - name: Test
         run: |
           xcodebuild -project Phew.xcodeproj -scheme Phew test CODE_SIGNING_ALLOWED=NO -quiet -resultBundlePath "$RUNNER_TEMP/phew.xcresult" || true
-          # The verdict comes from the counts: no failure, the known number of tests, and only the 6 live ones skipped.
-          Tools/check-tests.sh "$RUNNER_TEMP/phew.xcresult" 715 6
+          # The verdict comes from the counts: no failure, the known number of tests, and only the 7 live ones skipped.
+          Tools/check-tests.sh "$RUNNER_TEMP/phew.xcresult" 715 7
